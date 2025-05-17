@@ -7,11 +7,11 @@ PromptPipe is a Go-based messaging service that delivers adaptive-intervention p
 ## Features
 
 * **Go Core**: Written in Go for performance and concurrency.
-* **Whatsmeow Integration**: Uses the official whatsmeow client for WhatsApp messaging.
+* **Whatsmeow Integration**: Uses the official Whatsmeow client for WhatsApp messaging.
 * **Scheduling**: Schedule prompts at specific times or intervals.
 * **Dynamic Payloads**: Send text, media, and template messages with custom variables.
 * **Receipt Tracking**: Capture sent, delivered, and read events.
-* **Modular Design**: Plug into any adaptive-intervention framework with minimal boilerplate.
+* **Modular Design**: Integrates with any adaptive-intervention framework with minimal boilerplate.
 * **Clear API**: RESTful endpoints for easy integration with your application.
 
 ## Installation
@@ -55,11 +55,11 @@ default_schedule="0 9 * * *"  # cron format for 9 AM daily
 
 ### API Endpoints
 
-| Endpoint    | Method | Description                        |
-| ----------- | ------ | ---------------------------------- |
-| `/schedule` | POST   | Schedule a new prompt              |
-| `/send`     | POST   | Send a prompt immediately          |
-| `/receipts` | GET    | Fetch delivery/read receipt events |
+| Endpoint    | Method | Description                          |
+| ----------- | ------ | ------------------------------------ |
+| `/schedule` | POST   | Schedule a new prompt                |
+| `/send`     | POST   | Send a prompt immediately            |
+| `/receipts` | GET    | Fetch delivery/read receipt events   |
 
 #### Example `schedule` payload
 
