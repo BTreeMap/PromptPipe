@@ -78,6 +78,10 @@ func receiptsHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
+	if st == nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
 	receipts := st.GetReceipts()
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(receipts)
