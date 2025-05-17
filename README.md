@@ -1,8 +1,8 @@
-# PromptFlow
+# PromptPipe
 
 ## Description
 
-PromptFlow is a Go-based messaging service that delivers adaptive-intervention prompts over WhatsApp using the [whatsmeow](https://github.com/tulir/whatsmeow) library. It provides a clean API for scheduling messages, sending dynamic content, and tracking delivery/read receipts, all configured via environment variables for easy integration with your intervention logic.
+PromptPipe is a Go-based messaging service that delivers adaptive-intervention prompts over WhatsApp using the [whatsmeow](https://github.com/tulir/whatsmeow) library. It provides a clean API for scheduling messages, sending dynamic content, and tracking delivery/read receipts, all configured via environment variables for easy integration with your intervention logic.
 
 ## Features
 
@@ -18,8 +18,8 @@ PromptFlow is a Go-based messaging service that delivers adaptive-intervention p
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourorg/promptflow.git
-cd promptflow
+git clone https://github.com/yourorg/PromptPipe.git
+cd PromptPipe
 
 # Build the binary
 make build
@@ -28,7 +28,7 @@ make build
 *Or use **`go build`** directly:*
 
 ```bash
-go build -o promptflow cmd/promptflow/main.go
+go build -o PromptPipe cmd/PromptPipe/main.go
 ```
 
 ## Configuration
@@ -50,7 +50,7 @@ default_schedule="0 9 * * *"  # cron format for 9 AM daily
 
 ```bash
 # Start the service (reads .env automatically)
-./promptflow serve
+./PromptPipe serve
 ```
 
 ### API Endpoints
@@ -77,7 +77,7 @@ default_schedule="0 9 * * *"  # cron format for 9 AM daily
 # Immediately send a test prompt
 curl -X POST http://localhost:8080/send \
   -H "Content-Type: application/json" \
-  -d '{"to":"+15551234567","body":"Test from PromptFlow!"}'
+  -d '{"to":"+15551234567","body":"Test from PromptPipe!"}'
 ```
 
 ## License
