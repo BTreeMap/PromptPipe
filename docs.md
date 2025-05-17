@@ -10,6 +10,9 @@ Welcome to the PromptPipe documentation! This guide provides a comprehensive ove
 - [Configuration](#configuration)
 - [Usage](#usage)
 - [API Reference](#api-reference)
+  - [POST /schedule](#post-schedule)
+  - [POST /send](#post-send)
+  - [GET /receipts](#get-receipts)
 - [Scheduling Prompts](#scheduling-prompts)
 - [Receipt Tracking](#receipt-tracking)
 - [Environment Variables](#environment-variables)
@@ -66,15 +69,11 @@ Start the service (reads `.env` automatically):
 
 ## API Reference
 
-### Endpoints
+### POST /schedule
 
-| Endpoint    | Method | Description                        |
-| ----------- | ------ | ---------------------------------- |
-| `/schedule` | POST   | Schedule a new prompt              |
-| `/send`     | POST   | Send a prompt immediately          |
-| `/receipts` | GET    | Fetch delivery/read receipt events |
+Schedule a new prompt to be sent at a specified time or interval using cron syntax.
 
-### Example `schedule` Payload
+**Request Body:**
 
 ```json
 {
@@ -84,12 +83,74 @@ Start the service (reads `.env` automatically):
 }
 ```
 
-### Example: Send a Test Prompt
+**Go Implementation Example:**
 
-```bash
-curl -X POST http://localhost:8080/send \
-  -H "Content-Type: application/json" \
-  -d '{"to":"+15551234567","body":"Test from PromptPipe!"}'
+```go
+// internal/api/api.go
+func (s *Server) handleSchedule(w http.ResponseWriter, r *http.Request) {
+    var req models.ScheduleRequest
+    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+        http.Error(w, "invalid request", http.StatusBadRequest)
+        return
+    }
+    err := s.scheduler.SchedulePrompt(req.To, req.Cron, req.Body)
+    if err != nil {
+        http.Error(w, err.Error(), http.StatusInternalServerError)
+        return
+    }
+    w.WriteHeader(http.StatusCreated)
+}
+```
+
+### POST /send
+
+Send a prompt immediately to a WhatsApp user.
+
+**Request Body:**
+
+```json
+{
+  "to": "+15551234567",
+  "body": "Test from PromptPipe!"
+}
+```
+
+**Go Implementation Example:**
+
+```go
+// internal/api/api.go
+func (s *Server) handleSend(w http.ResponseWriter, r *http.Request) {
+    var req models.SendRequest
+    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+        http.Error(w, "invalid request", http.StatusBadRequest)
+        return
+    }
+    err := s.whatsapp.SendMessage(req.To, req.Body)
+    if err != nil {
+        http.Error(w, err.Error(), http.StatusInternalServerError)
+        return
+    }
+    w.WriteHeader(http.StatusOK)
+}
+```
+
+### GET /receipts
+
+Fetch delivery and read receipt events for sent messages.
+
+**Go Implementation Example:**
+
+```go
+// internal/api/api.go
+func (s *Server) handleReceipts(w http.ResponseWriter, r *http.Request) {
+    receipts, err := s.store.GetReceipts()
+    if err != nil {
+        http.Error(w, err.Error(), http.StatusInternalServerError)
+        return
+    }
+    w.Header().Set("Content-Type", "application/json")
+    json.NewEncoder(w).Encode(receipts)
+}
 ```
 
 ## Scheduling Prompts
@@ -97,11 +158,32 @@ curl -X POST http://localhost:8080/send \
 - Use the `/schedule` endpoint to schedule prompts using cron syntax.
 - Supports dynamic payloads (text, media, templates).
 - Prompts can be scheduled for specific times or intervals.
+- The scheduler module parses cron expressions and triggers message sending at the correct time.
+
+**Go Example:**
+
+```go
+// internal/scheduler/scheduler.go
+func (s *Scheduler) SchedulePrompt(to, cronExpr, body string) error {
+    // Parse cron, store job, and register callback
+    // ...implementation...
+}
+```
 
 ## Receipt Tracking
 
 - The `/receipts` endpoint returns sent, delivered, and read events for each message.
-- Useful for monitoring engagement and delivery status.
+- Receipts are stored in the database and can be queried for analytics or monitoring.
+
+**Go Example:**
+
+```go
+// internal/store/store.go
+func (s *Store) GetReceipts() ([]models.Receipt, error) {
+    // Query database for receipts
+    // ...implementation...
+}
+```
 
 ## Environment Variables
 
