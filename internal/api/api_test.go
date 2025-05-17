@@ -47,8 +47,8 @@ func TestScheduleHandler_NotImplemented(t *testing.T) {
 	req, _ := http.NewRequest("POST", "/schedule", bytes.NewBuffer([]byte(`{"to":"+123","cron":"* * * * *","body":"hi"}`)))
 	rr := httptest.NewRecorder()
 	scheduleHandler(rr, req)
-	if rr.Code != http.StatusOK {
-		t.Errorf("expected 200, got %d", rr.Code)
+	if rr.Code != http.StatusCreated {
+		t.Errorf("expected 201, got %d", rr.Code)
 	}
 }
 

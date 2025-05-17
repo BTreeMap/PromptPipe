@@ -68,7 +68,7 @@ func scheduleHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	_, err := sched.AddJob(p.Cron, func() {
+	err := sched.AddJob(p.Cron, func() {
 		err := waClient.SendMessage(context.Background(), p.To, p.Body)
 		if err == nil {
 			st.AddReceipt(models.Receipt{To: p.To, Status: "sent", Time: time.Now().Unix()})

@@ -22,9 +22,10 @@ func NewScheduler() *Scheduler {
 	return &Scheduler{}
 }
 
-func (s *Scheduler) AddJob(cron string, task func()) {
+func (s *Scheduler) AddJob(cron string, task func()) error {
 	// TODO: Parse cron and schedule task
 	s.jobs = append(s.jobs, Job{Cron: cron, Task: task})
+	return nil
 }
 
 func (s *Scheduler) Start() {

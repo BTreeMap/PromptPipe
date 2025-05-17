@@ -18,6 +18,7 @@ Welcome to the PromptPipe documentation! This guide provides a comprehensive ove
   - [Receipt](#receipt)
 - [Scheduling Prompts](#scheduling-prompts)
 - [Receipt Tracking](#receipt-tracking)
+- [Storage Backends](#storage-backends)
 - [Environment Variables](#environment-variables)
 - [Development](#development)
 - [License](#license)
@@ -151,6 +152,15 @@ The `/schedule` endpoint allows you to define messages that will be sent out bas
 ## Receipt Tracking
 
 The system tracks message events (sent, delivered, read) and stores them. These can be retrieved via the `/receipts` endpoint. The `internal/store` package handles the persistence of these receipts, with options for in-memory or PostgreSQL storage.
+
+## Storage Backends
+
+PromptPipe supports a unified storage interface for message receipts, with two implementations:
+
+- **In-Memory Store**: Used for testing and development. Fast, but not persistent.
+- **PostgreSQL Store**: Used in production. Set the `DATABASE_URL` environment variable to enable this backend. The database must have a `receipts` table with columns: `recipient TEXT`, `status TEXT`, `time BIGINT`.
+
+The system will use the PostgreSQL store if `DATABASE_URL` is set, otherwise it defaults to in-memory storage.
 
 ## Environment Variables
 
