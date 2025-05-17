@@ -1,3 +1,7 @@
+// Package api provides HTTP handlers and the main API server logic for PromptPipe.
+//
+// It exposes RESTful endpoints for scheduling, sending, and tracking WhatsApp prompts.
+// The API integrates with the WhatsApp, scheduler, and store modules.
 package api
 
 import (

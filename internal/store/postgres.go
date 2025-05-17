@@ -1,0 +1,48 @@
+// Package store provides storage backends for PromptPipe.
+//
+// This file implements a PostgreSQL-backed store for receipts.
+package store
+
+import (
+	"database/sql"
+
+	"github.com/BTreeMap/PromptPipe/internal/models"
+	_ "github.com/lib/pq"
+)
+
+type PostgresStore struct {
+	db *sql.DB
+}
+
+func NewPostgresStore(connStr string) (*PostgresStore, error) {
+	db, err := sql.Open("postgres", connStr)
+	if err != nil {
+		return nil, err
+	}
+	if err := db.Ping(); err != nil {
+		return nil, err
+	}
+	return &PostgresStore{db: db}, nil
+}
+
+func (s *PostgresStore) AddReceipt(r models.Receipt) error {
+	_, err := s.db.Exec(`INSERT INTO receipts (recipient, status, time) VALUES ($1, $2, $3)`, r.To, r.Status, r.Time)
+	return err
+}
+
+func (s *PostgresStore) GetReceipts() ([]models.Receipt, error) {
+	rows, err := s.db.Query(`SELECT recipient, status, time FROM receipts`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var receipts []models.Receipt
+	for rows.Next() {
+		var r models.Receipt
+		if err := rows.Scan(&r.To, &r.Status, &r.Time); err != nil {
+			return nil, err
+		}
+		receipts = append(receipts, r)
+	}
+	return receipts, nil
+}

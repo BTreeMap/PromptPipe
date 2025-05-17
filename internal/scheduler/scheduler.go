@@ -1,3 +1,6 @@
+// Package scheduler provides scheduling logic for PromptPipe.
+//
+// It allows jobs (such as sending WhatsApp prompts) to be scheduled using cron expressions.
 package scheduler
 
 import (
@@ -5,8 +8,8 @@ import (
 )
 
 type Job struct {
-	Cron  string
-	Task  func()
+	Cron string
+	Task func()
 }
 
 // Scheduler is a placeholder for cron scheduling logic

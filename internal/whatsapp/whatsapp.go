@@ -1,7 +1,11 @@
+// Package whatsapp wraps the Whatsmeow client for WhatsApp integration in PromptPipe.
+//
+// It provides methods for sending messages and handling WhatsApp events.
 package whatsapp
 
 import (
 	"context"
+
 	"go.mau.fi/whatsmeow"
 	waLog "go.mau.fi/whatsmeow/util/log"
 )

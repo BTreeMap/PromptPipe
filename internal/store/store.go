@@ -1,3 +1,6 @@
+// Package store provides storage backends for PromptPipe.
+//
+// It includes an in-memory store for receipts and will support persistent storage (e.g., PostgreSQL).
 package store
 
 import "github.com/BTreeMap/PromptPipe/internal/models"
