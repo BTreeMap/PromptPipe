@@ -93,7 +93,13 @@ func (s *Server) handleSchedule(w http.ResponseWriter, r *http.Request) {
         http.Error(w, "invalid request", http.StatusBadRequest)
         return
     }
-    err := s.scheduler.SchedulePrompt(req.To, req.Cron, req.Body)
+    // The actual scheduling logic resides in the scheduler package
+    _, err := s.scheduler.AddJob(req.Cron, func() {
+        // This function will be executed based on the cron schedule
+        // You would typically call your WhatsApp sending logic here
+        // For example: s.whatsapp.SendMessage(req.To, req.Body)
+        log.Printf("Executing scheduled job for %s: %s", req.To, req.Body)
+    })
     if err != nil {
         http.Error(w, err.Error(), http.StatusInternalServerError)
         return
@@ -125,6 +131,7 @@ func (s *Server) handleSend(w http.ResponseWriter, r *http.Request) {
         http.Error(w, "invalid request", http.StatusBadRequest)
         return
     }
+    // The actual message sending logic resides in the whatsapp package
     err := s.whatsapp.SendMessage(req.To, req.Body)
     if err != nil {
         http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -143,7 +150,8 @@ Fetch delivery and read receipt events for sent messages.
 ```go
 // internal/api/api.go
 func (s *Server) handleReceipts(w http.ResponseWriter, r *http.Request) {
-    receipts, err := s.store.GetReceipts()
+    // The actual logic for fetching receipts resides in the store package
+    receipts, err := s.store.GetReceipts() // Assuming GetReceipts can return an error
     if err != nil {
         http.Error(w, err.Error(), http.StatusInternalServerError)
         return
@@ -164,25 +172,152 @@ func (s *Server) handleReceipts(w http.ResponseWriter, r *http.Request) {
 
 ```go
 // internal/scheduler/scheduler.go
-func (s *Scheduler) SchedulePrompt(to, cronExpr, body string) error {
-    // Parse cron, store job, and register callback
-    // ...implementation...
+package scheduler
+
+import (
+    "log"
+    "time"
+
+    "github.com/robfig/cron/v3"
+)
+
+// Scheduler holds the cron instance and manages scheduled jobs.
+// It uses the robfig/cron library for robust cron expression parsing and scheduling.
+type Scheduler struct {
+    cron *cron.Cron
 }
+
+// NewScheduler creates and starts a new cron scheduler.
+func NewScheduler() *Scheduler {
+    c := cron.New(cron.WithSeconds()) // Optional: use WithSeconds() if you need second-level precision
+    c.Start()
+    log.Println("Cron scheduler started")
+    return &Scheduler{cron: c}
+}
+
+// AddJob schedules a new task based on the cron expression.
+// The task is a function that will be executed according to the schedule.
+func (s *Scheduler) AddJob(cronExpr string, task func()) (cron.EntryID, error) {
+    id, err := s.cron.AddFunc(cronExpr, task)
+    if err != nil {
+        log.Printf("Error adding job with cron expression '%s': %v", cronExpr, err)
+        return 0, err
+    }
+    log.Printf("Scheduled job with ID %d for cron expression: %s", id, cronExpr)
+    return id, nil
+}
+
+// RemoveJob stops and removes a scheduled job by its ID.
+func (s *Scheduler) RemoveJob(id cron.EntryID) {
+    s.cron.Remove(id)
+    log.Printf("Removed job with ID %d", id)
+}
+
+// Stop gracefully shuts down the cron scheduler.
+func (s *Scheduler) Stop() {
+    s.cron.Stop() // Stops the scheduler from running further jobs
+    log.Println("Cron scheduler stopped")
+}
+
+// Example usage (typically in your main application setup):
+// scheduler := scheduler.NewScheduler()
+// defer scheduler.Stop() // Ensure scheduler is stopped gracefully on application exit
+//
+// // Schedule a task to run every minute
+// scheduler.AddJob("* * * * *", func() {
+//     log.Println("Executing a scheduled task every minute!")
+// })
+//
+// // Schedule a task to run at a specific time (e.g., 9 AM every day)
+// scheduler.AddJob("0 9 * * *", func() {
+//     log.Println("Executing a scheduled task at 9 AM daily!")
+// })
 ```
 
 ## Receipt Tracking
 
 - The `/receipts` endpoint returns sent, delivered, and read events for each message.
 - Receipts are stored in the database and can be queried for analytics or monitoring.
+- The `store` package handles the persistence and retrieval of these receipts.
 
 **Go Example:**
 
 ```go
 // internal/store/store.go
-func (s *Store) GetReceipts() ([]models.Receipt, error) {
-    // Query database for receipts
-    // ...implementation...
+package store
+
+import (
+    "sync"
+
+    "github.com/BTreeMap/PromptPipe/internal/models"
+    // "database/sql" // Uncomment if using a SQL database like PostgreSQL
+    // _ "github.com/lib/pq" // PostgreSQL driver
+)
+
+// Store defines the interface for storage operations related to receipts.
+// This allows for different storage implementations (e.g., in-memory, PostgreSQL).
+type Store interface {
+    AddReceipt(r models.Receipt) error
+    GetReceipts() ([]models.Receipt, error)
 }
+
+// InMemoryStore is a simple in-memory store for receipts, primarily for testing or simple deployments.
+// It uses a mutex to handle concurrent access safely.
+type InMemoryStore struct {
+    mu       sync.RWMutex
+    receipts []models.Receipt
+}
+
+// NewInMemoryStore creates a new InMemoryStore.
+func NewInMemoryStore() *InMemoryStore {
+    return &InMemoryStore{
+        receipts: make([]models.Receipt, 0),
+    }
+}
+
+// AddReceipt adds a new receipt to the in-memory store.
+func (s *InMemoryStore) AddReceipt(r models.Receipt) error {
+    s.mu.Lock()
+    defer s.mu.Unlock()
+    s.receipts = append(s.receipts, r)
+    return nil
+}
+
+// GetReceipts retrieves all receipts from the in-memory store.
+func (s *InMemoryStore) GetReceipts() ([]models.Receipt, error) {
+    s.mu.RLock()
+    defer s.mu.RUnlock()
+    // Return a copy to prevent external modification of the internal slice
+    copiedReceipts := make([]models.Receipt, len(s.receipts))
+    copy(copiedReceipts, s.receipts)
+    return copiedReceipts, nil
+}
+
+// TODO: Implement PostgreSQLStore that implements the Store interface
+// type PostgreSQLStore struct {
+//     db *sql.DB
+// }
+//
+// func NewPostgreSQLStore(dataSourceName string) (*PostgreSQLStore, error) {
+//     db, err := sql.Open("postgres", dataSourceName)
+//     if err != nil {
+//         return nil, err
+//     }
+//     if err = db.Ping(); err != nil {
+//         return nil, err
+//     }
+//     return &PostgreSQLStore{db: db}, nil
+// }
+//
+// func (s *PostgreSQLStore) AddReceipt(r models.Receipt) error {
+//     // SQL INSERT statement for receipts
+//     return nil
+// }
+//
+// func (s *PostgreSQLStore) GetReceipts() ([]models.Receipt, error) {
+//     // SQL SELECT statement for receipts
+//     return nil, nil
+// }
 ```
 
 ## Environment Variables
