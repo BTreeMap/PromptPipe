@@ -21,18 +21,18 @@ import (
 var (
 	waClient *whatsapp.Client
 	sched    *scheduler.Scheduler
-	st       *store.InMemoryStore
+	st       store.Store // Use the interface for flexibility
 )
 
+// Run starts the API server and initializes dependencies.
 func Run() {
 	waClient, _ = whatsapp.NewClient() // TODO: handle error and config
 	sched = scheduler.NewScheduler()
-	st = store.NewInMemoryStore()
+	st = store.NewInMemoryStore() // Or use store.NewPostgresStore(connStr) for production
 
 	http.HandleFunc("/send", sendHandler)
 	http.HandleFunc("/schedule", scheduleHandler)
 	http.HandleFunc("/receipts", receiptsHandler)
-	go sched.Start()
 	log.Println("PromptPipe API running on :8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
@@ -68,13 +68,17 @@ func scheduleHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	sched.AddJob(p.Cron, func() {
+	_, err := sched.AddJob(p.Cron, func() {
 		err := waClient.SendMessage(context.Background(), p.To, p.Body)
 		if err == nil {
 			st.AddReceipt(models.Receipt{To: p.To, Status: "sent", Time: time.Now().Unix()})
 		}
 	})
-	w.WriteHeader(http.StatusOK)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusCreated)
 }
 
 func receiptsHandler(w http.ResponseWriter, r *http.Request) {
@@ -82,11 +86,11 @@ func receiptsHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	if st == nil {
+	receipts, err := st.GetReceipts()
+	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	receipts := st.GetReceipts()
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(receipts)
 }

@@ -13,6 +13,9 @@ Welcome to the PromptPipe documentation! This guide provides a comprehensive ove
   - [POST /schedule](#post-schedule)
   - [POST /send](#post-send)
   - [GET /receipts](#get-receipts)
+- [Data Models](#data-models)
+  - [Prompt](#prompt)
+  - [Receipt](#receipt)
 - [Scheduling Prompts](#scheduling-prompts)
 - [Receipt Tracking](#receipt-tracking)
 - [Environment Variables](#environment-variables)
@@ -29,10 +32,11 @@ PromptPipe is a Go-based messaging service that delivers adaptive-intervention p
 
 - **Go Core**: Built with Go for high performance and concurrency.
 - **Whatsmeow Integration**: Uses the official Whatsmeow client for WhatsApp messaging.
-- **API Layer**: Exposes RESTful endpoints for scheduling, sending, and tracking prompts.
-- **Scheduler**: Supports cron-based scheduling for recurring or one-time prompts.
-- **Store**: Persists scheduled prompts and receipt events (supports PostgreSQL).
-- **Receipt Tracking**: Captures sent, delivered, and read events for each message.
+- **API Layer**: Exposes RESTful endpoints for scheduling, sending, and tracking prompts. (`internal/api`)
+- **Scheduler**: Supports cron-based scheduling for recurring or one-time prompts. (`internal/scheduler`)
+- **Store**: Persists scheduled prompts and receipt events. Supports in-memory and PostgreSQL. (`internal/store`)
+- **WhatsApp Client**: Handles communication with the WhatsApp network. (`internal/whatsapp`)
+- **Models**: Defines shared data structures. (`internal/models`)
 
 ## Installation
 
@@ -69,256 +73,84 @@ Start the service (reads `.env` automatically):
 
 ## API Reference
 
+All API endpoints expect and return JSON.
+
 ### POST /schedule
 
-Schedule a new prompt to be sent at a specified time or interval using cron syntax.
+Schedules a new prompt to be sent according to a cron expression.
 
-**Request Body:**
+**Request Body:** `Prompt` object (see [Data Models](#prompt))
 
-```json
-{
-  "to": "+15551234567",
-  "cron": "0 8 * * *",
-  "body": "Good morning! Don't forget your mindfulness exercise today."
-}
-```
+**Responses:**
 
-**Go Implementation Example:**
-
-```go
-// internal/api/api.go
-func (s *Server) handleSchedule(w http.ResponseWriter, r *http.Request) {
-    var req models.ScheduleRequest
-    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-        http.Error(w, "invalid request", http.StatusBadRequest)
-        return
-    }
-    // The actual scheduling logic resides in the scheduler package
-    _, err := s.scheduler.AddJob(req.Cron, func() {
-        // This function will be executed based on the cron schedule
-        // You would typically call your WhatsApp sending logic here
-        // For example: s.whatsapp.SendMessage(req.To, req.Body)
-        log.Printf("Executing scheduled job for %s: %s", req.To, req.Body)
-    })
-    if err != nil {
-        http.Error(w, err.Error(), http.StatusInternalServerError)
-        return
-    }
-    w.WriteHeader(http.StatusCreated)
-}
-```
+- `201 Created`: Prompt successfully scheduled.
+- `400 Bad Request`: Invalid request payload.
+- `500 Internal Server Error`: Error scheduling the prompt.
 
 ### POST /send
 
-Send a prompt immediately to a WhatsApp user.
+Sends a prompt immediately.
 
-**Request Body:**
+**Request Body:** `Prompt` object (see [Data Models](#prompt), `cron` field is ignored)
 
-```json
-{
-  "to": "+15551234567",
-  "body": "Test from PromptPipe!"
-}
-```
+**Responses:**
 
-**Go Implementation Example:**
-
-```go
-// internal/api/api.go
-func (s *Server) handleSend(w http.ResponseWriter, r *http.Request) {
-    var req models.SendRequest
-    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-        http.Error(w, "invalid request", http.StatusBadRequest)
-        return
-    }
-    // The actual message sending logic resides in the whatsapp package
-    err := s.whatsapp.SendMessage(req.To, req.Body)
-    if err != nil {
-        http.Error(w, err.Error(), http.StatusInternalServerError)
-        return
-    }
-    w.WriteHeader(http.StatusOK)
-}
-```
+- `200 OK`: Prompt successfully sent.
+- `400 Bad Request`: Invalid request payload.
+- `500 Internal Server Error`: Error sending the prompt.
 
 ### GET /receipts
 
-Fetch delivery and read receipt events for sent messages.
+Fetches all stored delivery and read receipt events.
 
-**Go Implementation Example:**
+**Response Body:** Array of `Receipt` objects (see [Data Models](#receipt))
 
-```go
-// internal/api/api.go
-func (s *Server) handleReceipts(w http.ResponseWriter, r *http.Request) {
-    // The actual logic for fetching receipts resides in the store package
-    receipts, err := s.store.GetReceipts() // Assuming GetReceipts can return an error
-    if err != nil {
-        http.Error(w, err.Error(), http.StatusInternalServerError)
-        return
-    }
-    w.Header().Set("Content-Type", "application/json")
-    json.NewEncoder(w).Encode(receipts)
+**Responses:**
+
+- `200 OK`: Successfully retrieved receipts.
+- `500 Internal Server Error`: Error fetching receipts.
+
+## Data Models
+
+### Prompt
+
+Represents a message to be sent.
+
+```json
+{
+  "to": "string (E.164 phone number)",
+  "cron": "string (cron expression, optional for /send)",
+  "body": "string (message content)"
 }
 ```
+
+- `to`: The recipient's WhatsApp phone number in E.164 format (e.g., `+15551234567`).
+- `cron`: A standard cron expression (e.g., `0 9 * * *` for 9 AM daily). Required for `/schedule`.
+- `body`: The text content of the message.
+
+### Receipt
+
+Represents a delivery or read receipt for a sent message.
+
+```json
+{
+  "to": "string (E.164 phone number)",
+  "status": "string (e.g., \"sent\", \"delivered\", \"read\")",
+  "time": "int64 (Unix timestamp)"
+}
+```
+
+- `to`: The recipient's WhatsApp phone number.
+- `status`: The status of the message (e.g., "sent", "delivered", "read").
+- `time`: Unix timestamp of when the receipt event occurred.
 
 ## Scheduling Prompts
 
-- Use the `/schedule` endpoint to schedule prompts using cron syntax.
-- Supports dynamic payloads (text, media, templates).
-- Prompts can be scheduled for specific times or intervals.
-- The scheduler module parses cron expressions and triggers message sending at the correct time.
-
-**Go Example:**
-
-```go
-// internal/scheduler/scheduler.go
-package scheduler
-
-import (
-    "log"
-    "time"
-
-    "github.com/robfig/cron/v3"
-)
-
-// Scheduler holds the cron instance and manages scheduled jobs.
-// It uses the robfig/cron library for robust cron expression parsing and scheduling.
-type Scheduler struct {
-    cron *cron.Cron
-}
-
-// NewScheduler creates and starts a new cron scheduler.
-func NewScheduler() *Scheduler {
-    c := cron.New(cron.WithSeconds()) // Optional: use WithSeconds() if you need second-level precision
-    c.Start()
-    log.Println("Cron scheduler started")
-    return &Scheduler{cron: c}
-}
-
-// AddJob schedules a new task based on the cron expression.
-// The task is a function that will be executed according to the schedule.
-func (s *Scheduler) AddJob(cronExpr string, task func()) (cron.EntryID, error) {
-    id, err := s.cron.AddFunc(cronExpr, task)
-    if err != nil {
-        log.Printf("Error adding job with cron expression '%s': %v", cronExpr, err)
-        return 0, err
-    }
-    log.Printf("Scheduled job with ID %d for cron expression: %s", id, cronExpr)
-    return id, nil
-}
-
-// RemoveJob stops and removes a scheduled job by its ID.
-func (s *Scheduler) RemoveJob(id cron.EntryID) {
-    s.cron.Remove(id)
-    log.Printf("Removed job with ID %d", id)
-}
-
-// Stop gracefully shuts down the cron scheduler.
-func (s *Scheduler) Stop() {
-    s.cron.Stop() // Stops the scheduler from running further jobs
-    log.Println("Cron scheduler stopped")
-}
-
-// Example usage (typically in your main application setup):
-// scheduler := scheduler.NewScheduler()
-// defer scheduler.Stop() // Ensure scheduler is stopped gracefully on application exit
-//
-// // Schedule a task to run every minute
-// scheduler.AddJob("* * * * *", func() {
-//     log.Println("Executing a scheduled task every minute!")
-// })
-//
-// // Schedule a task to run at a specific time (e.g., 9 AM every day)
-// scheduler.AddJob("0 9 * * *", func() {
-//     log.Println("Executing a scheduled task at 9 AM daily!")
-// })
-```
+The `/schedule` endpoint allows you to define messages that will be sent out based on a cron schedule. The `cron` field in the `Prompt` model uses standard cron syntax. The scheduler service (`internal/scheduler`) is responsible for managing these jobs.
 
 ## Receipt Tracking
 
-- The `/receipts` endpoint returns sent, delivered, and read events for each message.
-- Receipts are stored in the database and can be queried for analytics or monitoring.
-- The `store` package handles the persistence and retrieval of these receipts.
-
-**Go Example:**
-
-```go
-// internal/store/store.go
-package store
-
-import (
-    "sync"
-
-    "github.com/BTreeMap/PromptPipe/internal/models"
-    // "database/sql" // Uncomment if using a SQL database like PostgreSQL
-    // _ "github.com/lib/pq" // PostgreSQL driver
-)
-
-// Store defines the interface for storage operations related to receipts.
-// This allows for different storage implementations (e.g., in-memory, PostgreSQL).
-type Store interface {
-    AddReceipt(r models.Receipt) error
-    GetReceipts() ([]models.Receipt, error)
-}
-
-// InMemoryStore is a simple in-memory store for receipts, primarily for testing or simple deployments.
-// It uses a mutex to handle concurrent access safely.
-type InMemoryStore struct {
-    mu       sync.RWMutex
-    receipts []models.Receipt
-}
-
-// NewInMemoryStore creates a new InMemoryStore.
-func NewInMemoryStore() *InMemoryStore {
-    return &InMemoryStore{
-        receipts: make([]models.Receipt, 0),
-    }
-}
-
-// AddReceipt adds a new receipt to the in-memory store.
-func (s *InMemoryStore) AddReceipt(r models.Receipt) error {
-    s.mu.Lock()
-    defer s.mu.Unlock()
-    s.receipts = append(s.receipts, r)
-    return nil
-}
-
-// GetReceipts retrieves all receipts from the in-memory store.
-func (s *InMemoryStore) GetReceipts() ([]models.Receipt, error) {
-    s.mu.RLock()
-    defer s.mu.RUnlock()
-    // Return a copy to prevent external modification of the internal slice
-    copiedReceipts := make([]models.Receipt, len(s.receipts))
-    copy(copiedReceipts, s.receipts)
-    return copiedReceipts, nil
-}
-
-// TODO: Implement PostgreSQLStore that implements the Store interface
-// type PostgreSQLStore struct {
-//     db *sql.DB
-// }
-//
-// func NewPostgreSQLStore(dataSourceName string) (*PostgreSQLStore, error) {
-//     db, err := sql.Open("postgres", dataSourceName)
-//     if err != nil {
-//         return nil, err
-//     }
-//     if err = db.Ping(); err != nil {
-//         return nil, err
-//     }
-//     return &PostgreSQLStore{db: db}, nil
-// }
-//
-// func (s *PostgreSQLStore) AddReceipt(r models.Receipt) error {
-//     // SQL INSERT statement for receipts
-//     return nil
-// }
-//
-// func (s *PostgreSQLStore) GetReceipts() ([]models.Receipt, error) {
-//     // SQL SELECT statement for receipts
-//     return nil, nil
-// }
-```
+The system tracks message events (sent, delivered, read) and stores them. These can be retrieved via the `/receipts` endpoint. The `internal/store` package handles the persistence of these receipts, with options for in-memory or PostgreSQL storage.
 
 ## Environment Variables
 
