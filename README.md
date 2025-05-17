@@ -4,6 +4,8 @@
 
 PromptPipe is a Go-based messaging service that delivers adaptive-intervention prompts over WhatsApp using the [whatsmeow](https://github.com/tulir/whatsmeow) library. It provides a clean API for scheduling messages, sending dynamic content, and tracking delivery/read receipts, all configured via environment variables for easy integration with your intervention logic.
 
+> **Detailed documentation is available in [docs.md](docs.md).**
+
 ## Features
 
 * **Go Core**: Written in Go for performance and concurrency.
