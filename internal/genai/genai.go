@@ -10,9 +10,14 @@ import (
 	"github.com/openai/openai-go"
 )
 
-// Client wraps the OpenAI client for generating prompts.
+// chatService defines minimal interface for chat completions.
+type chatService interface {
+	Create(ctx context.Context, req openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error)
+}
+
+// Client wraps the OpenAI ChatCompletion service for generating prompts.
 type Client struct {
-	client *openai.Client
+	chat chatService
 }
 
 // NewClient initializes a new GenAI client using the OPENAI_API_KEY environment variable.
@@ -21,20 +26,17 @@ func NewClient() (*Client, error) {
 	if apiKey == "" {
 		return nil, fmt.Errorf("OPENAI_API_KEY not set")
 	}
-	c := openai.NewClient(apiKey)
-	return &Client{client: c}, nil
+	cli := openai.NewClient(apiKey)
+	return &Client{chat: cli.Chat}, nil
 }
 
 // GeneratePrompt generates a response based on the provided system and user prompts.
-func (c *Client) GeneratePrompt(systemPrompt string, userPrompt string) (string, error) {
+func (c *Client) GeneratePrompt(systemPrompt, userPrompt string) (string, error) {
 	req := openai.ChatCompletionRequest{
-		Model: openai.GPT3Dot5Turbo,
-		Messages: []openai.ChatCompletionMessage{
-			{Role: openai.ChatMessageRoleSystem, Content: systemPrompt},
-			{Role: openai.ChatMessageRoleUser, Content: userPrompt},
-		},
+		Model:    openai.ChatModelGPT4oMini,
+		Messages: []openai.ChatCompletionMessage{{Role: openai.ChatMessageRoleSystem, Content: systemPrompt}, {Role: openai.ChatMessageRoleUser, Content: userPrompt}},
 	}
-	resp, err := c.client.Chat.Create(context.Background(), req)
+	resp, err := c.chat.Create(context.Background(), req)
 	if err != nil {
 		return "", err
 	}

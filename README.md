@@ -15,6 +15,7 @@ PromptPipe is a Go-based messaging service that delivers adaptive-intervention p
 * **Receipt Tracking**: Capture sent, delivered, and read events.
 * **Modular Design**: Integrates with any adaptive-intervention framework with minimal boilerplate.
 * **Clear API**: RESTful endpoints for easy integration with your application.
+* **GenAI-Enhanced Content**: Use OpenAI to generate message content dynamically based on system and user prompts.
 
 ## Installation
 
@@ -49,6 +50,9 @@ DEFAULT_SCHEDULE="0 9 * * *"  # cron format for 9 AM daily
 
 # (Optional) Database for receipts (Postgres)
 DATABASE_URL="postgres://user:pass@host:port/dbname?sslmode=disable"
+
+# OpenAI API key for GenAI operations
+OPENAI_API_KEY="your_openai_api_key"
 ```
 
 ## Usage
@@ -62,8 +66,8 @@ DATABASE_URL="postgres://user:pass@host:port/dbname?sslmode=disable"
 
 | Endpoint    | Method | Description                          |
 | ----------- | ------ | ------------------------------------ |
-| `/schedule` | POST   | Schedule a new prompt                |
-| `/send`     | POST   | Send a prompt immediately            |
+| `/schedule` | POST   | Schedule a new prompt. Supports optional `system_prompt` and `user_prompt` fields for GenAI content. |
+| `/send`     | POST   | Send a prompt immediately. Supports optional `system_prompt` and `user_prompt` fields to generate dynamic content. |
 | `/receipts` | GET    | Fetch delivery/read receipt events   |
 
 #### Example `schedule` payload
@@ -72,7 +76,9 @@ DATABASE_URL="postgres://user:pass@host:port/dbname?sslmode=disable"
 {
   "to": "+15551234567",
   "cron": "0 8 * * *",
-  "body": "Good morning! Don't forget your mindfulness exercise today."
+  "body": "Good morning feature!",
+  "system_prompt": "You are a friendly reminder bot.",
+  "user_prompt": "Please send a motivational quote for today."
 }
 ```
 

@@ -12,6 +12,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/BTreeMap/PromptPipe/internal/genai"
 	"github.com/BTreeMap/PromptPipe/internal/models"
 	"github.com/BTreeMap/PromptPipe/internal/scheduler"
 	"github.com/BTreeMap/PromptPipe/internal/store"
@@ -23,6 +24,7 @@ var (
 	sched       *scheduler.Scheduler
 	st          store.Store // Use the interface for flexibility
 	defaultCron string      // default cron schedule from env
+	gaClient    *genai.Client
 )
 
 // Run starts the API server and initializes dependencies.
@@ -46,6 +48,12 @@ func Run() {
 		st = store.NewInMemoryStore()
 	}
 
+	// Initialize GenAI client if API key provided
+	gaClient, err = genai.NewClient()
+	if err != nil {
+		log.Fatalf("Failed to create GenAI client: %v", err)
+	}
+
 	http.HandleFunc("/send", sendHandler)
 	http.HandleFunc("/schedule", scheduleHandler)
 	http.HandleFunc("/receipts", receiptsHandler)
@@ -63,6 +71,17 @@ func sendHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		log.Printf("Invalid JSON in sendHandler: %v", err)
 		return
+	}
+
+	// If GenAI prompts provided, generate dynamic content
+	if p.SystemPrompt != "" && p.UserPrompt != "" {
+		generated, err := gaClient.GeneratePrompt(p.SystemPrompt, p.UserPrompt)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			log.Printf("GenAI generation error: %v", err)
+			return
+		}
+		p.Body = generated
 	}
 
 	err := waClient.SendMessage(context.Background(), p.To, p.Body)
@@ -97,7 +116,17 @@ func scheduleHandler(w http.ResponseWriter, r *http.Request) {
 		p.Cron = defaultCron
 	}
 	if err := sched.AddJob(p.Cron, func() {
-		if err := waClient.SendMessage(context.Background(), p.To, p.Body); err != nil {
+		msg := p.Body
+		// If GenAI prompts provided, generate dynamic content per run
+		if p.SystemPrompt != "" && p.UserPrompt != "" {
+			gen, err := gaClient.GeneratePrompt(p.SystemPrompt, p.UserPrompt)
+			if err != nil {
+				log.Printf("GenAI scheduled generation error: %v", err)
+				return
+			}
+			msg = gen
+		}
+		if err := waClient.SendMessage(context.Background(), p.To, msg); err != nil {
 			log.Printf("Scheduled job send error: %v", err)
 			return
 		}

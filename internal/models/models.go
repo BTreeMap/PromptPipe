@@ -4,9 +4,11 @@
 package models
 
 type Prompt struct {
-	To   string `json:"to"`
-	Cron string `json:"cron,omitempty"`
-	Body string `json:"body"`
+	To           string `json:"to"`
+	Cron         string `json:"cron,omitempty"`
+	Body         string `json:"body"`
+	SystemPrompt string `json:"system_prompt,omitempty"`
+	UserPrompt   string `json:"user_prompt,omitempty"`
 }
 
 type Receipt struct {

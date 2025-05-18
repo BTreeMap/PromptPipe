@@ -63,6 +63,7 @@ Create a `.env` file or export the following environment variables:
 - `WHATSAPP_DB_DSN`: Data source name for Whatsmeow DB (default: `postgres://postgres:postgres@localhost:5432/whatsapp?sslmode=disable`)
 - `DATABASE_URL`: (Optional) PostgreSQL connection string for PromptPipe receipt storage
 - `DEFAULT_SCHEDULE`: (Optional) Default cron schedule for prompts (e.g., `0 9 * * *` for 9 AM daily)
+- `OPENAI_API_KEY`: (Optional) API key for OpenAI GenAI operations
 
 ## Usage
 
@@ -80,7 +81,7 @@ All API endpoints expect and return JSON.
 
 Schedules a new prompt to be sent according to a cron expression.
 
-**Request Body:** `Prompt` object (see [Data Models](#prompt))
+**Request Body:** `Prompt` object (see [Data Models](#prompt)). Supports optional `system_prompt` and `user_prompt` fields for GenAI content.
 
 **Responses:**
 
@@ -92,7 +93,7 @@ Schedules a new prompt to be sent according to a cron expression.
 
 Sends a prompt immediately.
 
-**Request Body:** `Prompt` object (see [Data Models](#prompt), `cron` field is ignored)
+**Request Body:** `Prompt` object (see [Data Models](#prompt), `cron` field is ignored). Supports optional `system_prompt` and `user_prompt` fields to generate dynamic content.
 
 **Responses:**
 
@@ -121,13 +122,17 @@ Represents a message to be sent.
 {
   "to": "string (E.164 phone number)",
   "cron": "string (cron expression, optional for /send)",
-  "body": "string (message content)"
+  "body": "string (message content)",
+  "system_prompt": "string (optional system prompt for GenAI)",
+  "user_prompt": "string (optional user prompt for GenAI)"
 }
 ```
 
 - `to`: The recipient's WhatsApp phone number in E.164 format (e.g., `+15551234567`).
 - `cron`: A standard cron expression (e.g., `0 9 * * *` for 9 AM daily). Required for `/schedule`.
 - `body`: The text content of the message.
+- `system_prompt`: Optional system prompt for generating dynamic content using GenAI.
+- `user_prompt`: Optional user prompt for generating dynamic content using GenAI.
 
 ### Receipt
 
@@ -170,6 +175,7 @@ The system will use the PostgreSQL store if `DATABASE_URL` is set, otherwise it 
 | WHATSAPP_DB_DSN      | Data source name for Whatsmeow DB           |
 | DEFAULT_SCHEDULE     | Default cron schedule for prompts           |
 | DATABASE_URL         | PostgreSQL connection string (optional)     |
+| OPENAI_API_KEY       | API key for OpenAI GenAI operations         |
 
 ## Development
 
