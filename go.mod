@@ -14,6 +14,7 @@ require (
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/petermattis/goid v0.0.0-20250319124200-ccd6737f222a // indirect
+	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/rs/zerolog v1.34.0 // indirect
 	go.mau.fi/libsignal v0.2.0 // indirect
 	go.mau.fi/util v0.8.6 // indirect
