@@ -29,11 +29,12 @@ func NewClient() (*Client, error) {
 	// Use environment variables for DB driver and DSN
 	dbDriver := os.Getenv("WHATSAPP_DB_DRIVER")
 	if dbDriver == "" {
-		dbDriver = "sqlite3"
+		dbDriver = "postgres"
 	}
 	dbDSN := os.Getenv("WHATSAPP_DB_DSN")
 	if dbDSN == "" {
-		dbDSN = "file:whatsappstore.db?_foreign_keys=on"
+		// Default to a typical local Postgres connection string
+		dbDSN = "postgres://postgres:postgres@localhost:5432/whatsapp?sslmode=disable"
 	}
 	logger := waLog.Stdout("Database", "INFO", true)
 	ctx := context.Background()
