@@ -7,7 +7,6 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"io"
 	"log"
 	"net/http"
 	"os"
@@ -60,22 +59,21 @@ func sendHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var p models.Prompt
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		log.Printf("Error reading request body: %v", err)
-		return
-	}
-	if err := json.Unmarshal(body, &p); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
+		log.Printf("Invalid JSON in sendHandler: %v", err)
 		return
 	}
-	err = waClient.SendMessage(context.Background(), p.To, p.Body)
+
+	err := waClient.SendMessage(context.Background(), p.To, p.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
+		log.Printf("Error sending message: %v", err)
 		return
 	}
-	st.AddReceipt(models.Receipt{To: p.To, Status: "sent", Time: time.Now().Unix()})
+	if err := st.AddReceipt(models.Receipt{To: p.To, Status: "sent", Time: time.Now().Unix()}); err != nil {
+		log.Printf("Error adding receipt: %v", err)
+	}
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -85,14 +83,9 @@ func scheduleHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var p models.Prompt
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		log.Printf("Error reading request body: %v", err)
-		return
-	}
-	if err := json.Unmarshal(body, &p); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
+		log.Printf("Invalid JSON in scheduleHandler: %v", err)
 		return
 	}
 	// Apply default schedule if none provided
@@ -103,14 +96,17 @@ func scheduleHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		p.Cron = defaultCron
 	}
-	err = sched.AddJob(p.Cron, func() {
-		err := waClient.SendMessage(context.Background(), p.To, p.Body)
-		if err == nil {
-			st.AddReceipt(models.Receipt{To: p.To, Status: "sent", Time: time.Now().Unix()})
+	if err := sched.AddJob(p.Cron, func() {
+		if err := waClient.SendMessage(context.Background(), p.To, p.Body); err != nil {
+			log.Printf("Scheduled job send error: %v", err)
+			return
 		}
-	})
-	if err != nil {
+		if err := st.AddReceipt(models.Receipt{To: p.To, Status: "sent", Time: time.Now().Unix()}); err != nil {
+			log.Printf("Error adding scheduled receipt: %v", err)
+		}
+	}); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
+		log.Printf("Error scheduling job: %v", err)
 		return
 	}
 	w.WriteHeader(http.StatusCreated)
@@ -127,5 +123,7 @@ func receiptsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(receipts)
+	if err := json.NewEncoder(w).Encode(receipts); err != nil {
+		log.Printf("Error encoding receipts response: %v", err)
+	}
 }

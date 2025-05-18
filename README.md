@@ -20,7 +20,7 @@ PromptPipe is a Go-based messaging service that delivers adaptive-intervention p
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourorg/PromptPipe.git
+git clone https://github.com/BTreeMap/PromptPipe.git
 cd PromptPipe
 
 # Build the binary
@@ -38,21 +38,24 @@ go build -o PromptPipe cmd/PromptPipe/main.go
 Create a `.env` file or export the following environment variables:
 
 ```bash
-# Whatsmeow QR store directory
-WHATSAPP_STORE_PATH=/path/to/whatsapp/store
+# Whatsmeow DB driver (e.g., postgres)
+WHATSAPP_DB_DRIVER=postgres
 
-# Environment for Whatsmeow client
-GO_ENV=production
+# Whatsmeow DB DSN for SQL store
+WHATSAPP_DB_DSN="postgres://postgres:postgres@localhost:5432/whatsapp?sslmode=disable"
 
-# (Optional) Scheduling defaults
-default_schedule="0 9 * * *"  # cron format for 9 AM daily
+# (Optional) Scheduling default cron expression
+DEFAULT_SCHEDULE="0 9 * * *"  # cron format for 9 AM daily
+
+# (Optional) Database for receipts (Postgres)
+DATABASE_URL="postgres://user:pass@host:port/dbname?sslmode=disable"
 ```
 
 ## Usage
 
 ```bash
 # Start the service (reads .env automatically)
-./PromptPipe serve
+./PromptPipe
 ```
 
 ### API Endpoints

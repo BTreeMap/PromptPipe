@@ -5,10 +5,15 @@ package store
 
 import (
 	"database/sql"
+	_ "embed"
+	"fmt"
 
 	"github.com/BTreeMap/PromptPipe/internal/models"
 	_ "github.com/lib/pq"
 )
+
+//go:embed migrations.sql
+var migrations string
 
 type PostgresStore struct {
 	db *sql.DB
@@ -21,6 +26,10 @@ func NewPostgresStore(connStr string) (*PostgresStore, error) {
 	}
 	if err := db.Ping(); err != nil {
 		return nil, err
+	}
+	// Run migrations to ensure receipts table exists
+	if _, err := db.Exec(migrations); err != nil {
+		return nil, fmt.Errorf("failed to run migrations: %w", err)
 	}
 	return &PostgresStore{db: db}, nil
 }
