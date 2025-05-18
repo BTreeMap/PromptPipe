@@ -10,6 +10,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/BTreeMap/PromptPipe/internal/genai"
@@ -23,7 +25,7 @@ var (
 	waClient    whatsapp.WhatsAppSender
 	sched       *scheduler.Scheduler
 	st          store.Store // Use the interface for flexibility
-	defaultCron string      // default cron schedule from env
+	defaultCron string      // default cron schedule from env'
 	gaClient    *genai.Client
 )
 
@@ -48,10 +50,14 @@ func Run() {
 		st = store.NewInMemoryStore()
 	}
 
-	// Initialize GenAI client if API key provided
-	gaClient, err = genai.NewClient()
-	if err != nil {
-		log.Fatalf("Failed to create GenAI client: %v", err)
+	// Initialize GenAI client if API key provided (optional)
+	if os.Getenv("OPENAI_API_KEY") != "" {
+		gaClient, err = genai.NewClient()
+		if err != nil {
+			log.Fatalf("Failed to create GenAI client: %v", err)
+		}
+	} else {
+		gaClient = nil
 	}
 
 	http.HandleFunc("/send", sendHandler)
@@ -61,8 +67,23 @@ func Run() {
 	http.HandleFunc("/response", responseHandler)
 	http.HandleFunc("/responses", responsesHandler)
 	http.HandleFunc("/stats", statsHandler)
-	log.Println("PromptPipe API running on :8080")
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	// Start HTTP server with graceful shutdown
+	srv := &http.Server{Addr: ":8080", Handler: nil}
+	go func() {
+		log.Println("PromptPipe API running on :8080")
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("API server error: %v", err)
+		}
+	}()
+	// Wait for interrupt signal to gracefully shutdown
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
+	<-quit
+	log.Println("Shutting down server...")
+	if err := srv.Shutdown(context.Background()); err != nil {
+		log.Fatalf("Server Shutdown failed: %v", err)
+	}
+	sched.Stop()
 }
 
 func sendHandler(w http.ResponseWriter, r *http.Request) {
@@ -78,7 +99,7 @@ func sendHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// If GenAI prompts provided, generate dynamic content
-	if p.SystemPrompt != "" && p.UserPrompt != "" {
+	if gaClient != nil && p.SystemPrompt != "" && p.UserPrompt != "" {
 		generated, err := gaClient.GeneratePrompt(p.SystemPrompt, p.UserPrompt)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
@@ -119,22 +140,24 @@ func scheduleHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		p.Cron = defaultCron
 	}
+	// Capture prompt locally for closure
+	job := p
 	if err := sched.AddJob(p.Cron, func() {
-		msg := p.Body
-		// If GenAI prompts provided, generate dynamic content per run
-		if p.SystemPrompt != "" && p.UserPrompt != "" {
-			gen, err := gaClient.GeneratePrompt(p.SystemPrompt, p.UserPrompt)
+		msg := job.Body
+		// If GenAI prompts provided and client available, generate dynamic content per run
+		if gaClient != nil && job.SystemPrompt != "" && job.UserPrompt != "" {
+			gen, err := gaClient.GeneratePrompt(job.SystemPrompt, job.UserPrompt)
 			if err != nil {
 				log.Printf("GenAI scheduled generation error: %v", err)
 				return
 			}
 			msg = gen
 		}
-		if err := waClient.SendMessage(context.Background(), p.To, msg); err != nil {
+		if err := waClient.SendMessage(context.Background(), job.To, msg); err != nil {
 			log.Printf("Scheduled job send error: %v", err)
 			return
 		}
-		if err := st.AddReceipt(models.Receipt{To: p.To, Status: "sent", Time: time.Now().Unix()}); err != nil {
+		if err := st.AddReceipt(models.Receipt{To: job.To, Status: "sent", Time: time.Now().Unix()}); err != nil {
 			log.Printf("Error adding scheduled receipt: %v", err)
 		}
 	}); err != nil {
