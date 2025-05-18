@@ -42,7 +42,7 @@ func TestScheduleHandler_NotImplemented(t *testing.T) {
 	}()
 	sched = scheduler.NewScheduler()
 	st = store.NewInMemoryStore()
-	waClient, _ = whatsapp.NewClient()
+	waClient = whatsapp.NewMockClient()
 
 	req, _ := http.NewRequest("POST", "/schedule", bytes.NewBuffer([]byte(`{"to":"+123","cron":"* * * * *","body":"hi"}`)))
 	rr := httptest.NewRecorder()

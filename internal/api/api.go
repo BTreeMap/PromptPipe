@@ -10,6 +10,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/BTreeMap/PromptPipe/internal/models"
@@ -19,20 +20,32 @@ import (
 )
 
 var (
-	waClient whatsapp.WhatsAppSender
-	sched    *scheduler.Scheduler
-	st       store.Store // Use the interface for flexibility
+	waClient    whatsapp.WhatsAppSender
+	sched       *scheduler.Scheduler
+	st          store.Store // Use the interface for flexibility
+	defaultCron string      // default cron schedule from env
 )
 
 // Run starts the API server and initializes dependencies.
 func Run() {
 	var err error
-	waClient, err = whatsapp.NewClient() // TODO: handle error and config
+	waClient, err = whatsapp.NewClient()
 	if err != nil {
 		log.Fatalf("Failed to create WhatsApp client: %v", err)
 	}
 	sched = scheduler.NewScheduler()
-	st = store.NewInMemoryStore() // Or use store.NewPostgresStore(connStr) for production
+	// Load default schedule from environment
+	defaultCron = os.Getenv("DEFAULT_SCHEDULE")
+	// Choose storage backend based on DATABASE_URL
+	if dbURL := os.Getenv("DATABASE_URL"); dbURL != "" {
+		ps, err := store.NewPostgresStore(dbURL)
+		if err != nil {
+			log.Fatalf("Failed to connect to Postgres store: %v", err)
+		}
+		st = ps
+	} else {
+		st = store.NewInMemoryStore()
+	}
 
 	http.HandleFunc("/send", sendHandler)
 	http.HandleFunc("/schedule", scheduleHandler)
@@ -81,6 +94,14 @@ func scheduleHandler(w http.ResponseWriter, r *http.Request) {
 	if err := json.Unmarshal(body, &p); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return
+	}
+	// Apply default schedule if none provided
+	if p.Cron == "" {
+		if defaultCron == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		p.Cron = defaultCron
 	}
 	err = sched.AddJob(p.Cron, func() {
 		err := waClient.SendMessage(context.Background(), p.To, p.Body)

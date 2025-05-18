@@ -59,10 +59,10 @@ go build -o PromptPipe cmd/PromptPipe/main.go
 
 Create a `.env` file or export the following environment variables:
 
-- `WHATSAPP_STORE_PATH`: Path to WhatsApp QR store directory (required)
-- `GO_ENV`: Environment for Whatsmeow client (default: `production`)
-- `default_schedule`: (Optional) Default cron schedule (e.g., `0 9 * * *` for 9 AM daily)
-- `DATABASE_URL`: (Optional) PostgreSQL connection string for persistent storage
+- `WHATSAPP_DB_DRIVER`: Database driver for Whatsmeow storage (default: `postgres`)
+- `WHATSAPP_DB_DSN`: Data source name for Whatsmeow DB (default: `postgres://postgres:postgres@localhost:5432/whatsapp?sslmode=disable`)
+- `DATABASE_URL`: (Optional) PostgreSQL connection string for PromptPipe receipt storage
+- `DEFAULT_SCHEDULE`: (Optional) Default cron schedule for prompts (e.g., `0 9 * * *` for 9 AM daily)
 
 ## Usage
 
@@ -166,9 +166,9 @@ The system will use the PostgreSQL store if `DATABASE_URL` is set, otherwise it 
 
 | Variable             | Description                                 |
 |----------------------|---------------------------------------------|
-| WHATSAPP_STORE_PATH  | Path to WhatsApp QR store directory         |
-| GO_ENV               | Whatsmeow client environment                |
-| default_schedule     | Default cron schedule for prompts           |
+| WHATSAPP_DB_DRIVER   | Database driver for Whatsmeow storage       |
+| WHATSAPP_DB_DSN      | Data source name for Whatsmeow DB           |
+| DEFAULT_SCHEDULE     | Default cron schedule for prompts           |
 | DATABASE_URL         | PostgreSQL connection string (optional)     |
 
 ## Development

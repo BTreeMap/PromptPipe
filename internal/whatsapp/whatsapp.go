@@ -5,6 +5,7 @@ package whatsapp
 
 import (
 	"context"
+	"fmt"
 	"os"
 
 	"go.mau.fi/whatsmeow"
@@ -53,7 +54,7 @@ func NewClient() (*Client, error) {
 
 func (c *Client) SendMessage(ctx context.Context, to string, body string) error {
 	if c.waClient == nil || c.waClient.Store == nil {
-		return nil
+		return fmt.Errorf("whatsapp client not initialized")
 	}
 	jid := types.NewJID(to, "s.whatsapp.net")
 	msg := &waE2E.Message{Conversation: &body}

@@ -4,39 +4,29 @@
 package scheduler
 
 import (
-	"time"
+	"github.com/robfig/cron/v3"
 )
 
-type Job struct {
-	Cron string
-	Task func()
-}
-
-// Scheduler is a placeholder for cron scheduling logic
-
+// Scheduler provides cron-based job scheduling.
 type Scheduler struct {
-	jobs []Job
+	cron *cron.Cron
 }
 
+// NewScheduler creates and starts a cron scheduler.
 func NewScheduler() *Scheduler {
-	return &Scheduler{}
+	c := cron.New()
+	c.Start()
+	return &Scheduler{cron: c}
 }
 
-func (s *Scheduler) AddJob(cron string, task func()) error {
-	// TODO: Parse cron and schedule task
-	s.jobs = append(s.jobs, Job{Cron: cron, Task: task})
-	return nil
+// AddJob schedules a task using the provided cron expression.
+// It returns an error if the expression is invalid.
+func (s *Scheduler) AddJob(expr string, task func()) error {
+	_, err := s.cron.AddFunc(expr, task)
+	return err
 }
 
-func (s *Scheduler) Start() {
-	// TODO: Implement cron-based scheduling
-	for _, job := range s.jobs {
-		go func(j Job) {
-			for {
-				// Placeholder: run every minute
-				j.Task()
-				time.Sleep(time.Minute)
-			}
-		}(job)
-	}
+// Stop stops the cron scheduler and waits for running jobs to finish.
+func (s *Scheduler) Stop() {
+	s.cron.Stop()
 }
