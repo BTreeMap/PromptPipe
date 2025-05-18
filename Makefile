@@ -1,4 +1,7 @@
 build:
 	go build -o PromptPipe cmd/PromptPipe/main.go
 
-.PHONY: build
+test:
+	go test ./...
+
+.PHONY: build test

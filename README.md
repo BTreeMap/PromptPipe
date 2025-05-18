@@ -33,7 +33,7 @@ PromptPipe is a Go-based messaging service that delivers adaptive-intervention p
 ## Architecture
 
 - **Go Core**: High-performance, concurrent backend written in Go.
-- **Whatsmeow Integration**: Official WhatsApp client for messaging.
+- **Whatsmeow Integration**: Programmable WhatsApp client for messaging.
 - **API Layer**: RESTful endpoints for scheduling, sending, and tracking prompts (`internal/api`).
 - **Scheduler**: Cron-based scheduling for recurring or one-time prompts (`internal/scheduler`).
 - **Store**: Persists scheduled prompts and receipt events; supports in-memory and PostgreSQL (`internal/store`).
