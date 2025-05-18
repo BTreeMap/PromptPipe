@@ -1,21 +1,28 @@
 # PromptPipe
 
-## Description
+## Overview
 
-PromptPipe is a Go-based messaging service that delivers adaptive-intervention prompts over WhatsApp using the [whatsmeow](https://github.com/tulir/whatsmeow) library. It provides a clean API for scheduling messages, sending dynamic content, and tracking delivery/read receipts, all configured via environment variables for easy integration with your intervention logic.
+PromptPipe is a Go-based messaging service that delivers adaptive-intervention prompts over WhatsApp using the [whatsmeow](https://github.com/tulir/whatsmeow) library. It provides a RESTful API for scheduling messages, sending dynamic or GenAI-generated content, and tracking delivery/read receipts. The service is highly configurable via environment variables and supports both in-memory and PostgreSQL storage backends.
 
-> **Detailed documentation is available in [docs.md](docs.md).**
+## Architecture
+
+- **Go Core**: High-performance, concurrent backend written in Go.
+- **Whatsmeow Integration**: Official WhatsApp client for messaging.
+- **API Layer**: RESTful endpoints for scheduling, sending, and tracking prompts (`internal/api`).
+- **Scheduler**: Cron-based scheduling for recurring or one-time prompts (`internal/scheduler`).
+- **Store**: Persists scheduled prompts and receipt events; supports in-memory and PostgreSQL (`internal/store`).
+- **WhatsApp Client**: Handles WhatsApp network communication (`internal/whatsapp`).
+- **GenAI**: Optional OpenAI integration for dynamic content (`internal/genai`).
+- **Models**: Shared data structures (`internal/models`).
 
 ## Features
 
-* **Go Core**: Written in Go for performance and concurrency.
-* **Whatsmeow Integration**: Uses the official Whatsmeow client for WhatsApp messaging.
-* **Scheduling**: Schedule prompts at specific times or intervals.
-* **Dynamic Payloads**: Send text, media, and template messages with custom variables.
-* **Receipt Tracking**: Capture sent, delivered, and read events.
-* **Modular Design**: Integrates with any adaptive-intervention framework with minimal boilerplate.
-* **Clear API**: RESTful endpoints for easy integration with your application.
-* **GenAI-Enhanced Content**: Use OpenAI to generate message content dynamically based on system and user prompts.
+- **Schedule prompts** at specific times or intervals (cron syntax).
+- **Send dynamic payloads**: text, media, and template messages with custom variables.
+- **GenAI-enhanced content**: Use OpenAI to generate message content dynamically.
+- **Receipt tracking**: Capture sent, delivered, and read events.
+- **Modular design**: Integrates with any adaptive-intervention framework.
+- **Clear REST API**: Easy integration with your application.
 
 ## Installation
 
@@ -26,11 +33,7 @@ cd PromptPipe
 
 # Build the binary
 make build
-```
-
-*Or use **`go build`** directly:*
-
-```bash
+# Or use Go directly:
 go build -o PromptPipe cmd/PromptPipe/main.go
 ```
 
@@ -41,17 +44,13 @@ Create a `.env` file or export the following environment variables:
 ```bash
 # Whatsmeow DB driver (e.g., postgres)
 WHATSAPP_DB_DRIVER=postgres
-
 # Whatsmeow DB DSN for SQL store
 WHATSAPP_DB_DSN="postgres://postgres:postgres@localhost:5432/whatsapp?sslmode=disable"
-
-# (Optional) Scheduling default cron expression
-DEFAULT_SCHEDULE="0 9 * * *"  # cron format for 9 AM daily
-
-# (Optional) Database for receipts (Postgres)
+# (Optional) Default cron schedule for prompts
+DEFAULT_SCHEDULE="0 9 * * *"  # 9 AM daily
+# (Optional) PostgreSQL connection string for receipts
 DATABASE_URL="postgres://user:pass@host:port/dbname?sslmode=disable"
-
-# OpenAI API key for GenAI operations
+# (Optional) OpenAI API key for GenAI operations
 OPENAI_API_KEY="your_openai_api_key"
 ```
 
@@ -59,36 +58,121 @@ OPENAI_API_KEY="your_openai_api_key"
 
 ```bash
 # Start the service (reads .env automatically)
-./PromptPipe
+./PromptPipe serve
 ```
 
-### API Endpoints
+## API Reference
 
-| Endpoint    | Method | Description                          |
-| ----------- | ------ | ------------------------------------ |
-| `/schedule` | POST   | Schedule a new prompt. Supports optional `system_prompt` and `user_prompt` fields for GenAI content. |
-| `/send`     | POST   | Send a prompt immediately. Supports optional `system_prompt` and `user_prompt` fields to generate dynamic content. |
-| `/receipts` | GET    | Fetch delivery/read receipt events   |
+All API endpoints expect and return JSON.
 
-#### Example `schedule` payload
+### POST /schedule
+
+Schedules a new prompt to be sent according to a cron expression.
+
+**Request Body:** `Prompt` object (see [Data Models](#prompt)). Supports optional `system_prompt` and `user_prompt` fields for GenAI content.
+
+**Responses:**
+
+- `201 Created`: Prompt successfully scheduled.
+- `400 Bad Request`: Invalid request payload.
+- `500 Internal Server Error`: Error scheduling the prompt.
+
+### POST /send
+
+Sends a prompt immediately.
+
+**Request Body:** `Prompt` object (see [Data Models](#prompt), `cron` field is ignored). Supports optional `system_prompt` and `user_prompt` fields to generate dynamic content.
+
+**Responses:**
+
+- `200 OK`: Prompt successfully sent.
+- `400 Bad Request`: Invalid request payload.
+- `500 Internal Server Error`: Error sending the prompt.
+
+### GET /receipts
+
+Fetches all stored delivery and read receipt events.
+
+**Response Body:** Array of `Receipt` objects (see [Data Models](#receipt))
+
+**Responses:**
+
+- `200 OK`: Successfully retrieved receipts.
+- `500 Internal Server Error`: Error fetching receipts.
+
+## Data Models
+
+### Prompt
+
+Represents a message to be sent.
 
 ```json
 {
-  "to": "+15551234567",
-  "cron": "0 8 * * *",
-  "body": "Good morning feature!",
-  "system_prompt": "You are a friendly reminder bot.",
-  "user_prompt": "Please send a motivational quote for today."
+  "to": "string (E.164 phone number)",
+  "cron": "string (cron expression, optional for /send)",
+  "body": "string (message content)",
+  "system_prompt": "string (optional system prompt for GenAI)",
+  "user_prompt": "string (optional user prompt for GenAI)"
 }
 ```
 
-## Example
+- `to`: The recipient's WhatsApp phone number in E.164 format (e.g., `+15551234567`).
+- `cron`: A standard cron expression (e.g., `0 9 * * *` for 9 AM daily). Required for `/schedule`.
+- `body`: The text content of the message.
+- `system_prompt`: Optional system prompt for generating dynamic content using GenAI.
+- `user_prompt`: Optional user prompt for generating dynamic content using GenAI.
+
+### Receipt
+
+Represents a delivery or read receipt for a sent message.
+
+```json
+{
+  "to": "string (E.164 phone number)",
+  "status": "string (e.g., \"sent\", \"delivered\", \"read\")",
+  "time": "int64 (Unix timestamp)"
+}
+```
+
+- `to`: The recipient's WhatsApp phone number.
+- `status`: The status of the message (e.g., "sent", "delivered", "read").
+- `time`: Unix timestamp of when the receipt event occurred.
+
+## Scheduling Prompts
+
+The `/schedule` endpoint allows you to define messages that will be sent out based on a cron schedule. The `cron` field in the `Prompt` model uses standard cron syntax. The scheduler service (`internal/scheduler`) is responsible for managing these jobs.
+
+## Receipt Tracking
+
+The system tracks message events (sent, delivered, read) and stores them. These can be retrieved via the `/receipts` endpoint. The `internal/store` package handles the persistence of these receipts, with options for in-memory or PostgreSQL storage.
+
+## Storage Backends
+
+PromptPipe supports a unified storage interface for message receipts, with two implementations:
+
+- **In-Memory Store**: Used for testing and development. Fast, but not persistent.
+- **PostgreSQL Store**: Used in production. Set the `DATABASE_URL` environment variable to enable this backend. The database must have a `receipts` table with columns: `recipient TEXT`, `status TEXT`, `time BIGINT`.
+
+The system will use the PostgreSQL store if `DATABASE_URL` is set, otherwise it defaults to in-memory storage.
+
+## Environment Variables
+
+| Variable             | Description                                 |
+|----------------------|---------------------------------------------|
+| WHATSAPP_DB_DRIVER   | Database driver for Whatsmeow storage       |
+| WHATSAPP_DB_DSN      | Data source name for Whatsmeow DB           |
+| DEFAULT_SCHEDULE     | Default cron schedule for prompts           |
+| DATABASE_URL         | PostgreSQL connection string (optional)     |
+| OPENAI_API_KEY       | API key for OpenAI GenAI operations         |
+
+## Development
+
+- Code is organized in the `internal/` directory by module (API, scheduler, store, WhatsApp integration, GenAI, models).
+- Tests are provided for each module.
+- To run tests:
 
 ```bash
-# Immediately send a test prompt
-curl -X POST http://localhost:8080/send \
-  -H "Content-Type: application/json" \
-  -d '{"to":"+15551234567","body":"Test from PromptPipe!"}'
+go test ./...
 ```
 
 ## License
