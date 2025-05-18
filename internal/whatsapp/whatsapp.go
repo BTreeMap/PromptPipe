@@ -49,6 +49,10 @@ func NewClient() (*Client, error) {
 	}
 	clientLog := waLog.Stdout("Client", "INFO", true)
 	waClient := whatsmeow.NewClient(deviceStore, clientLog)
+	// Connect to WhatsApp server
+	if err := waClient.Connect(); err != nil {
+		return nil, fmt.Errorf("failed to connect to WhatsApp: %w", err)
+	}
 	return &Client{waClient: waClient}, nil
 }
 

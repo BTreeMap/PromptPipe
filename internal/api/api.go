@@ -97,6 +97,11 @@ func sendHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Invalid JSON in sendHandler: %v", err)
 		return
 	}
+	// Validate required fields: to and either body or valid GenAI prompts
+	if p.To == "" || (p.Body == "" && (gaClient == nil || p.SystemPrompt == "" || p.UserPrompt == "")) {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
 
 	// If GenAI prompts provided, generate dynamic content
 	if gaClient != nil && p.SystemPrompt != "" && p.UserPrompt != "" {
@@ -130,6 +135,11 @@ func scheduleHandler(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		log.Printf("Invalid JSON in scheduleHandler: %v", err)
+		return
+	}
+	// Validate required fields: to and either body or valid GenAI prompts
+	if p.To == "" || (p.Body == "" && (gaClient == nil || p.SystemPrompt == "" || p.UserPrompt == "")) {
+		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 	// Apply default schedule if none provided
