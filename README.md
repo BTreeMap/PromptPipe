@@ -1,5 +1,27 @@
 # PromptPipe
 
+## Table of Contents
+
+- [Overview](#overview)
+- [Architecture](#architecture)
+- [Features](#features)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [Usage](#usage)
+- [API Reference](#api-reference)
+  - [POST /schedule](#post-schedule)
+  - [POST /send](#post-send)
+  - [GET /receipts](#get-receipts)
+- [Data Models](#data-models)
+  - [Prompt](#prompt)
+  - [Receipt](#receipt)
+- [Scheduling Prompts](#scheduling-prompts)
+- [Receipt Tracking](#receipt-tracking)
+- [Storage Backends](#storage-backends)
+- [Environment Variables](#environment-variables)
+- [Development](#development)
+- [License](#license)
+
 ## Overview
 
 PromptPipe is a Go-based messaging service that delivers adaptive-intervention prompts over WhatsApp using the [whatsmeow](https://github.com/tulir/whatsmeow) library. It provides a RESTful API for scheduling messages, sending dynamic or GenAI-generated content, and tracking delivery/read receipts. The service is highly configurable via environment variables and supports both in-memory and PostgreSQL storage backends.
