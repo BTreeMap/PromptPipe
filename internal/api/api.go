@@ -19,7 +19,7 @@ import (
 )
 
 var (
-	waClient *whatsapp.Client
+	waClient whatsapp.WhatsAppSender
 	sched    *scheduler.Scheduler
 	st       store.Store // Use the interface for flexibility
 )

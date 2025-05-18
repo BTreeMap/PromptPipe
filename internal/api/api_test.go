@@ -20,7 +20,7 @@ func TestSendHandler_NotImplemented(t *testing.T) {
 		waClient = oldWA
 	}()
 	st = store.NewInMemoryStore()
-	waClient, _ = whatsapp.NewClient()
+	waClient = whatsapp.NewMockClient()
 
 	req, _ := http.NewRequest("POST", "/send", bytes.NewBuffer([]byte(`{"to":"+123","body":"hi"}`)))
 	rr := httptest.NewRecorder()
