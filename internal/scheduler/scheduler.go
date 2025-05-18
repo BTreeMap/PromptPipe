@@ -14,7 +14,9 @@ type Scheduler struct {
 
 // NewScheduler creates and starts a cron scheduler.
 func NewScheduler() *Scheduler {
-	c := cron.New()
+	// Use standard 5-field cron parser (min, hour, dom, month, dow) and enable recovery
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+	c := cron.New(cron.WithParser(parser), cron.WithChain(cron.Recover(cron.DefaultLogger)))
 	c.Start()
 	return &Scheduler{cron: c}
 }
