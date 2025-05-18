@@ -5,3 +5,11 @@ CREATE TABLE IF NOT EXISTS receipts (
     status TEXT NOT NULL,
     time BIGINT NOT NULL
 );
+
+-- SQL migration for incoming responses
+CREATE TABLE IF NOT EXISTS responses (
+    id SERIAL PRIMARY KEY,
+    sender TEXT NOT NULL,
+    body TEXT NOT NULL,
+    time BIGINT NOT NULL
+);

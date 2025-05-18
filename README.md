@@ -12,9 +12,13 @@
   - [POST /schedule](#post-schedule)
   - [POST /send](#post-send)
   - [GET /receipts](#get-receipts)
+  - [POST /response](#post-response)
+  - [GET /responses](#get-responses)
+  - [GET /stats](#get-stats)
 - [Data Models](#data-models)
   - [Prompt](#prompt)
   - [Receipt](#receipt)
+  - [Response](#response)
 - [Scheduling Prompts](#scheduling-prompts)
 - [Receipt Tracking](#receipt-tracking)
 - [Storage Backends](#storage-backends)
@@ -122,6 +126,44 @@ Fetches all stored delivery and read receipt events.
 - `200 OK`: Successfully retrieved receipts.
 - `500 Internal Server Error`: Error fetching receipts.
 
+### POST /response
+
+Collects a participant's response message.
+
+**Request Body:** `Response` object (see [Data Models](#response)).
+
+**Responses:**
+
+- `201 Created`: Response successfully recorded.
+- `400 Bad Request`: Invalid request payload.
+- `500 Internal Server Error`: Error recording response.
+
+### GET /responses
+
+Retrieves all collected participant responses.
+
+**Response Body:** Array of `Response` objects.
+
+**Responses:**
+
+- `200 OK`: Successfully retrieved responses.
+- `500 Internal Server Error`: Error fetching responses.
+
+### GET /stats
+
+Provides statistics over collected responses (total count, per sender counts, average response length).
+
+**Response Body:** JSON object with fields:
+
+- `total_responses`: integer
+- `responses_per_sender`: map of sender to count
+- `avg_response_length`: float
+
+**Responses:**
+
+- `200 OK`: Successfully retrieved statistics.
+- `500 Internal Server Error`: Error computing statistics.
+
 ## Data Models
 
 ### Prompt
@@ -159,6 +201,22 @@ Represents a delivery or read receipt for a sent message.
 - `to`: The recipient's WhatsApp phone number.
 - `status`: The status of the message (e.g., "sent", "delivered", "read").
 - `time`: Unix timestamp of when the receipt event occurred.
+
+### Response
+
+Represents an incoming response from a participant.
+
+```json
+{
+  "from": "string (E.164 phone number)",
+  "body": "string (message content)",
+  "time": "int64 (Unix timestamp)"
+}
+```
+
+- `from`: The sender's WhatsApp phone number in E.164 format.
+- `body`: The text content of the response message.
+- `time`: Unix timestamp of when the response was received.
 
 ## Scheduling Prompts
 

@@ -55,3 +55,27 @@ func (s *PostgresStore) GetReceipts() ([]models.Receipt, error) {
 	}
 	return receipts, nil
 }
+
+// AddResponse stores an incoming response in Postgres.
+func (s *PostgresStore) AddResponse(r models.Response) error {
+	_, err := s.db.Exec(`INSERT INTO responses (sender, body, time) VALUES ($1, $2, $3)`, r.From, r.Body, r.Time)
+	return err
+}
+
+// GetResponses retrieves all stored responses from Postgres.
+func (s *PostgresStore) GetResponses() ([]models.Response, error) {
+	rows, err := s.db.Query(`SELECT sender, body, time FROM responses`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var responses []models.Response
+	for rows.Next() {
+		var r models.Response
+		if err := rows.Scan(&r.From, &r.Body, &r.Time); err != nil {
+			return nil, err
+		}
+		responses = append(responses, r)
+	}
+	return responses, nil
+}

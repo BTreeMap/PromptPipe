@@ -57,6 +57,10 @@ func Run() {
 	http.HandleFunc("/send", sendHandler)
 	http.HandleFunc("/schedule", scheduleHandler)
 	http.HandleFunc("/receipts", receiptsHandler)
+	// Endpoints for incoming message responses and statistics
+	http.HandleFunc("/response", responseHandler)
+	http.HandleFunc("/responses", responsesHandler)
+	http.HandleFunc("/stats", statsHandler)
 	log.Println("PromptPipe API running on :8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
@@ -154,5 +158,76 @@ func receiptsHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(receipts); err != nil {
 		log.Printf("Error encoding receipts response: %v", err)
+	}
+}
+
+// responseHandler handles incoming participant responses (POST /response).
+func responseHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	var resp models.Response
+	if err := json.NewDecoder(r.Body).Decode(&resp); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		log.Printf("Invalid JSON in responseHandler: %v", err)
+		return
+	}
+	resp.Time = time.Now().Unix()
+	if err := st.AddResponse(resp); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Printf("Error adding response: %v", err)
+		return
+	}
+	w.WriteHeader(http.StatusCreated)
+}
+
+// responsesHandler returns all collected responses (GET /responses).
+func responsesHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	responses, err := st.GetResponses()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(responses); err != nil {
+		log.Printf("Error encoding responses response: %v", err)
+	}
+}
+
+// statsHandler returns statistics about collected responses (GET /stats).
+func statsHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	responses, err := st.GetResponses()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	total := len(responses)
+	perSender := make(map[string]int)
+	var sumLen int
+	for _, resp := range responses {
+		perSender[resp.From]++
+		sumLen += len(resp.Body)
+	}
+	avgLen := 0.0
+	if total > 0 {
+		avgLen = float64(sumLen) / float64(total)
+	}
+	stats := map[string]interface{}{
+		"total_responses":      total,
+		"responses_per_sender": perSender,
+		"avg_response_length":  avgLen,
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(stats); err != nil {
+		log.Printf("Error encoding stats response: %v", err)
 	}
 }

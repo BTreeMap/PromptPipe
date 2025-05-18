@@ -16,3 +16,10 @@ type Receipt struct {
 	Status string `json:"status"`
 	Time   int64  `json:"time"`
 }
+
+// Response represents an incoming message response from a participant.
+type Response struct {
+	From string `json:"from"`
+	Body string `json:"body"`
+	Time int64  `json:"time"`
+}
