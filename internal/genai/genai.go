@@ -13,7 +13,7 @@ import (
 
 // chatService defines minimal interface for chat completions.
 type chatService interface {
-	CreateChatCompletion(ctx context.Context, body openai.ChatCompletionNewParams, opts ...option.RequestOption) (*openai.ChatCompletion, error)
+	Create(ctx context.Context, body openai.ChatCompletionNewParams) (openai.ChatCompletion, error)
 }
 
 // Client wraps the OpenAI ChatCompletion service for generating prompts.
@@ -22,12 +22,18 @@ type Client struct {
 }
 
 // wrapper implements chatService interface for OpenAI client
+// newFunc is the underlying OpenAI call which may return a pointer
 type chatServiceWrapper struct {
 	newFunc func(ctx context.Context, body openai.ChatCompletionNewParams, opts ...option.RequestOption) (*openai.ChatCompletion, error)
 }
 
-func (w *chatServiceWrapper) CreateChatCompletion(ctx context.Context, body openai.ChatCompletionNewParams, opts ...option.RequestOption) (*openai.ChatCompletion, error) {
-	return w.newFunc(ctx, body, opts...)
+// Create calls the underlying OpenAI chat completion and returns a value
+func (w *chatServiceWrapper) Create(ctx context.Context, body openai.ChatCompletionNewParams) (openai.ChatCompletion, error) {
+	respPtr, err := w.newFunc(ctx, body)
+	if err != nil {
+		return openai.ChatCompletion{}, err
+	}
+	return *respPtr, nil
 }
 
 // NewClient initializes a new GenAI client using the OPENAI_API_KEY environment variable.
@@ -37,7 +43,7 @@ func NewClient() (*Client, error) {
 		return nil, fmt.Errorf("OPENAI_API_KEY not set")
 	}
 	// Initialize OpenAI client with API key
-	cli := openai.NewClient(openai.DefaultClientOptions()...)
+	cli := openai.NewClient(option.WithAPIKey(apiKey))
 	return &Client{chat: &chatServiceWrapper{newFunc: cli.Chat.Completions.New}}, nil
 }
 
@@ -51,7 +57,7 @@ func (c *Client) GeneratePrompt(systemPrompt, userPrompt string) (string, error)
 			openai.UserMessage(userPrompt),
 		},
 	}
-	resp, err := c.chat.CreateChatCompletion(context.Background(), params)
+	resp, err := c.chat.Create(context.Background(), params)
 	if err != nil {
 		return "", err
 	}
