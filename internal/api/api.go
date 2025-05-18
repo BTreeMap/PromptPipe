@@ -7,7 +7,7 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"io/ioutil"
+	"io"
 	"log"
 	"net/http"
 	"time"
@@ -26,7 +26,11 @@ var (
 
 // Run starts the API server and initializes dependencies.
 func Run() {
-	waClient, _ = whatsapp.NewClient() // TODO: handle error and config
+	var err error
+	waClient, err = whatsapp.NewClient() // TODO: handle error and config
+	if err != nil {
+		log.Fatalf("Failed to create WhatsApp client: %v", err)
+	}
 	sched = scheduler.NewScheduler()
 	st = store.NewInMemoryStore() // Or use store.NewPostgresStore(connStr) for production
 
@@ -43,12 +47,17 @@ func sendHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var p models.Prompt
-	body, _ := ioutil.ReadAll(r.Body)
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Printf("Error reading request body: %v", err)
+		return
+	}
 	if err := json.Unmarshal(body, &p); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	err := waClient.SendMessage(context.Background(), p.To, p.Body)
+	err = waClient.SendMessage(context.Background(), p.To, p.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -63,12 +72,17 @@ func scheduleHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var p models.Prompt
-	body, _ := ioutil.ReadAll(r.Body)
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Printf("Error reading request body: %v", err)
+		return
+	}
 	if err := json.Unmarshal(body, &p); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	err := sched.AddJob(p.Cron, func() {
+	err = sched.AddJob(p.Cron, func() {
 		err := waClient.SendMessage(context.Background(), p.To, p.Body)
 		if err == nil {
 			st.AddReceipt(models.Receipt{To: p.To, Status: "sent", Time: time.Now().Unix()})
