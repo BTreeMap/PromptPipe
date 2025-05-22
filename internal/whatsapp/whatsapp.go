@@ -49,6 +49,24 @@ func NewClient() (*Client, error) {
 	}
 	clientLog := waLog.Stdout("Client", "INFO", true)
 	waClient := whatsmeow.NewClient(deviceStore, clientLog)
+	if waClient.Store.ID == nil {
+		// No ID stored, new login
+		qrChan, _ := waClient.GetQRChannel(context.Background())
+		err = waClient.Connect()
+		if err != nil {
+			return nil, err
+		}
+		for evt := range qrChan {
+			if evt.Event == "code" {
+				// Render the QR code here
+				// e.g. qrterminal.GenerateHalfBlock(evt.Code, qrterminal.L, os.Stdout)
+				// or just manually `echo 2@... | qrencode -t ansiutf8` in a terminal
+				fmt.Println("QR code:", evt.Code)
+			} else {
+				fmt.Println("Login event:", evt.Event)
+			}
+		}
+	}
 	// Connect to WhatsApp server
 	if err := waClient.Connect(); err != nil {
 		return nil, fmt.Errorf("failed to connect to WhatsApp: %w", err)
