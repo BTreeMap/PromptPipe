@@ -6,6 +6,7 @@ package whatsapp
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/mdp/qrterminal/v3"
@@ -21,13 +22,42 @@ type WhatsAppSender interface {
 	SendMessage(ctx context.Context, to string, body string) error
 }
 
-// Client wraps the Whatsmeow client for modular use
+// Option defines a configuration option for the WhatsApp client
+type Option func(*clientOptions)
 
+// clientOptions holds optional parameters for WhatsApp client
+type clientOptions struct {
+	QRPath      string
+	NumericCode bool
+}
+
+// WithQRCodeOutput instructs the WhatsApp client to write the login QR code to the specified path.
+func WithQRCodeOutput(path string) Option {
+	return func(o *clientOptions) {
+		o.QRPath = path
+	}
+}
+
+// WithNumericCode instructs the WhatsApp client to use numeric login code instead of QR code.
+func WithNumericCode() Option {
+	return func(o *clientOptions) {
+		o.NumericCode = true
+	}
+}
+
+// Client wraps the Whatsmeow client for modular use
 type Client struct {
 	waClient *whatsmeow.Client
 }
 
-func NewClient() (*Client, error) {
+// NewClient creates a new WhatsApp client, applying any provided options.
+func NewClient(opts ...Option) (*Client, error) {
+	// Apply options
+	var cfg clientOptions
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+
 	// Use environment variables for DB driver and DSN
 	dbDriver := os.Getenv("WHATSAPP_DB_DRIVER")
 	if dbDriver == "" {
@@ -57,10 +87,23 @@ func NewClient() (*Client, error) {
 		if err != nil {
 			return nil, err
 		}
+		// Determine output writer for QR or code
+		writer := io.Writer(os.Stdout)
+		if cfg.QRPath != "" {
+			f, ferr := os.Create(cfg.QRPath)
+			if ferr != nil {
+				return nil, fmt.Errorf("failed to create QR file: %w", ferr)
+			}
+			defer f.Close()
+			writer = f
+		}
 		for evt := range qrChan {
 			if evt.Event == "code" {
-				// Render the QR code here
-				qrterminal.GenerateHalfBlock(evt.Code, qrterminal.L, os.Stdout)
+				if cfg.NumericCode {
+					fmt.Fprintln(writer, evt.Code)
+				} else {
+					qrterminal.GenerateHalfBlock(evt.Code, qrterminal.L, writer)
+				}
 			} else {
 				fmt.Println("Login event:", evt.Event)
 			}

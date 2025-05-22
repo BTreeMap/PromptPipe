@@ -84,7 +84,11 @@ OPENAI_API_KEY="your_openai_api_key"
 
 ```bash
 # Start the service (reads .env automatically)
-./PromptPipe serve
+./PromptPipe [flags]
+
+# Flags to customize WhatsApp login behavior:
+- `-qr-output string` : path to write login QR code (default: stdout)
+- `-numeric-code`    : use numeric login code instead of QR code
 ```
 
 ## API Reference

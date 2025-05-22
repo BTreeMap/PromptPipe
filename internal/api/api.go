@@ -29,10 +29,10 @@ var (
 	gaClient    *genai.Client
 )
 
-// Run starts the API server and initializes dependencies.
-func Run() {
+// Run starts the API server and initializes dependencies, applying WhatsApp options.
+func Run(waOpts ...whatsapp.Option) {
 	var err error
-	waClient, err = whatsapp.NewClient()
+	waClient, err = whatsapp.NewClient(waOpts...)
 	if err != nil {
 		log.Fatalf("Failed to create WhatsApp client: %v", err)
 	}
