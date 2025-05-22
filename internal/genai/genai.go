@@ -5,7 +5,6 @@ package genai
 import (
 	"context"
 	"fmt"
-	"os"
 
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
@@ -52,7 +51,7 @@ func WithAPIKey(key string) Option {
 	}
 }
 
-// NewClient initializes a new GenAI client using the OPENAI_API_KEY environment variable or provided options.
+// NewClient initializes a new GenAI client using the provided options.
 func NewClient(opts ...Option) (*Client, error) {
 	// Apply options
 	var cfg Opts
@@ -60,13 +59,10 @@ func NewClient(opts ...Option) (*Client, error) {
 		opt(&cfg)
 	}
 
-	// Determine API key with priority: CLI options > env var
+	// Determine API key from options
 	apiKey := cfg.APIKey
 	if apiKey == "" {
-		apiKey = os.Getenv("OPENAI_API_KEY")
-		if apiKey == "" {
-			return nil, fmt.Errorf("OPENAI_API_KEY not set")
-		}
+		return nil, fmt.Errorf("OpenAI API key not provided")
 	}
 	// Initialize OpenAI client with API key
 	cli := openai.NewClient(option.WithAPIKey(apiKey))

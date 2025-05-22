@@ -27,18 +27,18 @@ func TestPostgresStore(t *testing.T) {
 	// This test requires a running PostgreSQL instance and a receipts table.
 	// Set the DATABASE_URL environment variable for connection string.
 	connStr := getenvOrSkip(t, "DATABASE_URL")
-	store, err := NewPostgresStore(connStr)
+	pgStore, err := NewPostgresStore(WithPostgresDSN(connStr))
 	if err != nil {
 		t.Skipf("Postgres not available: %v", err)
 	}
 	// Clean up table before test
-	store.db.Exec("DELETE FROM receipts")
+	pgStore.db.Exec("DELETE FROM receipts")
 	r := models.Receipt{To: "+123", Status: "sent", Time: 1}
-	err = store.AddReceipt(r)
+	err = pgStore.AddReceipt(r)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	receipts, err := store.GetReceipts()
+	receipts, err := pgStore.GetReceipts()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

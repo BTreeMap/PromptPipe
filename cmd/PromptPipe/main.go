@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"log"
+	"os"
 
 	"github.com/BTreeMap/PromptPipe/internal/api"
 	"github.com/BTreeMap/PromptPipe/internal/genai"
@@ -15,19 +16,29 @@ func main() {
 	if err := godotenv.Load(); err != nil {
 		log.Fatalf("Error loading .env file: %v", err)
 	}
-	// Command-line options for WhatsApp client
+	// Read environment variables
+	envDbDriver := os.Getenv("WHATSAPP_DB_DRIVER")
+	envWhatsAppDSN := os.Getenv("WHATSAPP_DB_DSN")
+	envDatabaseURL := os.Getenv("DATABASE_URL")
+	// Default to WhatsApp DSN if specific not set
+	if envWhatsAppDSN == "" {
+		envWhatsAppDSN = envDatabaseURL
+	}
+	envOpenAIKey := os.Getenv("OPENAI_API_KEY")
+	envAPIAddr := os.Getenv("API_ADDR")
+	envDefaultCron := os.Getenv("DEFAULT_SCHEDULE")
+
+	// Command-line options (flags) with environment defaults
 	qrOutput := flag.String("qr-output", "", "path to write login QR code")
 	numeric := flag.Bool("numeric-code", false, "use numeric login code instead of QR code")
 
-	// Command-line options for database configuration
-	dbDriver := flag.String("db-driver", "", "database driver for WhatsApp and Postgres store (overrides env)")
-	dbDSN := flag.String("db-dsn", "", "database DSN for WhatsApp and Postgres store (overrides env)")
+	dbDriver := flag.String("db-driver", envDbDriver, "database driver for WhatsApp and Postgres store (overrides $WHATSAPP_DB_DRIVER)")
+	dbDSN := flag.String("db-dsn", envWhatsAppDSN, "database DSN for WhatsApp and Postgres store (overrides $WHATSAPP_DB_DSN or $DATABASE_URL)")
 
-	// Command-line option for OpenAI API key
-	openaiKey := flag.String("openai-api-key", "", "OpenAI API key (overrides env)")
+	openaiKey := flag.String("openai-api-key", envOpenAIKey, "OpenAI API key (overrides $OPENAI_API_KEY)")
 
-	// Command-line option for API server address
-	apiAddr := flag.String("api-addr", "", "API server address (overrides $API_ADDR)")
+	apiAddr := flag.String("api-addr", envAPIAddr, "API server address (overrides $API_ADDR)")
+	defaultCron := flag.String("default-cron", envDefaultCron, "default cron schedule for prompts (overrides $DEFAULT_SCHEDULE)")
 	flag.Parse()
 
 	// Build WhatsApp options
@@ -62,7 +73,10 @@ func main() {
 	if *apiAddr != "" {
 		apiOpts = append(apiOpts, api.WithAddr(*apiAddr))
 	}
+	if *defaultCron != "" {
+		apiOpts = append(apiOpts, api.WithDefaultCron(*defaultCron))
+	}
 
-	// Call API run with module options
+	// Start the service
 	api.Run(waOpts, storeOpts, genaiOpts, apiOpts)
 }

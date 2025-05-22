@@ -35,19 +35,17 @@ func WithPostgresDSN(dsn string) Option {
 	}
 }
 
-// NewPostgresStore creates a new Postgres store based on provided options or environment variable.
+// NewPostgresStore creates a new Postgres store based on provided options.
 func NewPostgresStore(opts ...Option) (*PostgresStore, error) {
 	// Apply options
 	var cfg Opts
 	for _, opt := range opts {
 		opt(&cfg)
 	}
-	// Determine DSN with priority: CLI options > env var > arg
+	// Determine DSN from options
 	dsn := cfg.DSN
 	if dsn == "" {
-		if connStrEnv := os.Getenv("DATABASE_URL"); connStrEnv != "" {
-			dsn = connStrEnv
-		}
+		return nil, fmt.Errorf("Postgres DSN not provided")
 	}
 
 	db, err := sql.Open("postgres", dsn)

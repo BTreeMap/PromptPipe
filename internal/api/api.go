@@ -25,13 +25,14 @@ var (
 	waClient    whatsapp.WhatsAppSender
 	sched       *scheduler.Scheduler
 	st          store.Store // Use the interface for flexibility
-	defaultCron string      // default cron schedule from env'
+	defaultCron string      // default cron schedule from opts
 	gaClient    *genai.Client
 )
 
-// Opts holds configuration options for the API server, such as HTTP address.
+// Opts holds configuration options for the API server, such as HTTP address and default cron.
 type Opts struct {
-	Addr string // overrides API_ADDR
+	Addr        string // overrides API_ADDR
+	DefaultCron string // overrides DEFAULT_SCHEDULE
 }
 
 // Option defines a configuration option for the API server.
@@ -44,6 +45,13 @@ func WithAddr(addr string) Option {
 	}
 }
 
+// WithDefaultCron overrides the default schedule for prompts.
+func WithDefaultCron(cron string) Option {
+	return func(o *Opts) {
+		o.DefaultCron = cron
+	}
+}
+
 // Run starts the API server and initializes dependencies, applying module options.
 func Run(waOpts []whatsapp.Option, storeOpts []store.Option, genaiOpts []genai.Option, apiOpts []Option) {
 	var err error
@@ -52,14 +60,10 @@ func Run(waOpts []whatsapp.Option, storeOpts []store.Option, genaiOpts []genai.O
 	for _, opt := range apiOpts {
 		opt(&apiCfg)
 	}
-	// Determine server address with priority: CLI options > env var > default
+	// Determine server address with priority: CLI options > default
 	addr := apiCfg.Addr
 	if addr == "" {
-		if envAddr := os.Getenv("API_ADDR"); envAddr != "" {
-			addr = envAddr
-		} else {
-			addr = ":8080"
-		}
+		addr = ":8080"
 	}
 
 	// Initialize WhatsApp client
@@ -69,10 +73,10 @@ func Run(waOpts []whatsapp.Option, storeOpts []store.Option, genaiOpts []genai.O
 	}
 	// Initialize scheduler
 	sched = scheduler.NewScheduler()
-	// Load default schedule from environment
-	defaultCron = os.Getenv("DEFAULT_SCHEDULE")
-	// Choose storage backend: Postgres if DSN provided via options or env var, else in-memory
-	if len(storeOpts) > 0 || os.Getenv("DATABASE_URL") != "" {
+	// Apply default cron schedule
+	defaultCron = apiCfg.DefaultCron
+	// Choose storage backend: Postgres if DSN provided via options, else in-memory
+	if len(storeOpts) > 0 {
 		ps, err := store.NewPostgresStore(storeOpts...)
 		if err != nil {
 			log.Fatalf("Failed to connect to Postgres store: %v", err)
@@ -82,8 +86,8 @@ func Run(waOpts []whatsapp.Option, storeOpts []store.Option, genaiOpts []genai.O
 		st = store.NewInMemoryStore()
 	}
 
-	// Initialize GenAI client if API key provided via options or env var
-	if len(genaiOpts) > 0 || os.Getenv("OPENAI_API_KEY") != "" {
+	// Initialize GenAI client if API key provided via options
+	if len(genaiOpts) > 0 {
 		gaClient, err = genai.NewClient(genaiOpts...)
 		if err != nil {
 			log.Fatalf("Failed to create GenAI client: %v", err)

@@ -75,20 +75,14 @@ func NewClient(opts ...Option) (*Client, error) {
 		opt(&cfg)
 	}
 
-	// Determine database driver and DSN with priority: CLI options > env vars > defaults
+	// Determine database driver and DSN based on options or defaults
 	dbDriver := cfg.DBDriver
 	if dbDriver == "" {
-		dbDriver = os.Getenv("WHATSAPP_DB_DRIVER")
-		if dbDriver == "" {
-			dbDriver = "postgres"
-		}
+		dbDriver = "postgres"
 	}
 	dbDSN := cfg.DBDSN
 	if dbDSN == "" {
-		dbDSN = os.Getenv("WHATSAPP_DB_DSN")
-		if dbDSN == "" {
-			dbDSN = "postgres://postgres:postgres@localhost:5432/whatsapp?sslmode=disable"
-		}
+		dbDSN = "postgres://postgres:postgres@localhost:5432/whatsapp?sslmode=disable"
 	}
 	logger := waLog.Stdout("Database", "INFO", true)
 	ctx := context.Background()
