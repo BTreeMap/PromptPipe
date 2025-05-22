@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	_ "embed"
 	"fmt"
+	"os"
 
 	"github.com/BTreeMap/PromptPipe/internal/models"
 	_ "github.com/lib/pq"
@@ -19,8 +20,37 @@ type PostgresStore struct {
 	db *sql.DB
 }
 
-func NewPostgresStore(connStr string) (*PostgresStore, error) {
-	db, err := sql.Open("postgres", connStr)
+// Opts holds configuration for the Postgres store, allowing override of connection string.
+type Opts struct {
+	DSN string // overrides DATABASE_URL
+}
+
+// Option defines a configuration option for the Postgres store.
+type Option func(*Opts)
+
+// WithPostgresDSN overrides the DSN used by the Postgres store.
+func WithPostgresDSN(dsn string) Option {
+	return func(o *Opts) {
+		o.DSN = dsn
+	}
+}
+
+// NewPostgresStore creates a new Postgres store based on provided options or environment variable.
+func NewPostgresStore(opts ...Option) (*PostgresStore, error) {
+	// Apply options
+	var cfg Opts
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+	// Determine DSN with priority: CLI options > env var > arg
+	dsn := cfg.DSN
+	if dsn == "" {
+		if connStrEnv := os.Getenv("DATABASE_URL"); connStrEnv != "" {
+			dsn = connStrEnv
+		}
+	}
+
+	db, err := sql.Open("postgres", dsn)
 	if err != nil {
 		return nil, err
 	}

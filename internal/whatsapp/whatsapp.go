@@ -22,25 +22,42 @@ type WhatsAppSender interface {
 	SendMessage(ctx context.Context, to string, body string) error
 }
 
-// Option defines a configuration option for the WhatsApp client
-type Option func(*clientOptions)
+// Opts holds configuration options for the WhatsApp client, including database and login settings.
+// Database driver and DSN can be overridden via command-line options or environment variables.
+type Opts struct {
+	DBDriver    string // overrides WHATSAPP_DB_DRIVER
+	DBDSN       string // overrides WHATSAPP_DB_DSN
+	QRPath      string // path to write login QR code
+	NumericCode bool   // use numeric login code instead of QR code
+}
 
-// clientOptions holds optional parameters for WhatsApp client
-type clientOptions struct {
-	QRPath      string
-	NumericCode bool
+// Option defines a configuration option for the WhatsApp client.
+type Option func(*Opts)
+
+// WithDBDriver overrides the database driver used by the WhatsApp client.
+func WithDBDriver(driver string) Option {
+	return func(o *Opts) {
+		o.DBDriver = driver
+	}
+}
+
+// WithDBDSN overrides the DSN used by the WhatsApp client.
+func WithDBDSN(dsn string) Option {
+	return func(o *Opts) {
+		o.DBDSN = dsn
+	}
 }
 
 // WithQRCodeOutput instructs the WhatsApp client to write the login QR code to the specified path.
 func WithQRCodeOutput(path string) Option {
-	return func(o *clientOptions) {
+	return func(o *Opts) {
 		o.QRPath = path
 	}
 }
 
 // WithNumericCode instructs the WhatsApp client to use numeric login code instead of QR code.
 func WithNumericCode() Option {
-	return func(o *clientOptions) {
+	return func(o *Opts) {
 		o.NumericCode = true
 	}
 }
@@ -50,23 +67,28 @@ type Client struct {
 	waClient *whatsmeow.Client
 }
 
-// NewClient creates a new WhatsApp client, applying any provided options.
+// NewClient creates a new WhatsApp client, applying any provided options for customization.
 func NewClient(opts ...Option) (*Client, error) {
 	// Apply options
-	var cfg clientOptions
+	var cfg Opts
 	for _, opt := range opts {
 		opt(&cfg)
 	}
 
-	// Use environment variables for DB driver and DSN
-	dbDriver := os.Getenv("WHATSAPP_DB_DRIVER")
+	// Determine database driver and DSN with priority: CLI options > env vars > defaults
+	dbDriver := cfg.DBDriver
 	if dbDriver == "" {
-		dbDriver = "postgres"
+		dbDriver = os.Getenv("WHATSAPP_DB_DRIVER")
+		if dbDriver == "" {
+			dbDriver = "postgres"
+		}
 	}
-	dbDSN := os.Getenv("WHATSAPP_DB_DSN")
+	dbDSN := cfg.DBDSN
 	if dbDSN == "" {
-		// Default to a typical local Postgres connection string
-		dbDSN = "postgres://postgres:postgres@localhost:5432/whatsapp?sslmode=disable"
+		dbDSN = os.Getenv("WHATSAPP_DB_DSN")
+		if dbDSN == "" {
+			dbDSN = "postgres://postgres:postgres@localhost:5432/whatsapp?sslmode=disable"
+		}
 	}
 	logger := waLog.Stdout("Database", "INFO", true)
 	ctx := context.Background()

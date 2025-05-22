@@ -36,11 +36,37 @@ func (w *chatServiceWrapper) Create(ctx context.Context, body openai.ChatComplet
 	return *respPtr, nil
 }
 
-// NewClient initializes a new GenAI client using the OPENAI_API_KEY environment variable.
-func NewClient() (*Client, error) {
-	apiKey := os.Getenv("OPENAI_API_KEY")
+// Opts holds configuration options for the GenAI client, including API key override.
+// API key can be overridden via command-line options or environment variable.
+type Opts struct {
+	APIKey string // overrides OPENAI_API_KEY
+}
+
+// Option defines a configuration option for the GenAI client.
+type Option func(*Opts)
+
+// WithAPIKey overrides the API key used by the GenAI client.
+func WithAPIKey(key string) Option {
+	return func(o *Opts) {
+		o.APIKey = key
+	}
+}
+
+// NewClient initializes a new GenAI client using the OPENAI_API_KEY environment variable or provided options.
+func NewClient(opts ...Option) (*Client, error) {
+	// Apply options
+	var cfg Opts
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+
+	// Determine API key with priority: CLI options > env var
+	apiKey := cfg.APIKey
 	if apiKey == "" {
-		return nil, fmt.Errorf("OPENAI_API_KEY not set")
+		apiKey = os.Getenv("OPENAI_API_KEY")
+		if apiKey == "" {
+			return nil, fmt.Errorf("OPENAI_API_KEY not set")
+		}
 	}
 	// Initialize OpenAI client with API key
 	cli := openai.NewClient(option.WithAPIKey(apiKey))

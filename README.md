@@ -76,6 +76,8 @@ WHATSAPP_DB_DSN="postgres://postgres:postgres@localhost:5432/whatsapp?sslmode=di
 DEFAULT_SCHEDULE="0 9 * * *"  # 9 AM daily
 # (Optional) PostgreSQL connection string for receipts
 DATABASE_URL="postgres://user:pass@host:port/dbname?sslmode=disable"
+# (Optional) API server address
+API_ADDR=":8080"
 # (Optional) OpenAI API key for GenAI operations
 OPENAI_API_KEY="your_openai_api_key"
 ```
@@ -85,11 +87,16 @@ OPENAI_API_KEY="your_openai_api_key"
 ```bash
 # Start the service (reads .env automatically)
 ./PromptPipe [flags]
+```
 
-# Flags to customize WhatsApp login behavior:
+## Flags
+
+- `-api-addr string` : API server address (overrides $API_ADDR)
 - `-qr-output string` : path to write login QR code (default: stdout)
 - `-numeric-code`    : use numeric login code instead of QR code
-```
+- `-db-driver string`: database driver for WhatsApp and Postgres store (overrides $WHATSAPP_DB_DRIVER / $DATABASE_URL)
+- `-db-dsn string`   : database DSN for WhatsApp and Postgres store (overrides $WHATSAPP_DB_DSN / $DATABASE_URL)
+- `-openai-api-key string`: OpenAI API key (overrides $OPENAI_API_KEY)
 
 ## API Reference
 
@@ -247,6 +254,7 @@ The system will use the PostgreSQL store if `DATABASE_URL` is set, otherwise it 
 | WHATSAPP_DB_DSN      | Data source name for Whatsmeow DB           |
 | DEFAULT_SCHEDULE     | Default cron schedule for prompts           |
 | DATABASE_URL         | PostgreSQL connection string (optional)     |
+| API_ADDR             | API server address                         |
 | OPENAI_API_KEY       | API key for OpenAI GenAI operations         |
 
 ## Development

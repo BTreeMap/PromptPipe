@@ -29,19 +29,51 @@ var (
 	gaClient    *genai.Client
 )
 
-// Run starts the API server and initializes dependencies, applying WhatsApp options.
-func Run(waOpts ...whatsapp.Option) {
+// Opts holds configuration options for the API server, such as HTTP address.
+type Opts struct {
+	Addr string // overrides API_ADDR
+}
+
+// Option defines a configuration option for the API server.
+type Option func(*Opts)
+
+// WithAddr overrides the server address for the API.
+func WithAddr(addr string) Option {
+	return func(o *Opts) {
+		o.Addr = addr
+	}
+}
+
+// Run starts the API server and initializes dependencies, applying module options.
+func Run(waOpts []whatsapp.Option, storeOpts []store.Option, genaiOpts []genai.Option, apiOpts []Option) {
 	var err error
+	// Apply API server options
+	var apiCfg Opts
+	for _, opt := range apiOpts {
+		opt(&apiCfg)
+	}
+	// Determine server address with priority: CLI options > env var > default
+	addr := apiCfg.Addr
+	if addr == "" {
+		if envAddr := os.Getenv("API_ADDR"); envAddr != "" {
+			addr = envAddr
+		} else {
+			addr = ":8080"
+		}
+	}
+
+	// Initialize WhatsApp client
 	waClient, err = whatsapp.NewClient(waOpts...)
 	if err != nil {
 		log.Fatalf("Failed to create WhatsApp client: %v", err)
 	}
+	// Initialize scheduler
 	sched = scheduler.NewScheduler()
 	// Load default schedule from environment
 	defaultCron = os.Getenv("DEFAULT_SCHEDULE")
-	// Choose storage backend based on DATABASE_URL
-	if dbURL := os.Getenv("DATABASE_URL"); dbURL != "" {
-		ps, err := store.NewPostgresStore(dbURL)
+	// Choose storage backend: Postgres if DSN provided via options or env var, else in-memory
+	if len(storeOpts) > 0 || os.Getenv("DATABASE_URL") != "" {
+		ps, err := store.NewPostgresStore(storeOpts...)
 		if err != nil {
 			log.Fatalf("Failed to connect to Postgres store: %v", err)
 		}
@@ -50,9 +82,9 @@ func Run(waOpts ...whatsapp.Option) {
 		st = store.NewInMemoryStore()
 	}
 
-	// Initialize GenAI client if API key provided (optional)
-	if os.Getenv("OPENAI_API_KEY") != "" {
-		gaClient, err = genai.NewClient()
+	// Initialize GenAI client if API key provided via options or env var
+	if len(genaiOpts) > 0 || os.Getenv("OPENAI_API_KEY") != "" {
+		gaClient, err = genai.NewClient(genaiOpts...)
 		if err != nil {
 			log.Fatalf("Failed to create GenAI client: %v", err)
 		}
@@ -68,9 +100,9 @@ func Run(waOpts ...whatsapp.Option) {
 	http.HandleFunc("/responses", responsesHandler)
 	http.HandleFunc("/stats", statsHandler)
 	// Start HTTP server with graceful shutdown
-	srv := &http.Server{Addr: ":8080", Handler: nil}
+	srv := &http.Server{Addr: addr, Handler: nil}
 	go func() {
-		log.Println("PromptPipe API running on :8080")
+		log.Printf("PromptPipe API running on %s", addr)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("API server error: %v", err)
 		}
