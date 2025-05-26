@@ -7,7 +7,6 @@ import (
 	"database/sql"
 	_ "embed"
 	"fmt"
-	"os"
 
 	"github.com/BTreeMap/PromptPipe/internal/models"
 	_ "github.com/lib/pq"
@@ -42,10 +41,10 @@ func NewPostgresStore(opts ...Option) (*PostgresStore, error) {
 	for _, opt := range opts {
 		opt(&cfg)
 	}
-	// Determine DSN from options
+	// Determine DSN (required)
 	dsn := cfg.DSN
 	if dsn == "" {
-		return nil, fmt.Errorf("Postgres DSN not provided")
+		return nil, fmt.Errorf("database DSN not set")
 	}
 
 	db, err := sql.Open("postgres", dsn)

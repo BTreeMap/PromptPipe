@@ -29,7 +29,7 @@ var (
 	gaClient    *genai.Client
 )
 
-// Opts holds configuration options for the API server, such as HTTP address and default cron.
+// Opts holds configuration options for the API server, such as HTTP address and default cron schedule.
 type Opts struct {
 	Addr        string // overrides API_ADDR
 	DefaultCron string // overrides DEFAULT_SCHEDULE
@@ -45,7 +45,7 @@ func WithAddr(addr string) Option {
 	}
 }
 
-// WithDefaultCron overrides the default schedule for prompts.
+// WithDefaultCron overrides the default cron schedule for prompts.
 func WithDefaultCron(cron string) Option {
 	return func(o *Opts) {
 		o.DefaultCron = cron
@@ -55,11 +55,13 @@ func WithDefaultCron(cron string) Option {
 // Run starts the API server and initializes dependencies, applying module options.
 func Run(waOpts []whatsapp.Option, storeOpts []store.Option, genaiOpts []genai.Option, apiOpts []Option) {
 	var err error
+
 	// Apply API server options
 	var apiCfg Opts
 	for _, opt := range apiOpts {
 		opt(&apiCfg)
 	}
+
 	// Determine server address with priority: CLI options > default
 	addr := apiCfg.Addr
 	if addr == "" {
@@ -71,10 +73,13 @@ func Run(waOpts []whatsapp.Option, storeOpts []store.Option, genaiOpts []genai.O
 	if err != nil {
 		log.Fatalf("Failed to create WhatsApp client: %v", err)
 	}
+
 	// Initialize scheduler
 	sched = scheduler.NewScheduler()
-	// Apply default cron schedule
+
+	// Configure default schedule
 	defaultCron = apiCfg.DefaultCron
+
 	// Choose storage backend: Postgres if DSN provided via options, else in-memory
 	if len(storeOpts) > 0 {
 		ps, err := store.NewPostgresStore(storeOpts...)

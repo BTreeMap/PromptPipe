@@ -59,10 +59,10 @@ func NewClient(opts ...Option) (*Client, error) {
 		opt(&cfg)
 	}
 
-	// Determine API key from options
+	// Determine API key (required)
 	apiKey := cfg.APIKey
 	if apiKey == "" {
-		return nil, fmt.Errorf("OpenAI API key not provided")
+		return nil, fmt.Errorf("API key not set")
 	}
 	// Initialize OpenAI client with API key
 	cli := openai.NewClient(option.WithAPIKey(apiKey))
