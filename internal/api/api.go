@@ -7,6 +7,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -138,24 +139,63 @@ func sendHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Invalid JSON in sendHandler: %v", err)
 		return
 	}
-	// Validate required fields: to and either body or valid GenAI prompts
-	if p.To == "" || (p.Body == "" && (gaClient == nil || p.SystemPrompt == "" || p.UserPrompt == "")) {
+
+	// Determine prompt type if not specified
+	if p.Type == "" {
+		switch {
+		case p.SystemPrompt != "" && p.UserPrompt != "" && gaClient != nil:
+			p.Type = models.PromptTypeGenAI
+		case len(p.BranchOptions) > 0:
+			p.Type = models.PromptTypeBranch
+		default:
+			p.Type = models.PromptTypeStatic
+		}
+	}
+	// Validate prompt based on type
+	switch p.Type {
+	case models.PromptTypeStatic:
+		if p.Body == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+	case models.PromptTypeGenAI:
+		if gaClient == nil || p.SystemPrompt == "" || p.UserPrompt == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+	case models.PromptTypeBranch:
+		if len(p.BranchOptions) == 0 {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+	default:
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-
-	// If GenAI prompts provided, generate dynamic content
-	if gaClient != nil && p.SystemPrompt != "" && p.UserPrompt != "" {
+	// Construct message body based on type
+	var msgBody string
+	switch p.Type {
+	case models.PromptTypeStatic:
+		msgBody = p.Body
+	case models.PromptTypeGenAI:
 		generated, err := gaClient.GeneratePrompt(p.SystemPrompt, p.UserPrompt)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			log.Printf("GenAI generation error: %v", err)
 			return
 		}
+		msgBody = generated
 		p.Body = generated
+	case models.PromptTypeBranch:
+		// Format branch options
+		sb := fmt.Sprintf("%s\n", p.Body)
+		for i, opt := range p.BranchOptions {
+			sb += fmt.Sprintf("%d. %s: %s\n", i+1, opt.Label, opt.Body)
+		}
+		msgBody = sb
 	}
 
-	err := waClient.SendMessage(context.Background(), p.To, p.Body)
+	err := waClient.SendMessage(context.Background(), p.To, msgBody)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		log.Printf("Error sending message: %v", err)
@@ -178,8 +218,35 @@ func scheduleHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Invalid JSON in scheduleHandler: %v", err)
 		return
 	}
-	// Validate required fields: to and either body or valid GenAI prompts
-	if p.To == "" || (p.Body == "" && (gaClient == nil || p.SystemPrompt == "" || p.UserPrompt == "")) {
+	// Determine prompt type if not specified
+	if p.Type == "" {
+		switch {
+		case p.SystemPrompt != "" && p.UserPrompt != "" && gaClient != nil:
+			p.Type = models.PromptTypeGenAI
+		case len(p.BranchOptions) > 0:
+			p.Type = models.PromptTypeBranch
+		default:
+			p.Type = models.PromptTypeStatic
+		}
+	}
+	// Additional validation based on type
+	switch p.Type {
+	case models.PromptTypeStatic:
+		if p.To == "" || p.Body == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+	case models.PromptTypeGenAI:
+		if p.To == "" || gaClient == nil || p.SystemPrompt == "" || p.UserPrompt == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+	case models.PromptTypeBranch:
+		if p.To == "" || len(p.BranchOptions) == 0 {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+	default:
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -194,19 +261,31 @@ func scheduleHandler(w http.ResponseWriter, r *http.Request) {
 	// Capture prompt locally for closure
 	job := p
 	if err := sched.AddJob(p.Cron, func() {
-		msg := job.Body
-		// If GenAI prompts provided and client available, generate dynamic content per run
-		if gaClient != nil && job.SystemPrompt != "" && job.UserPrompt != "" {
-			gen, err := gaClient.GeneratePrompt(job.SystemPrompt, job.UserPrompt)
-			if err != nil {
-				log.Printf("GenAI scheduled generation error: %v", err)
-				return
+		// Construct message based on prompt type
+		var msg string
+		switch job.Type {
+		case models.PromptTypeStatic:
+			msg = job.Body
+		case models.PromptTypeGenAI:
+			if gaClient != nil {
+				gen, err := gaClient.GeneratePrompt(job.SystemPrompt, job.UserPrompt)
+				if err != nil {
+					log.Printf("GenAI generation error: %v", err)
+					return
+				}
+				msg = gen
+			} else {
+				msg = job.Body
 			}
-			msg = gen
+		case models.PromptTypeBranch:
+			sb := fmt.Sprintf("%s\n", job.Body)
+			for i, opt := range job.BranchOptions {
+				sb += fmt.Sprintf("%d. %s: %s\n", i+1, opt.Label, opt.Body)
+			}
+			msg = sb
 		}
 		if err := waClient.SendMessage(context.Background(), job.To, msg); err != nil {
-			log.Printf("Scheduled job send error: %v", err)
-			return
+			log.Printf("Error sending scheduled message: %v", err)
 		}
 		if err := st.AddReceipt(models.Receipt{To: job.To, Status: "sent", Time: time.Now().Unix()}); err != nil {
 			log.Printf("Error adding scheduled receipt: %v", err)

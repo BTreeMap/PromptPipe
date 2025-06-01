@@ -15,7 +15,7 @@ type chatService interface {
 	Create(ctx context.Context, body openai.ChatCompletionNewParams) (openai.ChatCompletion, error)
 }
 
-// Client wraps the OpenAI ChatCompletion service for generating prompts.
+// Client wraps the OpenAI API client for prompt generation.
 type Client struct {
 	chat chatService
 }
@@ -69,14 +69,14 @@ func NewClient(opts ...Option) (*Client, error) {
 	return &Client{chat: &chatServiceWrapper{newFunc: cli.Chat.Completions.New}}, nil
 }
 
-// GeneratePrompt generates a response based on the provided system and user prompts.
-func (c *Client) GeneratePrompt(systemPrompt, userPrompt string) (string, error) {
+// GeneratePrompt generates content based on provided system and user prompts.
+func (c *Client) GeneratePrompt(system, user string) (string, error) {
 	// Prepare chat completion parameters
 	params := openai.ChatCompletionNewParams{
 		Model: openai.ChatModelGPT4oMini,
 		Messages: []openai.ChatCompletionMessageParamUnion{
-			openai.SystemMessage(systemPrompt),
-			openai.UserMessage(userPrompt),
+			openai.SystemMessage(system),
+			openai.UserMessage(user),
 		},
 	}
 	resp, err := c.chat.Create(context.Background(), params)
