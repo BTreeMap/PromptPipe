@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/BTreeMap/PromptPipe/internal/messaging"
 	"github.com/BTreeMap/PromptPipe/internal/models"
 	"github.com/BTreeMap/PromptPipe/internal/scheduler"
 	"github.com/BTreeMap/PromptPipe/internal/store"
@@ -16,13 +17,13 @@ import (
 func TestSendHandler_NotImplemented(t *testing.T) {
 	// Save and restore global variables
 	oldStore := st
-	oldWA := waClient
+	oldService := msgService
 	defer func() {
 		st = oldStore
-		waClient = oldWA
+		msgService = oldService
 	}()
 	st = store.NewInMemoryStore()
-	waClient = whatsapp.NewMockClient()
+	msgService = messaging.NewWhatsAppService(whatsapp.NewMockClient())
 
 	req, _ := http.NewRequest("POST", "/send", bytes.NewBuffer([]byte(`{"to":"+123","body":"hi"}`)))
 	rr := httptest.NewRecorder()
@@ -36,15 +37,15 @@ func TestScheduleHandler_NotImplemented(t *testing.T) {
 	// Save and restore global variables
 	oldSched := sched
 	oldStore := st
-	oldWA := waClient
+	oldService := msgService
 	defer func() {
 		sched = oldSched
 		st = oldStore
-		waClient = oldWA
+		msgService = oldService
 	}()
 	sched = scheduler.NewScheduler()
 	st = store.NewInMemoryStore()
-	waClient = whatsapp.NewMockClient()
+	msgService = messaging.NewWhatsAppService(whatsapp.NewMockClient())
 
 	req, _ := http.NewRequest("POST", "/schedule", bytes.NewBuffer([]byte(`{"to":"+123","cron":"* * * * *","body":"hi"}`)))
 	rr := httptest.NewRecorder()

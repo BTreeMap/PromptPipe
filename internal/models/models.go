@@ -32,10 +32,29 @@ type Prompt struct {
 	BranchOptions []BranchOption `json:"branch_options,omitempty"`
 }
 
+type StatusType string
+
+const (
+	// StatusTypeSent indicates the message was sent.
+	StatusTypeSent StatusType = "sent"
+	// StatusTypeDelivered indicates the message was delivered.
+	StatusTypeDelivered StatusType = "delivered"
+	// StatusTypeRead indicates the message was read.
+	StatusTypeRead StatusType = "read"
+	// StatusTypeFailed indicates the message failed to send.
+	StatusTypeFailed StatusType = "failed"
+	// StatusTypeError indicates an error occurred while processing the message.
+	StatusTypeError StatusType = "error"
+	// StatusTypeScheduled indicates the message is scheduled for future delivery.
+	StatusTypeScheduled StatusType = "scheduled"
+	// StatusTypeCancelled indicates the message was cancelled.
+	StatusTypeCancelled StatusType = "cancelled"
+)
+
 type Receipt struct {
-	To     string `json:"to"`
-	Status string `json:"status"`
-	Time   int64  `json:"time"`
+	To     string     `json:"to"`
+	Status StatusType `json:"status"`
+	Time   int64      `json:"time"`
 }
 
 // Response represents an incoming message response from a participant.

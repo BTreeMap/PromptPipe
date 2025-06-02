@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/BTreeMap/PromptPipe/internal/genai"
+	"github.com/BTreeMap/PromptPipe/internal/messaging"
 	"github.com/BTreeMap/PromptPipe/internal/models"
 	"github.com/BTreeMap/PromptPipe/internal/scheduler"
 	"github.com/BTreeMap/PromptPipe/internal/store"
@@ -23,7 +24,7 @@ import (
 )
 
 var (
-	waClient    whatsapp.WhatsAppSender
+	msgService  messaging.Service
 	sched       *scheduler.Scheduler
 	st          store.Store // Use the interface for flexibility
 	defaultCron string      // default cron schedule from opts
@@ -69,11 +70,31 @@ func Run(waOpts []whatsapp.Option, storeOpts []store.Option, genaiOpts []genai.O
 		addr = ":8080"
 	}
 
-	// Initialize WhatsApp client
-	waClient, err = whatsapp.NewClient(waOpts...)
+	// Initialize WhatsApp client and wrap in messaging service
+	whClient, err := whatsapp.NewClient(waOpts...)
 	if err != nil {
 		log.Fatalf("Failed to create WhatsApp client: %v", err)
 	}
+	msgService = messaging.NewWhatsAppService(whClient)
+	// Start messaging service
+	if err := msgService.Start(context.Background()); err != nil {
+		log.Fatalf("Failed to start messaging service: %v", err)
+	}
+	// Forward receipts and responses to store
+	go func() {
+		for r := range msgService.Receipts() {
+			if err := st.AddReceipt(r); err != nil {
+				log.Printf("Error storing receipt: %v", err)
+			}
+		}
+	}()
+	go func() {
+		for resp := range msgService.Responses() {
+			if err := st.AddResponse(resp); err != nil {
+				log.Printf("Error storing response: %v", err)
+			}
+		}
+	}()
 
 	// Initialize scheduler
 	sched = scheduler.NewScheduler()
@@ -195,14 +216,11 @@ func sendHandler(w http.ResponseWriter, r *http.Request) {
 		msgBody = sb
 	}
 
-	err := waClient.SendMessage(context.Background(), p.To, msgBody)
+	err := msgService.SendMessage(context.Background(), p.To, msgBody)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		log.Printf("Error sending message: %v", err)
 		return
-	}
-	if err := st.AddReceipt(models.Receipt{To: p.To, Status: "sent", Time: time.Now().Unix()}); err != nil {
-		log.Printf("Error adding receipt: %v", err)
 	}
 	w.WriteHeader(http.StatusOK)
 }
@@ -284,11 +302,8 @@ func scheduleHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			msg = sb
 		}
-		if err := waClient.SendMessage(context.Background(), job.To, msg); err != nil {
+		if err := msgService.SendMessage(context.Background(), job.To, msg); err != nil {
 			log.Printf("Error sending scheduled message: %v", err)
-		}
-		if err := st.AddReceipt(models.Receipt{To: job.To, Status: "sent", Time: time.Now().Unix()}); err != nil {
-			log.Printf("Error adding scheduled receipt: %v", err)
 		}
 	}); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
