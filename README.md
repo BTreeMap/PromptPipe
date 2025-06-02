@@ -33,17 +33,18 @@ PromptPipe is a Go-based messaging service that delivers adaptive-intervention p
 ## Architecture
 
 - **Go Core**: High-performance, concurrent backend written in Go.
-- **Whatsmeow Integration**: Programmable WhatsApp client for messaging.
+- **Messaging Service**: Abstracts message delivery to support multiple providers (WhatsApp, Twilio, etc.) (`internal/messaging`).
+- **WhatsApp Client**: Handles WhatsApp network communication (`internal/whatsapp`).
 - **API Layer**: RESTful endpoints for scheduling, sending, and tracking prompts (`internal/api`).
 - **Scheduler**: Cron-based scheduling for recurring or one-time prompts (`internal/scheduler`).
 - **Store**: Persists scheduled prompts and receipt events; supports in-memory and PostgreSQL (`internal/store`).
-- **WhatsApp Client**: Handles WhatsApp network communication (`internal/whatsapp`).
 - **GenAI**: Optional OpenAI integration for dynamic content (`internal/genai`).
 - **Models**: Shared data structures (`internal/models`).
 
 ## Features
 
 - **Schedule prompts** at specific times or intervals (cron syntax).
+- **Pluggable messaging drivers**: Easily switch between WhatsApp, Twilio, or other providers without changing core logic.
 - **Send dynamic payloads**: text, media, and template messages with custom variables.
 - **GenAI-enhanced content**: Use OpenAI to generate message content dynamically.
 - **Receipt tracking**: Capture sent, delivered, and read events.
@@ -80,6 +81,8 @@ DATABASE_URL="postgres://user:pass@host:port/dbname?sslmode=disable"
 API_ADDR=":8080"
 # (Optional) OpenAI API key for GenAI operations
 OPENAI_API_KEY="your_openai_api_key"
+# Messaging driver to use (e.g., "whatsapp", "twilio")
+MESSAGING_DRIVER="whatsapp"
 ```
 
 ## Usage
@@ -97,6 +100,7 @@ OPENAI_API_KEY="your_openai_api_key"
 - `-db-driver string`: database driver for WhatsApp and Postgres store (overrides $WHATSAPP_DB_DRIVER / $DATABASE_URL)
 - `-db-dsn string`   : database DSN for WhatsApp and Postgres store (overrides $WHATSAPP_DB_DSN / $DATABASE_URL)
 - `-openai-api-key string`: OpenAI API key (overrides $OPENAI_API_KEY)
+- `-messaging-driver string`: messaging service to use (overrides $MESSAGING_DRIVER)
 
 ## API Reference
 
@@ -256,6 +260,7 @@ The system will use the PostgreSQL store if `DATABASE_URL` is set, otherwise it 
 | DATABASE_URL         | PostgreSQL connection string (optional)     |
 | API_ADDR             | API server address                         |
 | OPENAI_API_KEY       | API key for OpenAI GenAI operations         |
+| MESSAGING_DRIVER     | Messaging driver to use (e.g., "whatsapp", "twilio") |
 
 ## Development
 
