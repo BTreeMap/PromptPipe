@@ -52,3 +52,21 @@ func TestGeneratePrompt_NoChoices(t *testing.T) {
 		t.Errorf("expected no choices returned error, got %v", err)
 	}
 }
+
+func TestNewClient_NoKey(t *testing.T) {
+	_, err := NewClient()
+	if err == nil {
+		t.Error("expected error when API key not provided, got nil")
+	}
+}
+
+func TestNewClient_WithKey(t *testing.T) {
+	key := "test-key"
+	cli, err := NewClient(WithAPIKey(key))
+	if err != nil {
+		t.Fatalf("expected no error with API key, got %v", err)
+	}
+	if cli == nil {
+		t.Error("expected client instance, got nil")
+	}
+}
