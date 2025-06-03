@@ -25,14 +25,14 @@ This document describes a structured flow for a micro health intervention study,
 Behind the scenes, you will maintain for each participant:
 
 * A set of **persistent flags** (e.g. `hasSeenOrientation`, `lastCommitmentDate`, `flowAssignmentToday`, `timesCompletedThisWeek`).
-* A handful of **timers** (feeling time‐out, completion time‐out, “did‐you‐get‐a‐chance” time‐out).
+* A handful of **timers** (feeling time‐out, completion time‐out, “did‐you‐get‐a‐chance” time‐out, etc.).
 * A **randomization function** that flips a coin (e.g. `Math.random() < 0.5`) to choose Immediate vs. Reflective.
 * A **scheduler** that (a) sends the daily prompts at a fixed time, (b) checks if a participant ever types “Ready,” and (c) triggers the weekly summary seven days after enrollment (or in rolling 7‐day windows).
 
 Below is a breakdown of every state/transition. We name each “state” and then describe:
 
 * **When it is entered** (what event causes you to transition into this state).
-* **What the system sends** (the exact message content).
+* **What the system sends** (the exact message content, with both Poll and SMS alternatives for multiple‐choice).
 * **What inputs you are waiting for** (timeouts, specific user replies).
 * **How to interpret those inputs** (which next state to jump to).
 
@@ -49,7 +49,7 @@ Below is a breakdown of every state/transition. We name each “state” and the
 
 1. Send a single “Welcome” message once. For example:
 
-   > “Hi $Name$, 🌱 Welcome to our Healthy Habits study!
+   > “Hi \$Name\$, 🌱 Welcome to our Healthy Habits study!
    > Here’s how it works: You will receive messages based on a scheduled time, but you can request a message anytime you find it convenient. Simply write ‘Ready,’ and we’ll send the prompt right away to fit your schedule. Try them out and let us know your thoughts. Your input is very important.”
 
 2. Immediately set a persistent flag (e.g. `hasSeenOrientation = true`) so we never send this again.
@@ -72,41 +72,47 @@ Below is a breakdown of every state/transition. We name each “state” and the
 
 **Action When Entered:**
 
-1. Send exactly:
+1. **If channel = WhatsApp →** send a **Poll** with exactly these options:
 
-   > **“You committed to trying a quick habit today—ready to go?**
-   >
-   > 1. 🚀 Let’s do it!
-   > 2. ⏳ Not yet”\*\*
+   * **Title**: “You committed to trying a quick habit today—ready to go?”
+   * **Option 1** (label): “🚀 Let’s do it!”
+   * **Option 2** (label): “⏳ Not yet”
 
- Use whichever chat API or WhatsApp template is appropriate, but the user must see “Reply ‘1’” for “Let’s do it” or “Reply ‘2’” for “Not yet.”
+2. **If channel = SMS/Other →** send a plain‐text message:
 
-2. Persistently record:
+   ```
+   You committed to trying a quick habit today—ready to go?
+   1. 🚀 Let’s do it!
+   2. ⏳ Not yet
+   (Reply with “1” or “2”)
+   ```
+
+3. Persistently record:
 
    * `lastCommitmentDate = <today’s date>`
    * Clear out any previous state related to Day N’s flow so we can start fresh (e.g. `hasRespondedToCommitment = false`).
 
-3. Start waiting for a user response or a secondary trigger:
+4. Start waiting for a user response or a secondary trigger:
 
    * **Wait for user input “1” or “2.”**
-   * If the user does not reply within, say, `COMMITMENT_TIMEOUT = 12 hours` (or until 11:59 PM local time), automatically treat as if they replied “2 = Not yet.” However, the flow guidance says that if “Not yet,” we simply end the flow for today. That means we should send **no further messages** until tomorrow’s scheduler.
+   * If the user does not reply within, say, `COMMITMENT_TIMEOUT = 12 hours` (or until 11:59 PM local time), automatically treat as if they replied “2 = Not yet.” In that case, we send **no further messages** until tomorrow’s scheduler.
 
 **Possible User Inputs / Next Transitions:**
 
-* **If user sends “1”** (exactly “1” or the emoji button that equals “Let’s do it”):
+* **If user selects Poll Option 1 (“🚀 Let’s do it!”) or replies “1”** (exactly “1” or the emoji button that maps to “Let’s do it”) **before timeout**:
 
   * Record `hasRespondedToCommitment = true`.
-  * Transition immediately to **`FEELING_PROMPT`**.
+  * Transition immediately to `FEELING_PROMPT`.
 
-* **If user sends “2” or any other “Not yet” keyword:**
+* **If user selects Poll Option 2 (“⏳ Not yet”) or replies “2” or any other “Not yet” keyword**:
 
   * Record `hasRespondedToCommitment = false_for_today`.
-  * Transition immediately to **`END_OF_DAY`** for today (i.e. do not ask anything else today, wait until next day’s `COMMITMENT_PROMPT`).
+  * Transition immediately to `END_OF_DAY` (for today; do not ask anything else until tomorrow).
 
-* **If no reply within `COMMITMENT_TIMEOUT`:**
+* **If `COMMITMENT_TIMEOUT` expires (no reply within 12 hours)**:
 
   * Implicitly assume “Not yet.”
-  * Go to `END_OF_DAY`.
+  * Same as above: `hasRespondedToCommitment = false_for_today` → `END_OF_DAY`.
 
 ---
 
@@ -119,45 +125,56 @@ Below is a breakdown of every state/transition. We name each “state” and the
 
 **Action When Entered:**
 
-1. Immediately send:
+1. **If channel = WhatsApp →** send a **Poll** with:
 
-   > **“How do you feel about this first step?**
-   >
-   > 1. 😊 Excited
-   > 2. 🤔 Curious
-   > 3. 😃 Motivated
-   > 4. 📖 Need info
-   > 5. ⚖️ Not sure”\*\*
+   * **Title**: “How do you feel about this first step?”
+   * **Option 1**: “😊 Excited”
+   * **Option 2**: “🤔 Curious”
+   * **Option 3**: “😃 Motivated”
+   * **Option 4**: “📖 Need info”
+   * **Option 5**: “⚖️ Not sure”
 
-2. Clear any previous “feeling” flags for today. e.g.:
+2. **If channel = SMS/Other →** send a plain‐text message:
+
+   ```
+   How do you feel about this first step?
+   1. 😊 Excited
+   2. 🤔 Curious
+   3. 😃 Motivated
+   4. 📖 Need info
+   5. ⚖️ Not sure
+   (Reply with “1”, “2”, “3”, “4”, or “5”)
+   ```
+
+3. Clear any previous “feeling” flags for today. For example:
 
    * `feelingResponse = null`
    * `feelingTimerStarted = true` (we just started the timer).
 
-3. Start two parallel waits:
+4. Start two parallel waits:
 
-   * **Wait for user reply** (must be one of {“1”, “2”, “3”, “4”, “5”}).
-   * **Wait for a “lag timer” to expire** (e.g. `FEELING_TIMEOUT = 15 minutes`)
-   * **Watch for an on‐demand “Ready” override** (if they type “Ready” again, which means “I want the prompt immediately,” disregard any remaining wait time and proceed to random assignment immediately).
+   * **Wait for user reply** (must be one of {“1”, “2”, “3”, “4”, “5”} if SMS/Other, or a Poll selection if WhatsApp).
+   * **Wait for a “lag timer” to expire** ‒ e.g. `FEELING_TIMEOUT = 15 minutes`.
+   * Also **watch for an on‐demand “Ready” override** (if they type “Ready”, meaning “send the intervention now,” we disregard any remaining wait time and proceed to random assignment immediately).
 
 **Possible Inputs / Next Transitions:**
 
-* **If user sends a valid number (“1”–“5”) before any timer expires:**
+* **If user selects Poll Option 1–5 (or replies “1”–“5”) before any timer expires**:
 
-  * Store `feelingResponse = [that number]`.
-  * Cancel `FEELING_TIMEOUT` timer.
-  * Immediately transition to **`RANDOM_ASSIGNMENT`**.
+  * Store `feelingResponse = [1..5]`.
+  * Cancel `FEELING_TIMEOUT`.
+  * Transition to `RANDOM_ASSIGNMENT`.
 
-* **If user sends “Ready” at any time (instead of a “1–5”):**
+* **If user sends “Ready” at any time (instead of a “1–5”)**:
 
   * Cancel any pending timers.
-  * Treat this exactly as if they had replied one of the feelings codes (we don’t care which emotion, only that they want the prompt now). So set `feelingResponse = “on_demand”` (or leave it null if you prefer).
-  * Transition immediately to **`RANDOM_ASSIGNMENT`**.
+  * Record `feelingResponse = “on_demand”` (or leave it null, since we only need to know they overrode).
+  * Transition to `RANDOM_ASSIGNMENT`.
 
-* **If `FEELING_TIMEOUT` (15 minutes) fires first:**
+* **If `FEELING_TIMEOUT` (15 minutes) fires first**:
 
   * Set `feelingResponse = “timed_out”`.
-  * Transition immediately to **`RANDOM_ASSIGNMENT`**.
+  * Transition to `RANDOM_ASSIGNMENT`.
 
 ---
 
@@ -170,17 +187,20 @@ Below is a breakdown of every state/transition. We name each “state” and the
 
 **Action When Entered:**
 
-1. Compute a random boolean:
+1. Compute a random boolean, for example:
 
-   * `flowAssignmentToday = (random() < 0.5) ? "IMMEDIATE" : "REFLECTIVE"`.
-   * Immediately persist `flowAssignmentToday` for today’s session.
+   ```js
+   flowAssignmentToday = (Math.random() < 0.5) ? "IMMEDIATE" : "REFLECTIVE";
+   ```
 
-2. Do not send any message here; we simply forward control to the next state based on `flowAssignmentToday`.
+   Immediately persist `flowAssignmentToday` for today’s session.
+
+2. Do **not** send any message here; simply forward control to the next state based on `flowAssignmentToday`.
 
 **Next Transition:**
 
-* If `flowAssignmentToday == "IMMEDIATE"`, go to **`SEND_INTERVENTION_IMMEDIATE`**.
-* If `flowAssignmentToday == "REFLECTIVE"`, go to **`SEND_INTERVENTION_REFLECTIVE`**.
+* If `flowAssignmentToday == "IMMEDIATE"`, go to `SEND_INTERVENTION_IMMEDIATE`.
+* If `flowAssignmentToday == "REFLECTIVE"`, go to `SEND_INTERVENTION_REFLECTIVE`.
 
 ---
 
@@ -193,9 +213,10 @@ Below is a breakdown of every state/transition. We name each “state” and the
 
 **Action When Entered:**
 
-1. Send a short, directive prompt (the “one‐minute micro habit”). For example (replace with your actual habit text):
+1. Send a short, directive prompt (the “one‐minute micro habit”). For example:
 
-   > **“Great! Right now, stand up and do three gentle shoulder rolls, then take three slow, full breaths. When you’re done, reply ‘Done.’”**
+   > **Immediate‐Action Message (WhatsApp or SMS):**
+   > “Great! Right now, stand up and do three gentle shoulder rolls, then take three slow, full breaths. When you’re done, reply ‘Done.’”
 
 2. Set up for the completion‐check:
 
@@ -203,7 +224,9 @@ Below is a breakdown of every state/transition. We name each “state” and the
 
      * `completionResponseReceived = false`
      * `completionTimerStarted = true`
-   * Start a **completion timer** (e.g. `COMPLETION_TIMEOUT = 30 minutes`). This timer means “if they don’t say ‘Done’ or ‘No’ within 30 minutes from this moment, treat as no‐reply.”
+   * Start a **completion timer** (e.g. `COMPLETION_TIMEOUT = 30 minutes`).
+
+     * This timer means “if they don’t say ‘Done’ or ‘No’ within 30 minutes from this moment, treat as no‐reply.”
 
 3. Wait for user input or timeout.
 
@@ -211,26 +234,26 @@ Below is a breakdown of every state/transition. We name each “state” and the
 
 * **If user replies “Done”** within `COMPLETION_TIMEOUT`:
 
-  * Record `completionResponse = “done”`.
-  * Cancel `COMPLETION_TIMEOUT` timer.
-  * Transition to **`REINFORCEMENT_FOLLOWUP`**.
+  * Record `completionResponse = "done"`.
+  * Cancel `COMPLETION_TIMEOUT`.
+  * Transition to `REINFORCEMENT_FOLLOWUP`.
 
-* **If user replies “No”** (exact literal “No” or a button that means “No, I choose not to do it”) within `COMPLETION_TIMEOUT`:
+* **If user replies “No”** (exact literal “No”) within `COMPLETION_TIMEOUT`:
 
-  * Record `completionResponse = “no”`.
-  * Cancel `COMPLETION_TIMEOUT` timer.
-  * Transition to **`DID_YOU_GET_A_CHANCE`**.
+  * Record `completionResponse = "no"`.
+  * Cancel `COMPLETION_TIMEOUT`.
+  * Transition to `DID_YOU_GET_A_CHANCE`.
 
 * **If user sends any other text (not “Done” or “No”)**:
 
-  * Either treat as “No” (if the implementer wants to interpret anything other than “Done” as “No”), or politely re‐prompt. In the published study design, only “Yes” or “No” matter. We recommend:
-
-    * If text != {“Done”, “No”}, ignore it (optionally store it as “other message”). Keep waiting until 30 minutes are up or the user eventually replies “Done” or “No.”
+  * Option A: Treat anything other than “Done” as “No,” or
+  * Option B: Ignore until “Done”/“No” or timeout.
+  * (In the original design, only “Done” vs. “No/no‐reply” matters. We recommend ignoring other texts.)
 
 * **If `COMPLETION_TIMEOUT` expires** (no “Done” or “No”):
 
-  * Record `completionResponse = “no_reply”`.
-  * Transition to **`DID_YOU_GET_A_CHANCE`**.
+  * Record `completionResponse = "no_reply"`.
+  * Transition to `DID_YOU_GET_A_CHANCE`.
 
 ---
 
@@ -245,7 +268,8 @@ Below is a breakdown of every state/transition. We name each “state” and the
 
 1. Send a short, reflective prompt that still asks the participant to do the one‐minute micro habit. For example:
 
-   > **“Before you begin, pause for a moment: When was the last time you noticed your posture? Take 30 seconds to think about where your shoulders are right now. After that, stand up and do a gentle shoulder roll—then reply ‘Done.’”**
+   > **Reflective‐Flow Message (WhatsApp or SMS):**
+   > “Before you begin, pause for a moment: When was the last time you noticed your posture? Take 30 seconds to think about where your shoulders are right now. After that, stand up and do a gentle shoulder roll—then reply ‘Done.’”
 
 2. Set up the completion‐check exactly as in the Immediate flow:
 
@@ -257,12 +281,12 @@ Below is a breakdown of every state/transition. We name each “state” and the
 
 **Possible Inputs / Next Transitions:**
 
-* Exactly the same as in **`SEND_INTERVENTION_IMMEDIATE`**:
+* Exactly the same logic as in `SEND_INTERVENTION_IMMEDIATE`:
 
   * “Done” → → `REINFORCEMENT_FOLLOWUP`.
   * “No” → → `DID_YOU_GET_A_CHANCE`.
-  * Timeout (30 min) → → `DID_YOU_GET_A_CHANCE`.
-  * Any other text → ignore until “Done”/“No” or timeout.
+  * Timeout → → `DID_YOU_GET_A_CHANCE`.
+  * Other text → ignore until “Done”/“No” or timeout.
 
 *(In short, the only difference between Immediate vs. Reflective is the wording of the message you send. After sending, both do exactly the same completion logic.)*
 
@@ -273,13 +297,13 @@ Below is a breakdown of every state/transition. We name each “state” and the
 **State Name:** `REINFORCEMENT_FOLLOWUP`
 **Entry Condition:**
 
-* `completionResponse = “done”` from either `SEND_INTERVENTION_IMMEDIATE` or `SEND_INTERVENTION_REFLECTIVE`.
+* `completionResponse = "done"` from either `SEND_INTERVENTION_IMMEDIATE` or `SEND_INTERVENTION_REFLECTIVE`.
 
 **Action When Entered:**
 
-1. Immediately send a short “Great job!” message:
+1. Immediately send a short “Great job!” message (WhatsApp or SMS):
 
-   > **“Great job! 🎉”** (Optionally add a personalized note, e.g. “You just completed your habit in under one minute—keep it up!”).
+   > **“Great job! 🎉 You just completed your habit in under one minute—keep it up!”**
 
 2. Increment a persistent counter:
 
@@ -307,40 +331,51 @@ Below is a breakdown of every state/transition. We name each “state” and the
 
 **Action When Entered:**
 
-1. Send:
+1. **If channel = WhatsApp →** send a **Poll** with:
 
-   > **“Did you get a chance to try it? (Yes/No)”**
+   * **Title**: “Did you get a chance to try it?”
+   * **Option 1**: “Yes”
+   * **Option 2**: “No”
 
-2. Clear/initialize:
+2. **If channel = SMS/Other →** send a plain‐text message:
+
+   ```
+   Did you get a chance to try it?
+   1. Yes
+   2. No
+   (Reply with “1” or “2”)
+   ```
+
+3. Clear/initialize:
 
    * `gotChanceResponse = null`
    * Start a timer `GOT_CHANCE_TIMEOUT = 15 minutes`.
 
-3. Wait for user reply or timeout.
+4. Wait for user reply or timeout.
 
 **Possible Inputs / Next Transitions:**
 
-* **If user sends “Yes”** (or “yes,” case‐insensitive):
+* **If user selects Poll Option 1 (“Yes”) or replies “1”** before timeout:
 
   * Set `gotChanceResponse = true`.
   * Cancel `GOT_CHANCE_TIMEOUT`.
-  * Transition to **`CONTEXT_QUESTION`** (Step 8).
+  * Transition to `CONTEXT_QUESTION`.
 
-* **If user sends “No”** (case‐insensitive):
+* **If user selects Poll Option 2 (“No”) or replies “2”** before timeout:
 
   * Set `gotChanceResponse = false`.
   * Cancel `GOT_CHANCE_TIMEOUT`.
-  * Transition to **`BARRIER_REASON_NO_CHANCE`** (Step 9).
+  * Transition to `BARRIER_REASON_NO_CHANCE`.
 
-* **If `GOT_CHANCE_TIMEOUT` expires with no reply:**
+* **If `GOT_CHANCE_TIMEOUT` expires** (no reply within 15 min):
 
-  * Set `gotChanceResponse = “no_reply”`.
-  * Transition to **`IGNORED_PATH`** (Step 10).
+  * Set `gotChanceResponse = "no_reply"`.
+  * Transition to `IGNORED_PATH`.
 
-* **If user sends anything else** (e.g. free‐text not “Yes/No”):
+* **If user sends anything else** (free‐text not “Yes/No”):
 
-  * Option A: Attempt to parse out “Yes” or “No” keywords. If you detect either, handle accordingly.
-  * Option B: If you cannot parse, keep waiting until `GOT_CHANCE_TIMEOUT`. (In practice, the study text implies “If they don’t respond at all, go to Ignored.”)
+  * Option A: Attempt to parse out “Yes” or “No” keywords. If you detect either, route accordingly.
+  * Option B: If you cannot parse, keep waiting until `GOT_CHANCE_TIMEOUT`. (In practice, if they don’t respond, we go to Ignored.)
 
 ---
 
@@ -353,39 +388,49 @@ Below is a breakdown of every state/transition. We name each “state” and the
 
 **Action When Entered:**
 
-1. Send:
+1. **If channel = WhatsApp →** send a **Poll**:
 
-   > **“You did it! What was happening around you? Reply with a number:**
-   >
-   > 1. Alone & focused
-   > 2. With others around
-   > 3. In a distracting place
-   > 4. Busy & stressed”\*\*
+   * **Title**: “You did it! What was happening around you?”
+   * **Option 1**: “Alone & focused”
+   * **Option 2**: “With others around”
+   * **Option 3**: “In a distracting place”
+   * **Option 4**: “Busy & stressed”
 
-2. Initialize:
+2. **If channel = SMS/Other →** send a plain‐text message:
+
+   ```
+   You did it! What was happening around you?
+   1. Alone & focused
+   2. With others around
+   3. In a distracting place
+   4. Busy & stressed
+   (Reply with “1”, “2”, “3”, or “4”)
+   ```
+
+3. Initialize:
 
    * `contextResponse = null`
    * `contextTimerStarted = true`
-   * Start `CONTEXT_TIMEOUT = 15 minutes` (if they don’t answer which context, we will skip to weekly summary).
+   * Start `CONTEXT_TIMEOUT = 15 minutes` (if they don’t answer within 15 minutes, skip to weekly summary).
 
-3. Wait for user reply or timeout.
+4. Wait for user reply or timeout.
 
 **Possible Inputs / Next Transitions:**
 
-* **If user sends “1”, “2”, “3”, or “4”**:
+* **If user selects Poll Option 1–4 or replies “1”–“4”** before timeout:
 
-  * Set `contextResponse = [1–4]`.
+  * Set `contextResponse = [1..4]`.
   * Cancel `CONTEXT_TIMEOUT`.
-  * Transition to **`MOOD_QUESTION`** (Step 9).
+  * Transition to `MOOD_QUESTION`.
 
-* **If `CONTEXT_TIMEOUT` expires** (no valid code):
+* **If `CONTEXT_TIMEOUT` expires** (no valid code within 15 minutes):
 
   * Leave `contextResponse = null`.
-  * Transition directly to **`END_OF_DAY`** (skip mood and barrier steps).
+  * Transition directly to `END_OF_DAY` (skip mood and barrier steps).
 
 * **If user sends anything else**:
 
-  * Optionally parse if they text their own free answer. In the published protocol, they should pick 1–4. If they send something else, either ignore or interpret as “4 = Busy & stressed.” After 15 minutes, if no clear 1–4, skip ahead.
+  * Optionally parse if they text a free answer. In the published protocol, they should pick 1–4. If they send something else, either ignore or interpret as “4 = Busy & stressed.” After 15 minutes, if no clear 1–4, skip ahead to `END_OF_DAY`.
 
 ---
 
@@ -398,35 +443,48 @@ Below is a breakdown of every state/transition. We name each “state” and the
 
 **Action When Entered:**
 
-1. Send:
+1. **If channel = WhatsApp →** send a **Poll**:
 
-   > **“What best describes your mood before doing this?**
-   > 🙂 Relaxed  |  😐 Neutral  |  😫 Stressed”\*\*
+   * **Title**: “What best describes your mood before doing this?”
+   * **Option 1**: “🙂 Relaxed”
+   * **Option 2**: “😐 Neutral”
+   * **Option 3**: “😫 Stressed”
 
-2. Initialize:
+2. **If channel = SMS/Other →** send a plain‐text message:
+
+   ```
+   What best describes your mood before doing this?
+   1. 🙂 Relaxed
+   2. 😐 Neutral
+   3. 😫 Stressed
+   (Reply with “1”, “2”, or “3”)
+   ```
+
+3. Initialize:
 
    * `moodResponse = null`
    * `moodTimerStarted = true`
    * Start `MOOD_TIMEOUT = 15 minutes`.
 
-3. Wait for user reply or timeout.
+4. Wait for user reply or timeout.
 
 **Possible Inputs / Next Transitions:**
 
-* **If user sends one of “Relaxed,” “Neutral,” or “Stressed”** (or “1,” “2,” “3,” if you prefer numeric codes):
+* **If user selects Poll Option 1–3 or replies “1”–“3”** before timeout:
 
-  * Set `moodResponse` accordingly.
+  * Map “1” → Relaxed, “2” → Neutral, “3” → Stressed.
+  * Record `moodResponse` accordingly.
   * Cancel `MOOD_TIMEOUT`.
-  * Transition to **`BARRIER_CHECK_AFTER_CONTEXT_MOOD`** (Step 10).
+  * Transition to `BARRIER_CHECK_AFTER_CONTEXT_MOOD`.
 
-* **If `MOOD_TIMEOUT` expires** (no valid reply within 15 min):
+* **If `MOOD_TIMEOUT` expires** (no valid reply within 15 minutes):
 
   * Set `moodResponse = null`.
-  * Transition directly to **`END_OF_DAY`** (skip barrier check).
+  * Transition directly to `END_OF_DAY` (skip barrier check).
 
 * **If user sends any other text**:
 
-  * Optionally parse “yes”/“no” words to convert, but best practice is to ignore anything not exactly “Relaxed/Neutral/Stressed.” After 15 min, skip ahead.
+  * Optionally parse “Relaxed”/“Neutral”/“Stressed”; otherwise ignore until timeout. After 15 minutes, skip ahead.
 
 ---
 
@@ -439,11 +497,10 @@ Below is a breakdown of every state/transition. We name each “state” and the
 
 **Action When Entered:**
 
-1. Send:
+1. **If channel = WhatsApp or SMS/Other →** send a free‐text prompt:
 
    > **“Did something make this easier or harder today? What was it?”**
-
-   * This is a free‐text prompt—participants can type anything.
+   > (Participants can type anything—no Poll is used here.)
 
 2. Initialize:
 
@@ -455,17 +512,17 @@ Below is a breakdown of every state/transition. We name each “state” and the
 
 **Possible Inputs / Next Transitions:**
 
-* **If user sends any text** (free form):
+* **If user sends any text** (free‐form) within 30 minutes:
 
   * Record `barrierDetailResponse = [that text]`.
-  * Transition to **`END_OF_DAY`**.
+  * Transition to `END_OF_DAY`.
 
-* **If `BARRIER_DETAIL_TIMEOUT` expires** (no reply within 30 min):
+* **If `BARRIER_DETAIL_TIMEOUT` expires** (no reply in 30 minutes):
 
   * Leave `barrierDetailResponse = null`.
-  * Transition to **`END_OF_DAY`**.
+  * Transition to `END_OF_DAY`.
 
-*(Note: Once barrierQuestion is asked, there are no further questions. Even if they fail to reply, we still mark the end of the day’s flow.)*
+*(Note: Once you ask this free‐text barrier question, there are no further daily questions. Whether they reply or not, end the flow for the day.)*
 
 ---
 
@@ -478,18 +535,24 @@ Below is a breakdown of every state/transition. We name each “state” and the
 
 **Action When Entered:**
 
-1. Send:
+1. **If channel = WhatsApp →** send a **Poll**:
 
-   > **“Could you let me know why you couldn’t do it this time? Reply by typing, a quick audio, or a short video!”**
+   * **Title**: “Could you let me know why you couldn’t do it this time?”
+   * **Option 1**: “I didn’t have enough time”
+   * **Option 2**: “I didn’t understand the task”
+   * **Option 3**: “I didn’t feel motivated to do it”
+   * **Option 4**: “Other (please specify)”
 
-2. Then (immediately, in the same message or as a follow‐up) present multiple‐choice options:
+2. **If channel = SMS/Other →** send a plain‐text message:
 
-   > **“Option B: Response Options:**
-   >
-   > 1. I didn’t have enough time
-   > 2. I didn’t understand the task
-   > 3. I didn’t feel motivated to do it
-   > 4. Other (please specify)”\*\*
+   ```
+   Could you let me know why you couldn’t do it this time?
+   1. I didn’t have enough time
+   2. I didn’t understand the task
+   3. I didn’t feel motivated to do it
+   4. Other (please specify)
+   (Reply with “1”, “2”, “3”, or “4”)
+   ```
 
 3. Initialize:
 
@@ -501,17 +564,25 @@ Below is a breakdown of every state/transition. We name each “state” and the
 
 **Possible Inputs / Next Transitions:**
 
-* **If user replies with “1,” “2,” “3,” or “4”** (or any free reply if they choose “Other”):
+* **If user selects Poll Option 1–3 or replies “1”–“3”** before timeout:
 
-  * Record `barrierReasonResponse = [selected option or free text]`.
-  * Transition directly to **`END_OF_DAY`**.
+  * Record `barrierReasonResponse = [1..3]` (which you might map back to the exact text).
+  * Transition → `END_OF_DAY`.
 
-* **If `BARRIER_REASON_TIMEOUT` expires** (no reply within 30 min):
+* **If user selects Poll Option 4 (“Other”) or replies “4”** before timeout:
+
+  * Immediately send a follow‐up free‐text prompt (if Poll doesn’t natively allow text in the same step):
+
+    > “Please tell us briefly why…”
+  * Wait up to 30 minutes total for a free‐text reply; record whatever they send into `barrierReasonResponse` (as free‐text).
+  * Transition → `END_OF_DAY`.
+
+* **If `BARRIER_REASON_TIMEOUT` expires** (no reply in 30 minutes):
 
   * Leave `barrierReasonResponse = null`.
-  * Transition to **`END_OF_DAY`**.
+  * Transition → `END_OF_DAY`.
 
-*(No further questions are asked once we collect a barrier reason or time out.)*
+*(No further questions after Barrier Reason—end the day’s flow.)*
 
 ---
 
@@ -520,20 +591,20 @@ Below is a breakdown of every state/transition. We name each “state” and the
 **State Name:** `IGNORED_PATH`
 **Entry Condition:**
 
-* `gotChanceResponse = “no_reply”` from `DID_YOU_GET_A_CHANCE`.
+* `gotChanceResponse = “no_reply”` from `DID_YOU_GET_A_CHANCE` (i.e. they never answered “Yes” or “No”).
 
 **Action When Entered:**
 
-1. Send a two‐part message:
+1. **If channel = WhatsApp or SMS/Other →** send two messages in sequence (free text—no Poll):
 
-   1. **“What kept you from doing it today? Reply with one word, a quick audio, or a short video!”**
-   2. **“Building awareness takes time! Try watching the video again or setting a small goal to reflect on this habit at the end of the day.”**
+   1. “What kept you from doing it today? Reply with one word, a quick audio, or a short video!”
+   2. “Building awareness takes time! Try watching the video again or setting a small goal to reflect on this habit at the end of the day.”
 
 2. Mark `ignoredReminderSent = true`.
 
-3. No timers needed here; after sending those two lines, immediately transition to **`END_OF_DAY`**.
+3. Immediately transition → `END_OF_DAY`.
 
-*(There are no further questions for someone who never responded to “Did you get a chance?”)*
+*(There are no further daily questions for someone who never responded to “Did you get a chance?”—we simply encourage them and end the day.)*
 
 ---
 
@@ -548,21 +619,24 @@ Below is a breakdown of every state/transition. We name each “state” and the
   * `BARRIER_CHECK_AFTER_CONTEXT_MOOD`
   * `BARRIER_REASON_NO_CHANCE`
   * `IGNORED_PATH`
-  * `CONTEXT_QUESTION` timed out
-  * `MOOD_QUESTION` timed out
+  * Timeout from `CONTEXT_QUESTION`
+  * Timeout from `MOOD_QUESTION`
 
 **Action When Entered:**
 
 1. Mark `dayFlowCompleted = true`.
 2. No further messages are sent until either:
 
-   * The **daily scheduler** re‐fires at 00:00 AM local or the chosen “prompt hour” tomorrow → it will next run `COMMITMENT_PROMPT` again.
-   * Or the **weekly summary scheduler** fires (if 7 days have elapsed since enrollment or last weekly summary).
-   * Or the participant types “Ready” (which will override and immediately trigger the next day’s prompts).
+   * The **daily scheduler** re‐fires at 00:00 AM local (or at the chosen “prompt hour” tomorrow) → it will next run `COMMITMENT_PROMPT`.
+   * The **weekly summary scheduler** fires (if 7 days have elapsed since enrollment or last weekly summary).
+   * The participant types “Ready” (which will override and immediately trigger the next day’s prompts).
 
 **Note:**
 
-* If the participant sends an out‐of‐band message (anything that does not match any of these recognized inputs) once they’re in `END_OF_DAY`, ignore or optionally reply with a generic “We’re all set for today; see you tomorrow!”
+* If the participant sends an out‐of‐band message (anything that does not match any of the recognized inputs) while in `END_OF_DAY`, ignore it or optionally reply with a generic message such as:
+
+  > “We’re all set for today; we’ll be back tomorrow with your daily prompt.”
+* Remain in `END_OF_DAY` until one of the three triggers above occurs.
 
 ---
 
@@ -572,124 +646,202 @@ Below is a breakdown of every state/transition. We name each “state” and the
 **Entry Condition:**
 
 * It has been exactly **7 days** since the last time we sent a weekly summary (or since enrollment, for the first one).
-* Alternatively, your scheduler can check at midnight each day: “Has it been exactly 7 days since `weekStartDate`? If yes, fire weekly summary.”
+* Alternatively, your scheduler can check every midnight: “Has `today – weekStartDate ≥ 7 days`? If yes, fire `WEEKLY_SUMMARY`.”
 
 **Action When Entered:**
 
 1. Compute:
 
-   * `timesCompletedThisWeek =` the count of all days in the past seven that had `completionResponse = “done”`.
+   ```
+   timesCompletedThisWeek = count of days in the past 7 where
+                            completionResponse == "done"
+   ```
 
-2. Send:
+2. Send a single message (WhatsApp or SMS):
 
-   > **“Great job this week! 🎉 You completed your habit `\[timesCompletedThisWeek\]` times in the past 7 days! 🙌 Keep up the momentum—small actions add up!”**
+   > **“Great job this week! 🎉 You completed your habit `[timesCompletedThisWeek]` times in the past 7 days! 🙌 Keep up the momentum—small actions add up!”**
 
 3. Reset:
 
    * `timesCompletedThisWeek = 0`
-   * `weekStartDate = today` (so the next summary occurs seven days from now).
+   * `weekStartDate = today`  (so the next summary occurs seven days from now).
 
-4. Transition back to **`END_OF_DAY`** (await tomorrow’s daily scheduler).
+4. Transition → `END_OF_DAY` (await tomorrow’s daily scheduler).
 
 ---
 
 ## Putting It All in Sequence
 
-Below is a bullet‐point view of how a participant’s day might unfold. Each time you see a label in all caps (like `FEELING_PROMPT`), that refers to one of the states above.
+Below is a bullet‐point view of how a participant’s day might unfold. Whenever you see a label in all caps (like `FEELING_PROMPT`), that refers to one of the states above. Wherever a multiple‐choice question appears, note the two alternatives: “(WhatsApp Poll)” vs. “(SMS/Other).”
 
 1. **Daily Scheduler triggers `COMMITMENT_PROMPT` at 10 AM local time.**
 
-   1. If the participant types **“Ready”** earlier (after previous day is done), cancel the scheduled 10 AM send and immediately run `COMMITMENT_PROMPT`.
+   * If the participant types **“Ready”** earlier (after previous day is done), cancel the scheduled 10 AM send and immediately run `COMMITMENT_PROMPT`.
 
 2. **State = `COMMITMENT_PROMPT`.**
 
-   * Sent “You committed to trying … 1=Yes | 2=Not yet.”
-   * If no reply by 10 PM or “2” arrives → end for today.
-   * If “1” arrives → go to `FEELING_PROMPT`.
+   * **(WhatsApp Poll):** “You committed to trying a quick habit today—ready to go? 1=🚀 Let’s do it! 2=⏳ Not yet.”
+   * **(SMS/Other):** “You committed to trying a quick habit today—ready to go?
+
+     1. 🚀 Let’s do it!
+     2. ⏳ Not yet
+        (Reply with ‘1’ or ‘2’)”
+   * If no reply by 10 PM (or 12 h timeout) or “2” arrives → `END_OF_DAY`.
+   * If “1” arrives → `hasRespondedToCommitment = true` → `FEELING_PROMPT`.
 
 3. **State = `FEELING_PROMPT`.**
 
-   * Sent “How do you feel? 1–5.”
-   * If any “1–5” arrives → go to `RANDOM_ASSIGNMENT`.
-   * If “Ready” arrives → set feelingResponse = on\_demand → go to `RANDOM_ASSIGNMENT`.
-   * If 15 minutes elapse → feelingResponse = timed\_out → go to `RANDOM_ASSIGNMENT`.
+   * **(WhatsApp Poll):** “How do you feel about this first step? 1=😊 Excited 2=🤔 Curious 3=😃 Motivated 4=📖 Need info 5=⚖️ Not sure.”
+   * **(SMS/Other):** “How do you feel about this first step?
+
+     1. 😊 Excited
+     2. 🤔 Curious
+     3. 😃 Motivated
+     4. 📖 Need info
+     5. ⚖️ Not sure
+        (Reply with ‘1’, ‘2’, ‘3’, ‘4’, or ‘5’)”
+   * Wait up to 15 minutes:
+
+     * If Poll Option 1–5 (or “1”–“5”) arrives → `feelingResponse = [1..5]` → cancel timer → `RANDOM_ASSIGNMENT`.
+     * If user sends “Ready” → `feelingResponse = on_demand` → cancel timer → `RANDOM_ASSIGNMENT`.
+     * If 15 min expire → `feelingResponse = timed_out` → `RANDOM_ASSIGNMENT`.
 
 4. **State = `RANDOM_ASSIGNMENT`.**
 
-   * Generate `flowAssignmentToday` = “IMMEDIATE” or “REFLECTIVE” at random (50/50).
-   * If “IMMEDIATE” → go to `SEND_INTERVENTION_IMMEDIATE`.
-   * If “REFLECTIVE” → go to `SEND_INTERVENTION_REFLECTIVE`.
+   * Flip a coin → `flowAssignmentToday = "IMMEDIATE"` or `"REFLECTIVE"`.
+   * If “IMMEDIATE” → `SEND_INTERVENTION_IMMEDIATE`.
+   * If “REFLECTIVE” → `SEND_INTERVENTION_REFLECTIVE`.
 
-5. **State = `SEND_INTERVENTION_IMMEDIATE` or `SEND_INTERVENTION_REFLECTIVE`.**
+5. **State = `SEND_INTERVENTION_IMMEDIATE`** (or `SEND_INTERVENTION_REFLECTIVE`).
 
-   * Send either the immediate‐action text or the reflection‐first text (whichever branch).
-   * Start a 30 min `COMPLETION_TIMEOUT`.
-   * Wait for “Done” or “No,” else time out.
-   * If “Done” → go to `REINFORCEMENT_FOLLOWUP`.
-   * If “No” or timeout → go to `DID_YOU_GET_A_CHANCE`.
+   * **Common for both branches (WhatsApp or SMS):**
 
-6. **State = `REINFORCEMENT_FOLLOWUP`** (if user replied “Done”).
+     * **Immediate‐Action Text:**
 
-   * Send “Great job!”
-   * Increment `timesCompletedToday`.
-   * Go to `END_OF_DAY`.
+       > “Great! Right now, stand up and do three gentle shoulder rolls, then take three slow, full breaths. When you’re done, reply ‘Done.’”
+     * **Reflective‐Flow Text:**
 
-7. **State = `DID_YOU_GET_A_CHANCE`** (if user said “No” or never replied to the intervention).
+       > “Before you begin, pause for a moment: When was the last time you noticed your posture? Take 30 seconds to think about where your shoulders are right now. After that, stand up and do a gentle shoulder roll—then reply ‘Done.’”
+   * Start a `COMPLETION_TIMEOUT` (30 minutes).
+   * Wait for “Done” or “No” or timeout:
 
-   * Send “Did you get a chance to try it? (Yes/No)”
-   * Start a 15 min `GOT_CHANCE_TIMEOUT`.
-   * If “Yes” arrives → go to `CONTEXT_QUESTION`.
-   * If “No” arrives → go to `BARRIER_REASON_NO_CHANCE`.
-   * If 15 min expire → go to `IGNORED_PATH`.
+     * If “Done” → `completionResponse = done` → cancel timer → `REINFORCEMENT_FOLLOWUP`.
+     * If “No” → `completionResponse = no` → cancel timer → `DID_YOU_GET_A_CHANCE`.
+     * If timeout → `completionResponse = no_reply` → `DID_YOU_GET_A_CHANCE`.
+     * If any other text → ignore until “Done”/“No” or timeout.
 
-8. **State = `CONTEXT_QUESTION`** (if they said “Yes, I got a chance”).
+6. **State = `REINFORCEMENT_FOLLOWUP`.**
 
-   * Send “You did it! What was happening around you? 1–4.”
-   * Start a 15 min `CONTEXT_TIMEOUT`.
-   * If user picks 1–4 → go to `MOOD_QUESTION`.
-   * If timeout → go to `END_OF_DAY`.
+   * Send: “Great job! 🎉 You just completed your habit in under one minute—keep it up!”
+   * Increment `timesCompletedToday += 1`.
+   * Mark `hasBeenReinforcedToday = true`.
+   * → `END_OF_DAY`.
 
-9. **State = `MOOD_QUESTION`** (if they answered 1–4).
+7. **State = `DID_YOU_GET_A_CHANCE`.**
 
-   * Send “What best describes your mood? Relaxed / Neutral / Stressed.”
-   * Start a 15 min `MOOD_TIMEOUT`.
-   * If user replies → go to `BARRIER_CHECK_AFTER_CONTEXT_MOOD`.
-   * If timeout → go to `END_OF_DAY`.
+   * **(WhatsApp Poll):** “Did you get a chance to try it? 1=Yes 2=No.”
+   * **(SMS/Other):** “Did you get a chance to try it?
 
-10. **State = `BARRIER_CHECK_AFTER_CONTEXT_MOOD`** (if they answered mood).
+     1. Yes
+     2. No
+        (Reply with ‘1’ or ‘2’)”
+   * Start a `GOT_CHANCE_TIMEOUT` (15 minutes).
+   * Wait:
 
-    * Send “Did something make this easier or harder today? What was it?” (free text).
-    * Start a 30 min `BARRIER_DETAIL_TIMEOUT`.
-    * If user replies before timeout → go to `END_OF_DAY`.
-    * If timeout → go to `END_OF_DAY`.
+     * If Poll Option 1 (“Yes”) or reply “1” → `gotChanceResponse = true` → cancel timer → `CONTEXT_QUESTION`.
+     * If Poll Option 2 (“No”) or reply “2” → `gotChanceResponse = false` → cancel timer → `BARRIER_REASON_NO_CHANCE`.
+     * If timeout → `gotChanceResponse = no_reply` → `IGNORED_PATH`.
+     * If other text → attempt to parse “yes”/“no” or ignore until timeout.
 
-11. **State = `BARRIER_REASON_NO_CHANCE`** (if they said “No, I didn’t get a chance”).
+8. **State = `CONTEXT_QUESTION`.**
 
-    * Send “Why couldn’t you do it? 1–4 (or free text).”
-    * Start a 30 min `BARRIER_REASON_TIMEOUT`.
-    * If user replies → go to `END_OF_DAY`.
-    * If timeout → go to `END_OF_DAY`.
+   * **(WhatsApp Poll):** “You did it! What was happening around you? 1=Alone & focused 2=With others around 3=In a distracting place 4=Busy & stressed.”
+   * **(SMS/Other):** “You did it! What was happening around you?
 
-12. **State = `IGNORED_PATH`** (if they never replied “Yes”/“No” to “Did you get a chance?”).
+     1. Alone & focused
+     2. With others around
+     3. In a distracting place
+     4. Busy & stressed
+        (Reply with ‘1’, ‘2’, ‘3’, or ‘4’)”
+   * Start a `CONTEXT_TIMEOUT` (15 minutes).
+   * Wait:
 
-    * Send two messages:
+     * If Poll Option 1–4 or reply “1”–“4” → `contextResponse = [1..4]` → cancel timer → `MOOD_QUESTION`.
+     * If timeout → `contextResponse = null` → `END_OF_DAY`.
+     * If other text → attempt to parse or ignore until timeout.
 
-      1. “What kept you from doing it today? Reply with one word or audio/video.”
-      2. “Building awareness takes time! Try watching the video again or set a small goal for tonight.”
-    * Immediately go to `END_OF_DAY`.
+9. **State = `MOOD_QUESTION`.**
+
+   * **(WhatsApp Poll):** “What best describes your mood before doing this? 1=🙂 Relaxed 2=😐 Neutral 3=😫 Stressed.”
+   * **(SMS/Other):** “What best describes your mood before doing this?
+
+     1. 🙂 Relaxed
+     2. 😐 Neutral
+     3. 😫 Stressed
+        (Reply with ‘1’, ‘2’, or ‘3’)”
+   * Start a `MOOD_TIMEOUT` (15 minutes).
+   * Wait:
+
+     * If Poll Option 1–3 or reply “1”–“3” → `moodResponse` accordingly → cancel timer → `BARRIER_CHECK_AFTER_CONTEXT_MOOD`.
+     * If timeout → `moodResponse = null` → `END_OF_DAY`.
+     * If other text → ignore until timeout.
+
+10. **State = `BARRIER_CHECK_AFTER_CONTEXT_MOOD`.**
+
+    * Send free‐text prompt (WhatsApp or SMS):
+
+      > “Did something make this easier or harder today? What was it?”
+    * Start a `BARRIER_DETAIL_TIMEOUT` (30 minutes).
+    * Wait:
+
+      * If user sends any text → `barrierDetailResponse = [text]` → `END_OF_DAY`.
+      * If timeout → `barrierDetailResponse = null` → `END_OF_DAY`.
+
+11. **State = `BARRIER_REASON_NO_CHANCE`.**
+
+    * **(WhatsApp Poll):** “Could you let me know why you couldn’t do it this time? 1=I didn’t have enough time 2=I didn’t understand the task 3=I didn’t feel motivated to do it 4=Other (please specify).”
+    * **(SMS/Other):** “Could you let me know why you couldn’t do it this time?
+
+      1. I didn’t have enough time
+      2. I didn’t understand the task
+      3. I didn’t feel motivated to do it
+      4. Other (please specify)
+         (Reply with ‘1’, ‘2’, ‘3’, or ‘4’)”
+    * Start a `BARRIER_REASON_TIMEOUT` (30 minutes).
+    * Wait:
+
+      * If Poll Option 1–3 or reply “1”–“3” → `barrierReasonResponse = [1..3]` → `END_OF_DAY`.
+      * If Poll Option 4 or reply “4” → send follow‐up free‐text prompt (“Please specify why…”) → wait up to 30 minutes for a free‐text reply → record in `barrierReasonResponse` → `END_OF_DAY`.
+      * If timeout → `barrierReasonResponse = null` → `END_OF_DAY`.
+
+12. **State = `IGNORED_PATH`.**
+
+    * Send two free‐text messages (WhatsApp or SMS):
+
+      1. “What kept you from doing it today? Reply with one word, a quick audio, or a short video!”
+      2. “Building awareness takes time! Try watching the video again or setting a small goal to reflect on this habit at the end of the day.”
+    * Mark `ignoredReminderSent = true`.
+    * Immediately → `END_OF_DAY`.
 
 13. **State = `END_OF_DAY`.**
 
-    * Do nothing until tomorrow’s scheduler (or “Ready” override).
+    * Mark `dayFlowCompleted = true`.
+    * Wait until next day’s scheduler or “Ready” override or the weekly summary trigger.
+    * If the participant sends any out‐of‐band message while in `END_OF_DAY`, either ignore or optionally reply with:
+
+      > “We’re all set for today; we’ll be back tomorrow with your daily prompt.”
+    * Remain in `END_OF_DAY` until one of the three triggers occurs.
 
 14. **Weekly Summary Scheduler** (runs daily at midnight, for example):
 
     * If `today - weekStartDate ≥ 7 days`:
 
-      * Compute `timesCompletedThisWeek = sum of daily done’s`.
-      * Send “Great job this week! You completed your habit `[timesCompletedThisWeek]` times in the past 7 days.”
-      * Reset `timesCompletedThisWeek = 0`, set `weekStartDate = today`.
-      * Return to `END_OF_DAY`.
+      * Compute `timesCompletedThisWeek =` count of days in the past 7 where `completionResponse == "done"`.
+      * Send (WhatsApp or SMS):
+
+        > “Great job this week! 🎉 You completed your habit `[timesCompletedThisWeek]` times in the past 7 days! 🙌 Keep up the momentum—small actions add up!”
+      * Reset `timesCompletedThisWeek = 0` and `weekStartDate = today`.
+      * → `END_OF_DAY`.
 
 ---
 
@@ -706,7 +858,7 @@ For each participant, you must at minimum store:
    * `gotChanceResponse` (boolean or “no\_reply”)
    * `contextResponse` (integer 1–4 or null)
    * `moodResponse` (string among {“Relaxed,” “Neutral,” “Stressed”} or null)
-   * `barrierReasonResponse` (integer 1–4 or free‐text string or null)
+   * `barrierReasonResponse` (integer 1–4 or free‐text or null)
    * `barrierDetailResponse` (free‐text or null)
 
 2. **Counters and Timestamps:**
@@ -716,115 +868,296 @@ For each participant, you must at minimum store:
    * `timesCompletedThisWeek` (integer)
    * `weekStartDate` (date)
 
-3. **Timers:**
+3. **Timers (and/or “expires\_at” fields)**:
 
-   * `COMMITMENT_TIMEOUT` (optional, e.g. same‐day 12 hr)
-   * `FEELING_TIMEOUT` (e.g. 15 min)
-   * `COMPLETION_TIMEOUT` (30 min)
-   * `GOT_CHANCE_TIMEOUT` (15 min)
-   * `CONTEXT_TIMEOUT` (15 min)
-   * `MOOD_TIMEOUT` (15 min)
-   * `BARRIER_DETAIL_TIMEOUT` (30 min)
-   * `BARRIER_REASON_TIMEOUT` (30 min)
+   * `COMMITMENT_TIMEOUT` (12 hours)
+   * `FEELING_TIMEOUT` (15 minutes)
+   * `COMPLETION_TIMEOUT` (30 minutes)
+   * `GOT_CHANCE_TIMEOUT` (15 minutes)
+   * `CONTEXT_TIMEOUT` (15 minutes)
+   * `MOOD_TIMEOUT` (15 minutes)
+   * `BARRIER_DETAIL_TIMEOUT` (30 minutes)
+   * `BARRIER_REASON_TIMEOUT` (30 minutes)
 
-Timers can be implemented as expirations in a job queue or as “expires\_at” UTC timestamps stored in the participant record, plus a background worker that scans for expired timers every minute.
+Timers can be implemented as expirations in a job queue or as “expires\_at” UTC timestamps stored in the participant record, with a background worker that scans for expired timers every minute.
 
 ---
 
 ## Example “If/Else” Logic in Pseudodescriptive Form
 
-Below is an abridged, step‐by‐step “if/else”-style description for one day. You will see how each state leads to the next:
+Below is an abridged, step‐by‐step “if/else”-style description for one day. You can see exactly how each state leads to the next, including the channel‐specific Poll vs. SMS logic.
 
 1. **(Scheduler fires at 10:00 AM or user types “Ready”)**
 
-   * If `hasSeenOrientation = false`, send `ORIENTATION`, set `hasSeenOrientation = true`. Skip directly to end‐of‐day (no other prompts today).
-   * Else (hasSeenOrientation = true) → `COMMITMENT_PROMPT`.
+   * If `hasSeenOrientation = false`, send `ORIENTATION`, set `hasSeenOrientation = true`. Skip to `END_OF_DAY` (no other prompts today).
+   * Else (`hasSeenOrientation = true`) → `COMMITMENT_PROMPT`.
 
 2. **`COMMITMENT_PROMPT`:**
 
-   * Send “Ready?” message.
-   * Wait for “1” or “2” or `COMMITMENT_TIMEOUT`.
-   * If “1” → `hasRespondedToCommitment = true` → go to `FEELING_PROMPT`.
-   * Else (user typed “2” or timed out) → `hasRespondedToCommitment = false` → go to `END_OF_DAY`.
+   * **(WhatsApp Poll):** “You committed to trying… 1=🚀 Let’s do it! 2=⏳ Not yet.”
+   * **(SMS/Other):** “You committed to trying…
+
+     1. 🚀 Let’s do it!
+     2. ⏳ Not yet
+        (Reply with ‘1’ or ‘2’)”
+   * Wait for “1” or “2” or 12 hours.
+   * If “1” → `hasRespondedToCommitment = true` → `FEELING_PROMPT`.
+   * Else (“2” or no reply by timeout) → `hasRespondedToCommitment = false_for_today` → `END_OF_DAY`.
 
 3. **`FEELING_PROMPT`:**
 
-   * Send emotion question.
-   * Wait for “1–5” or “Ready” or `FEELING_TIMEOUT`.
-   * If “1–5” or “Ready” → set `feelingResponse` appropriately → go to `RANDOM_ASSIGNMENT`.
-   * If timeout → set `feelingResponse = “timed_out”` → go to `RANDOM_ASSIGNMENT`.
+   * **(WhatsApp Poll):** “How do you feel? 1=😊 Excited 2=🤔 Curious 3=😃 Motivated 4=📖 Need info 5=⚖️ Not sure.”
+   * **(SMS/Other):** “How do you feel?
+
+     1. 😊 Excited
+     2. 🤔 Curious
+     3. 😃 Motivated
+     4. 📖 Need info
+     5. ⚖️ Not sure
+        (Reply with ‘1’–‘5’)”
+   * Wait 15 minutes or “Ready.”
+   * If Poll Option 1–5 or reply “1”–“5” → `feelingResponse = [1..5]` → cancel timer → `RANDOM_ASSIGNMENT`.
+   * If “Ready” → `feelingResponse = on_demand` → cancel timer → `RANDOM_ASSIGNMENT`.
+   * If timeout → `feelingResponse = timed_out` → `RANDOM_ASSIGNMENT`.
 
 4. **`RANDOM_ASSIGNMENT`:**
 
-   * Flip a coin. If heads → `flowAssignmentToday = "IMMEDIATE"` → go to `SEND_INTERVENTION_IMMEDIATE`.
-   * If tails → `flowAssignmentToday = "REFLECTIVE"` → go to `SEND_INTERVENTION_REFLECTIVE`.
+   * Flip coin → `flowAssignmentToday = "IMMEDIATE"` or `"REFLECTIVE"`.
+   * If “IMMEDIATE” → `SEND_INTERVENTION_IMMEDIATE`.
+   * Else (“REFLECTIVE”) → `SEND_INTERVENTION_REFLECTIVE`.
 
-5. **`SEND_INTERVENTION_IMMEDIATE` or `SEND_INTERVENTION_REFLECTIVE`:**
+5. **`SEND_INTERVENTION_IMMEDIATE` / `SEND_INTERVENTION_REFLECTIVE`:**
 
-   * Send the appropriate text (action vs. reflection).
-   * Wait `COMPLETION_TIMEOUT` for “Done” or “No.”
-   * If “Done” → go to `REINFORCEMENT_FOLLOWUP`.
-   * If “No” or timeout → go to `DID_YOU_GET_A_CHANCE`.
+   * **Immediate‐Action or Reflective‐Flow text** (WhatsApp & SMS).
+   * Start 30 min `COMPLETION_TIMEOUT`.
+   * Wait for “Done” or “No” or timeout.
+   * If “Done” → `completionResponse = done` → cancel timer → `REINFORCEMENT_FOLLOWUP`.
+   * If “No” → `completionResponse = no` → cancel timer → `DID_YOU_GET_A_CHANCE`.
+   * If timeout → `completionResponse = no_reply` → `DID_YOU_GET_A_CHANCE`.
+   * Else ignore until one of those three.
 
 6. **`REINFORCEMENT_FOLLOWUP`:**
 
-   * Send “Great job!”
-   * Increment `timesCompletedToday` (for weekly summary).
-   * Go to `END_OF_DAY`.
+   * Send “Great job!” (WhatsApp or SMS).
+   * Increment `timesCompletedToday += 1`.
+   * → `END_OF_DAY`.
 
 7. **`DID_YOU_GET_A_CHANCE`:**
 
-   * Send “Did you get a chance?”
-   * Wait 15 min (`GOT_CHANCE_TIMEOUT`) for “Yes” or “No.”
-   * If “Yes” → go to `CONTEXT_QUESTION`.
-   * If “No” → go to `BARRIER_REASON_NO_CHANCE`.
-   * If timeout → go to `IGNORED_PATH`.
+   * **(WhatsApp Poll):** “Did you get a chance to try it? 1=Yes 2=No.”
+   * **(SMS/Other):** “Did you get a chance to try it?
+
+     1. Yes
+     2. No
+        (Reply with ‘1’ or ‘2’)”
+   * Start 15 min `GOT_CHANCE_TIMEOUT`.
+   * If Poll Option 1 or “1” → `gotChanceResponse = true` → cancel timer → `CONTEXT_QUESTION`.
+   * If Poll Option 2 or “2” → `gotChanceResponse = false` → cancel timer → `BARRIER_REASON_NO_CHANCE`.
+   * If timeout → `gotChanceResponse = no_reply` → `IGNORED_PATH`.
+   * Else ignore until one of those.
 
 8. **`CONTEXT_QUESTION`:**
 
-   * Send “What was happening around you? 1–4.”
-   * Wait 15 min.
-   * If user picks 1–4 → go to `MOOD_QUESTION`.
-   * Else (timeout or invalid) → go to `END_OF_DAY`.
+   * **(WhatsApp Poll):** “You did it! What was happening around you? 1=Alone & focused 2=With others around 3=In a distracting place 4=Busy & stressed.”
+   * **(SMS/Other):** “You did it! What was happening around you?
+
+     1. Alone & focused
+     2. With others around
+     3. In a distracting place
+     4. Busy & stressed
+        (Reply with ‘1’–‘4’)”
+   * Start 15 min `CONTEXT_TIMEOUT`.
+   * If Poll Option 1–4 or “1”–“4” → `contextResponse = [1..4]` → cancel timer → `MOOD_QUESTION`.
+   * If timeout → `contextResponse = null` → `END_OF_DAY`.
+   * Else ignore until one of those.
 
 9. **`MOOD_QUESTION`:**
 
-   * Send “What best describes your mood? Relaxed/Neutral/Stressed.”
-   * Wait 15 min.
-   * If user replies correctly → go to `BARRIER_CHECK_AFTER_CONTEXT_MOOD`.
-   * Else → go to `END_OF_DAY`.
+   * **(WhatsApp Poll):** “What best describes your mood? 1=🙂 Relaxed 2=😐 Neutral 3=😫 Stressed.”
+   * **(SMS/Other):** “What best describes your mood?
+
+     1. 🙂 Relaxed
+     2. 😐 Neutral
+     3. 😫 Stressed
+        (Reply with ‘1’–‘3’)”
+   * Start 15 min `MOOD_TIMEOUT`.
+   * If Poll Option 1–3 or “1”–“3” → `moodResponse` accordingly → cancel timer → `BARRIER_CHECK_AFTER_CONTEXT_MOOD`.
+   * If timeout → `moodResponse = null` → `END_OF_DAY`.
+   * Else ignore until one of those.
 
 10. **`BARRIER_CHECK_AFTER_CONTEXT_MOOD`:**
 
-    * Send free‐text “Did something make it easier/harder?”
-    * Wait 30 min.
-    * After any reply or timeout → go to `END_OF_DAY`.
+    * Send free‐text prompt: “Did something make this easier or harder today? What was it?”
+    * Start 30 min `BARRIER_DETAIL_TIMEOUT`.
+    * If user types any text → `barrierDetailResponse = [text]` → `END_OF_DAY`.
+    * If timeout → `barrierDetailResponse = null` → `END_OF_DAY`.
 
 11. **`BARRIER_REASON_NO_CHANCE`:**
 
-    * Send “Why couldn’t you do it? 1–4 or other.”
-    * Wait 30 min.
-    * After any reply or timeout → go to `END_OF_DAY`.
+    * **(WhatsApp Poll):** “Why couldn’t you do it this time? 1=I didn’t have enough time 2=I didn’t understand the task 3=I didn’t feel motivated to do it 4=Other.”
+    * **(SMS/Other):** “Why couldn’t you do it this time?
+
+      1. I didn’t have enough time
+      2. I didn’t understand the task
+      3. I didn’t feel motivated to do it
+      4. Other (please specify)
+         (Reply with ‘1’–‘4’)”
+    * Start 30 min `BARRIER_REASON_TIMEOUT`.
+    * If Poll Option 1–3 or “1”–“3” → `barrierReasonResponse = [1..3]` → `END_OF_DAY`.
+    * If Poll Option 4 or “4” → send “Please specify why…” → wait up to 30 min for free‐text → record in `barrierReasonResponse` → `END_OF_DAY`.
+    * If timeout → `barrierReasonResponse = null` → `END_OF_DAY`.
 
 12. **`IGNORED_PATH`:**
 
-    * Send “What kept you from doing it? … building awareness takes time.”
-    * Go to `END_OF_DAY`.
+    * Send two free‐text messages (no Poll):
+
+      1. “What kept you from doing it today? Reply with one word, a quick audio, or a short video!”
+      2. “Building awareness takes time! Try watching the video again or setting a small goal to reflect on this habit at the end of the day.”
+    * `ignoredReminderSent = true`.
+    * → `END_OF_DAY`.
 
 13. **`END_OF_DAY`:**
 
-    * Wait until next day’s `COMMITMENT_PROMPT` or “Ready” override, or until the weekly summary triggers.
+    * Mark `dayFlowCompleted = true`.
+    * Wait until next day’s `COMMITMENT_PROMPT` or “Ready” or Weekly Summary.
+    * If out‐of‐band message arrives (e.g. “Hello”), optionally reply with: “We’re all set for today; we’ll be back tomorrow with your daily prompt.”
+    * Remain in `END_OF_DAY`.
 
-14. **Weekly Summary (background job runs each midnight):**
+14. **Weekly Summary (background job each midnight):**
 
-    * If `today - weekStartDate ≥ 7 days`, compute `timesCompletedThisWeek`, send summary message, reset counters, set `weekStartDate = today`.
-    * Return to `END_OF_DAY`.
+    * If `today - weekStartDate ≥ 7 days`, compute `timesCompletedThisWeek` and send:
+
+      > “Great job this week! 🎉 You completed your habit `[timesCompletedThisWeek]` times in the past 7 days! 🙌 Keep up the momentum—small actions add up!”
+    * Reset `timesCompletedThisWeek = 0` and `weekStartDate = today`.
+    * → `END_OF_DAY`.
+
+---
+
+## Data Model & Persistence
+
+For each participant, you must at minimum store:
+
+1. **Booleans/Flags:**
+
+   * `hasSeenOrientation` (boolean)
+   * `hasRespondedToCommitment` (boolean)
+   * `flowAssignmentToday` (string: “IMMEDIATE” or “REFLECTIVE”)
+   * `completionResponse` (string: “done,” “no,” “no\_reply”)
+   * `gotChanceResponse` (boolean or “no\_reply”)
+   * `contextResponse` (integer 1–4 or null)
+   * `moodResponse` (string among {“Relaxed,” “Neutral,” “Stressed”} or null)
+   * `barrierReasonResponse` (integer 1–4 or free‐text or null)
+   * `barrierDetailResponse` (free‐text or null)
+
+2. **Counters and Timestamps:**
+
+   * `lastCommitmentDate` (date)
+   * `timesCompletedToday` (integer, 0 or 1)
+   * `timesCompletedThisWeek` (integer)
+   * `weekStartDate` (date)
+
+3. **Timers (or “expires\_at” fields):**
+
+   * `COMMITMENT_TIMEOUT` (12 hours)
+   * `FEELING_TIMEOUT` (15 minutes)
+   * `COMPLETION_TIMEOUT` (30 minutes)
+   * `GOT_CHANCE_TIMEOUT` (15 minutes)
+   * `CONTEXT_TIMEOUT` (15 minutes)
+   * `MOOD_TIMEOUT` (15 minutes)
+   * `BARRIER_DETAIL_TIMEOUT` (30 minutes)
+   * `BARRIER_REASON_TIMEOUT` (30 minutes)
+
+Timers can be implemented either via a task‐queue (scheduling a callback when they expire) or by storing an “expires\_at” timestamp in each participant’s record and having a background process poll for expirations every minute.
+
+---
+
+## Example “If/Else” Logic in Pseudodescriptive Form (Summary)
+
+1. **(Scheduler fires or user sends “Ready”)**
+
+   * If `hasSeenOrientation = false`, send `ORIENTATION`; set `hasSeenOrientation = true`; → `END_OF_DAY`.
+   * Else → `COMMITMENT_PROMPT`.
+
+2. **`COMMITMENT_PROMPT`:**
+
+   * (WhatsApp Poll or SMS text) “Ready to do the habit today? 1=Yes 2=Not yet.”
+   * If “1” → `hasRespondedToCommitment = true` → `FEELING_PROMPT`.
+   * Else (“2” or timeout) → `hasRespondedToCommitment = false_for_today` → `END_OF_DAY`.
+
+3. **`FEELING_PROMPT`:**
+
+   * (WhatsApp Poll or SMS) “How do you feel? 1–5.”
+   * If Poll Option 1–5 or SMS “1”–“5” → `feelingResponse` → `RANDOM_ASSIGNMENT`.
+   * If SMS “Ready” → `feelingResponse = on_demand` → `RANDOM_ASSIGNMENT`.
+   * If 15 min timeout → `feelingResponse = timed_out` → `RANDOM_ASSIGNMENT`.
+
+4. **`RANDOM_ASSIGNMENT`:**
+
+   * Flip coin → “IMMEDIATE” or “REFLECTIVE” → corresponding next state.
+
+5. **`SEND_INTERVENTION_IMMEDIATE` / `SEND_INTERVENTION_REFLECTIVE`:**
+
+   * Send action vs. reflection text.
+   * Wait 30 min for “Done” or “No” or timeout.
+   * If “Done” → `REINFORCEMENT_FOLLOWUP`.
+   * If “No” or timeout → `DID_YOU_GET_A_CHANCE`.
+
+6. **`REINFORCEMENT_FOLLOWUP`:**
+
+   * Send “Great job!” → increment `timesCompletedToday` → `END_OF_DAY`.
+
+7. **`DID_YOU_GET_A_CHANCE`:**
+
+   * (WhatsApp Poll or SMS) “Did you get a chance? 1=Yes 2=No.”
+   * Wait 15 min.
+   * If “1” → `CONTEXT_QUESTION`.
+   * If “2” → `BARRIER_REASON_NO_CHANCE`.
+   * If timeout → `IGNORED_PATH`.
+
+8. **`CONTEXT_QUESTION`:**
+
+   * (WhatsApp Poll or SMS) “You did it! What was happening around you? 1–4.”
+   * Wait 15 min.
+   * If “1”–“4” → `MOOD_QUESTION`.
+   * Else timeout → `END_OF_DAY`.
+
+9. **`MOOD_QUESTION`:**
+
+   * (WhatsApp Poll or SMS) “What best describes your mood? 1=Relaxed 2=Neutral 3=Stressed.”
+   * Wait 15 min.
+   * If “1”–“3” → `BARRIER_CHECK_AFTER_CONTEXT_MOOD`.
+   * Else timeout → `END_OF_DAY`.
+
+10. **`BARRIER_CHECK_AFTER_CONTEXT_MOOD`:**
+
+    * Free‐text: “Did something make it easier or harder today? What was it?”
+    * Wait 30 min.
+    * On any reply or timeout → `END_OF_DAY`.
+
+11. **`BARRIER_REASON_NO_CHANCE`:**
+
+    * (WhatsApp Poll or SMS) “Why couldn’t you do it? 1–4 (Other → free‐text).”
+    * Wait 30 min.
+    * On any reply or timeout → `END_OF_DAY`.
+
+12. **`IGNORED_PATH`:**
+
+    * Free‐text encouragement: two‐part message.
+    * → `END_OF_DAY`.
+
+13. **`END_OF_DAY`:**
+
+    * Wait until next day’s scheduler or “Ready” or Weekly Summary.
+
+14. **Weekly Summary (daily midnight job):**
+
+    * If `today - weekStartDate ≥ 7 days`: compute and send week summary → reset counters → `END_OF_DAY`.
 
 ---
 
 ## Key Implementation Details
 
-1. **“On‐Demand” Override (“Ready”):**
+1. **On‐Demand Override (“Ready”):**
 
    * At any time *after* a previous day’s flow has ended, if the system sees an incoming text exactly equal to “Ready” (case‐insensitive), forcibly start that participant’s `COMMITMENT_PROMPT` state immediately—regardless of the daily scheduled time.
    * Once you do that, cancel any previously scheduled daily prompt for that participant (to avoid duplicating).
@@ -837,7 +1170,7 @@ Below is an abridged, step‐by‐step “if/else”-style description for one d
 3. **Persistent Data Store:**
 
    * Each participant’s conversation must be stored in a database table keyed by `participantId` (and perhaps by `date`).
-   * Every message you send should be logged (with a timestamp) along with any user reply you receive, plus the time you recorded it. This enables you to compute the weekly summary.\`
+   * Every message you send should be logged (with a timestamp) along with any user reply you receive, plus the time you recorded it. This enables you to compute the weekly summary.
 
 4. **Random Assignment Consistency:**
 
@@ -858,7 +1191,7 @@ Below is an abridged, step‐by‐step “if/else”-style description for one d
 
 ## Final State Diagram (for Reference)
 
-Below is how all the states link to each other. You can use this as a “roadmap” when writing your code.
+Below is how all the states link to each other. You can use this as a “roadmap” when writing your code:
 
 ```
 ENROLLMENT (ORIENTATION)
@@ -889,4 +1222,9 @@ COMMITMENT_PROMPT ─── “1” ──▶ FEELING_PROMPT ───▶ RANDOM
 
 ## Conclusion
 
-This specification enumerates every state, every timer, and every conditional transition you need to implement the exact same logic as in Figures 1 and 2 from the WhatsApp study. A developer can now map each “state” to a function or method in their code, wire up timers or job‐queue events for each timeout, and route incoming WhatsApp messages or button clicks into these state machines. From there, you have enough information to send precisely the right prompts, collect exactly the right numerical or free‐text responses, randomize appropriately, and generate a weekly summary.
+This specification enumerates every state, every timer, and every conditional transition you need to implement the exact same logic as in Figures 1 and 2 from the WhatsApp study, with the added clarification that:
+
+* **All multiple‐choice questions** are delivered as **native Polls on WhatsApp** (for a tap‐to‐choose experience), and
+* They fall back to **ID‐based numeric replies on SMS/Other** (plain text) if Polls are not available.
+
+A developer can now map each “state” to a function or method in their code, wire up timers or job‐queue events for each timeout, and route incoming WhatsApp Poll results or plain‐text “1”/“2” messages into these state machines. From there, you have everything needed to send precisely the right prompts, collect exactly the right Poll responses or free‐text replies, randomize appropriately, and generate a weekly summary.
