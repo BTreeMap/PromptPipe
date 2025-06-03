@@ -7,13 +7,13 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+	"github.com/BTreeMap/PromptPipe/internal/flow"
 
 	"github.com/BTreeMap/PromptPipe/internal/genai"
 	"github.com/BTreeMap/PromptPipe/internal/messaging"
@@ -123,6 +123,12 @@ func Run(waOpts []whatsapp.Option, storeOpts []store.Option, genaiOpts []genai.O
 		gaClient = nil
 	}
 
+	// Register flow generators
+	// Static and branch are registered init(); register GenAI if available
+	if gaClient != nil {
+		flow.Register(models.PromptTypeGenAI, &flow.GenAIGenerator{Client: gaClient})
+	}
+
 	http.HandleFunc("/send", sendHandler)
 	http.HandleFunc("/schedule", scheduleHandler)
 	http.HandleFunc("/receipts", receiptsHandler)
@@ -161,62 +167,24 @@ func sendHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Determine prompt type if not specified
-	if p.Type == "" {
-		switch {
-		case p.SystemPrompt != "" && p.UserPrompt != "" && gaClient != nil:
-			p.Type = models.PromptTypeGenAI
-		case len(p.BranchOptions) > 0:
-			p.Type = models.PromptTypeBranch
-		default:
-			p.Type = models.PromptTypeStatic
-		}
-	}
-	// Validate prompt based on type
-	switch p.Type {
-	case models.PromptTypeStatic:
-		if p.Body == "" {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-	case models.PromptTypeGenAI:
-		if gaClient == nil || p.SystemPrompt == "" || p.UserPrompt == "" {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-	case models.PromptTypeBranch:
-		if len(p.BranchOptions) == 0 {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-	default:
+	// Validate required field: to
+	if p.To == "" {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	// Construct message body based on type
-	var msgBody string
-	switch p.Type {
-	case models.PromptTypeStatic:
-		msgBody = p.Body
-	case models.PromptTypeGenAI:
-		generated, err := gaClient.GeneratePrompt(p.SystemPrompt, p.UserPrompt)
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			log.Printf("GenAI generation error: %v", err)
-			return
-		}
-		msgBody = generated
-		p.Body = generated
-	case models.PromptTypeBranch:
-		// Format branch options
-		sb := fmt.Sprintf("%s\n", p.Body)
-		for i, opt := range p.BranchOptions {
-			sb += fmt.Sprintf("%d. %s: %s\n", i+1, opt.Label, opt.Body)
-		}
-		msgBody = sb
+	// Default to static type if not specified
+	if p.Type == "" {
+		p.Type = models.PromptTypeStatic
+	}
+	// Generate message body via pluggable flow
+	msg, err := flow.Generate(context.Background(), p)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		log.Printf("Flow generation error: %v", err)
+		return
 	}
 
-	err := msgService.SendMessage(context.Background(), p.To, msgBody)
+	err = msgService.SendMessage(context.Background(), p.To, msg)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		log.Printf("Error sending message: %v", err)
@@ -236,16 +204,13 @@ func scheduleHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Invalid JSON in scheduleHandler: %v", err)
 		return
 	}
-	// Determine prompt type if not specified
+	// Validate required fields: to
+	if p.To == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
 	if p.Type == "" {
-		switch {
-		case p.SystemPrompt != "" && p.UserPrompt != "" && gaClient != nil:
-			p.Type = models.PromptTypeGenAI
-		case len(p.BranchOptions) > 0:
-			p.Type = models.PromptTypeBranch
-		default:
-			p.Type = models.PromptTypeStatic
-		}
+		p.Type = models.PromptTypeStatic
 	}
 	// Additional validation based on type
 	switch p.Type {
@@ -279,31 +244,18 @@ func scheduleHandler(w http.ResponseWriter, r *http.Request) {
 	// Capture prompt locally for closure
 	job := p
 	if err := sched.AddJob(p.Cron, func() {
-		// Construct message based on prompt type
-		var msg string
-		switch job.Type {
-		case models.PromptTypeStatic:
-			msg = job.Body
-		case models.PromptTypeGenAI:
-			if gaClient != nil {
-				gen, err := gaClient.GeneratePrompt(job.SystemPrompt, job.UserPrompt)
-				if err != nil {
-					log.Printf("GenAI generation error: %v", err)
-					return
-				}
-				msg = gen
-			} else {
-				msg = job.Body
-			}
-		case models.PromptTypeBranch:
-			sb := fmt.Sprintf("%s\n", job.Body)
-			for i, opt := range job.BranchOptions {
-				sb += fmt.Sprintf("%d. %s: %s\n", i+1, opt.Label, opt.Body)
-			}
-			msg = sb
+		// Generate message body via flow
+		msg, err := flow.Generate(context.Background(), job)
+		if err != nil {
+			log.Printf("Flow generation error: %v", err)
+			return
 		}
 		if err := msgService.SendMessage(context.Background(), job.To, msg); err != nil {
-			log.Printf("Error sending scheduled message: %v", err)
+			log.Printf("Scheduled job send error: %v", err)
+			return
+		}
+		if err := st.AddReceipt(models.Receipt{To: job.To, Status: "sent", Time: time.Now().Unix()}); err != nil {
+			log.Printf("Error adding scheduled receipt: %v", err)
 		}
 	}); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)

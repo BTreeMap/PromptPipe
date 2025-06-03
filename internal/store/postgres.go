@@ -106,3 +106,9 @@ func (s *PostgresStore) GetResponses() ([]models.Response, error) {
 	}
 	return responses, nil
 }
+
+// ClearReceipts deletes all records in receipts table (for tests).
+func (s *PostgresStore) ClearReceipts() error {
+	_, err := s.db.Exec("DELETE FROM receipts")
+	return err
+}

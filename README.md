@@ -47,9 +47,12 @@ PromptPipe is a Go-based messaging service that delivers adaptive-intervention p
 - **Pluggable messaging drivers**: Easily switch between WhatsApp, Twilio, or other providers without changing core logic.
 - **Send dynamic payloads**: text, media, and template messages with custom variables.
 - **GenAI-enhanced content**: Use OpenAI to generate message content dynamically.
+- **Branch flows**: Present selectable branch options to participants.
+- **Custom flows**: Plug in your own `Generator` implementations for fully customized message-generation logic.
 - **Receipt tracking**: Capture sent, delivered, and read events.
 - **Modular design**: Integrates with any adaptive-intervention framework.
 - **Clear REST API**: Easy integration with your application.
+- **Customizable Message Flows**: Define and register custom flow generators for handling different prompt types.
 
 ## Installation
 
@@ -183,23 +186,28 @@ Provides statistics over collected responses (total count, per sender counts, av
 
 ### Prompt
 
-Represents a message to be sent.
+Represents a message to be sent, supporting multiple flow types (static, GenAI, branch, or custom).
 
 ```json
 {
   "to": "string (E.164 phone number)",
   "cron": "string (cron expression, optional for /send)",
-  "body": "string (message content)",
+  "type": "string (one of \"static\", \"genai\", \"branch\", \"custom\"; defaults to \"static\")",
+  "body": "string (message content or prompt template)",
   "system_prompt": "string (optional system prompt for GenAI)",
-  "user_prompt": "string (optional user prompt for GenAI)"
+  "user_prompt": "string (optional user prompt for GenAI)",
+  "branch_options": [ { "label": "string", "body": "string" } ],
+  // custom flow modules may define additional fields here
 }
 ```
 
 - `to`: The recipient's WhatsApp phone number in E.164 format (e.g., `+15551234567`).
 - `cron`: A standard cron expression (e.g., `0 9 * * *` for 9 AM daily). Required for `/schedule`.
-- `body`: The text content of the message.
+- `type`: The type of flow to use for generating the message (e.g., "static", "genai", "branch", "custom").
+- `body`: The text content of the message or prompt template.
 - `system_prompt`: Optional system prompt for generating dynamic content using GenAI.
 - `user_prompt`: Optional user prompt for generating dynamic content using GenAI.
+- `branch_options`: Optional list of branch options for "branch" type flows.
 
 ### Receipt
 
@@ -261,6 +269,38 @@ The system will use the PostgreSQL store if `DATABASE_URL` is set, otherwise it 
 | API_ADDR             | API server address                         |
 | OPENAI_API_KEY       | API key for OpenAI GenAI operations         |
 | MESSAGING_DRIVER     | Messaging driver to use (e.g., "whatsapp", "twilio") |
+
+## Customizable Message Flows
+
+PromptPipe now supports a pluggable flow engine for generating message bodies based on `PromptType`.
+You can register your own `flow.Generator` implementations to handle custom prompt types.
+
+Built-in generators:
+- **static**: sends the raw `body` field.
+- **genai**: uses the GenAI client to generate content (requires `system_prompt` and `user_prompt`).
+- **branch**: formats `branch_options` as a numbered list.
+
+Register a custom flow in your Go code:
+
+```go
+import (
+  "github.com/BTreeMap/PromptPipe/internal/flow"
+  "github.com/BTreeMap/PromptPipe/internal/models"
+)
+
+// Define a new generator
+type MyCustomGen struct{}
+func (g *MyCustomGen) Generate(ctx context.Context, p models.Prompt) (string, error) {
+    // your custom logic
+    return fmt.Sprintf("Custom: %s", p.Body), nil
+}
+
+func init() {
+    flow.Register(models.PromptType("custom"), &MyCustomGen{})
+}
+```
+
+When the API receives a prompt with `type: "custom"`, it will invoke your generator automatically via the flow registry.
 
 ## Development
 

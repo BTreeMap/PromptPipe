@@ -13,6 +13,8 @@ const (
 	PromptTypeGenAI PromptType = "genai"
 	// PromptTypeBranch sends a prompt with selectable branches.
 	PromptTypeBranch PromptType = "branch"
+	// PromptTypeCustom allows pluggable custom flow generators
+	PromptTypeCustom PromptType = "custom"
 )
 
 // BranchOption represents a selectable option for branch-type prompts.
