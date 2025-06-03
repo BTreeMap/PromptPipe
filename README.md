@@ -276,17 +276,21 @@ The system will use the PostgreSQL store if `DATABASE_URL` is set, otherwise it 
 ## Custom Flows
 
 You can define your own message-generation flows by implementing the `flow.Generator` interface:
+
 ```go
  type Generator interface {
      Generate(ctx context.Context, p models.Prompt) (string, error)
  }
 ```
+
 Then register your generator with a `PromptType` in an `init()` function:
+
 ```go
  func init() {
      flow.Register(models.PromptTypeCustom, &MyCustomGenerator{})
  }
 ```
+
 Set `type: "custom"` in your `Prompt` JSON; the API will dispatch to your generator.
 
 ## Development
