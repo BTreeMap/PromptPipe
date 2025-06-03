@@ -28,6 +28,7 @@ type Prompt struct {
 	To            string         `json:"to"`
 	Cron          string         `json:"cron,omitempty"`
 	Type          PromptType     `json:"type,omitempty"`
+	State         string         `json:"state,omitempty"` // current state for custom flows
 	Body          string         `json:"body,omitempty"`
 	SystemPrompt  string         `json:"system_prompt,omitempty"`
 	UserPrompt    string         `json:"user_prompt,omitempty"`

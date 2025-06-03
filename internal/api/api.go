@@ -119,6 +119,8 @@ func Run(waOpts []whatsapp.Option, storeOpts []store.Option, genaiOpts []genai.O
 		if err != nil {
 			log.Fatalf("Failed to create GenAI client: %v", err)
 		}
+		// Register GenAI flow generator
+		flow.Register(models.PromptTypeGenAI, &flow.GenAIGenerator{Client: gaClient})
 	} else {
 		gaClient = nil
 	}

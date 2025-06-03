@@ -23,6 +23,7 @@
 - [Receipt Tracking](#receipt-tracking)
 - [Storage Backends](#storage-backends)
 - [Environment Variables](#environment-variables)
+- [Custom Flows](#custom-flows)
 - [Development](#development)
 - [License](#license)
 
@@ -33,11 +34,13 @@ PromptPipe is a Go-based messaging service that delivers adaptive-intervention p
 ## Architecture
 
 - **Go Core**: High-performance, concurrent backend written in Go.
-- **Messaging Service**: Abstracts message delivery to support multiple providers (WhatsApp, Twilio, etc.) (`internal/messaging`).
-- **WhatsApp Client**: Handles WhatsApp network communication (`internal/whatsapp`).
+- **Whatsmeow Integration**: Programmable WhatsApp client for messaging.
 - **API Layer**: RESTful endpoints for scheduling, sending, and tracking prompts (`internal/api`).
 - **Scheduler**: Cron-based scheduling for recurring or one-time prompts (`internal/scheduler`).
 - **Store**: Persists scheduled prompts and receipt events; supports in-memory and PostgreSQL (`internal/store`).
+- **Message Flow**: Pluggable flow generators produce message bodies (`internal/flow`).
+  - **Flow Generators**: Pluggable modules under `internal/flow` that transform a `Prompt` into a message string. By default, `static` and `branch` are registered; you can register your own generators (e.g. `genai` or `custom`).
+- **WhatsApp Client**: Handles WhatsApp network communication (`internal/whatsapp`).
 - **GenAI**: Optional OpenAI integration for dynamic content (`internal/genai`).
 - **Models**: Shared data structures (`internal/models`).
 
@@ -270,37 +273,21 @@ The system will use the PostgreSQL store if `DATABASE_URL` is set, otherwise it 
 | OPENAI_API_KEY       | API key for OpenAI GenAI operations         |
 | MESSAGING_DRIVER     | Messaging driver to use (e.g., "whatsapp", "twilio") |
 
-## Customizable Message Flows
+## Custom Flows
 
-PromptPipe now supports a pluggable flow engine for generating message bodies based on `PromptType`.
-You can register your own `flow.Generator` implementations to handle custom prompt types.
-
-Built-in generators:
-- **static**: sends the raw `body` field.
-- **genai**: uses the GenAI client to generate content (requires `system_prompt` and `user_prompt`).
-- **branch**: formats `branch_options` as a numbered list.
-
-Register a custom flow in your Go code:
-
+You can define your own message-generation flows by implementing the `flow.Generator` interface:
 ```go
-import (
-  "github.com/BTreeMap/PromptPipe/internal/flow"
-  "github.com/BTreeMap/PromptPipe/internal/models"
-)
-
-// Define a new generator
-type MyCustomGen struct{}
-func (g *MyCustomGen) Generate(ctx context.Context, p models.Prompt) (string, error) {
-    // your custom logic
-    return fmt.Sprintf("Custom: %s", p.Body), nil
-}
-
-func init() {
-    flow.Register(models.PromptType("custom"), &MyCustomGen{})
-}
+ type Generator interface {
+     Generate(ctx context.Context, p models.Prompt) (string, error)
+ }
 ```
-
-When the API receives a prompt with `type: "custom"`, it will invoke your generator automatically via the flow registry.
+Then register your generator with a `PromptType` in an `init()` function:
+```go
+ func init() {
+     flow.Register(models.PromptTypeCustom, &MyCustomGenerator{})
+ }
+```
+Set `type: "custom"` in your `Prompt` JSON; the API will dispatch to your generator.
 
 ## Development
 
