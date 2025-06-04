@@ -3,14 +3,14 @@ name: CI
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
   schedule:
-    - cron: '0 0 * * *'
+    - cron: '0 16 * * *'
 
 jobs:
   setup-env:
+    # Prepare common variables: date, timestamp, repo, and short SHA
     runs-on: ubuntu-24.04
+    if: github.event_name == 'schedule' || (github.event_name == 'push' && contains(github.event.head_commit.message, 'run-ci'))
     outputs:
       date: ${{ steps.vars.outputs.date }}
       date_time: ${{ steps.vars.outputs.date_time }}
@@ -86,7 +86,7 @@ jobs:
     needs: build-matrix
     runs-on: ubuntu-24.04
     permissions:
-      package: write
+      packages: write
     steps:
       - name: Download built binaries
         uses: actions/download-artifact@v4
