@@ -83,7 +83,7 @@ jobs:
           path: build/promptpipe-${{ matrix.platform }}
       
   docker-build:
-    needs: build-matrix
+    needs: [setup-env, build-matrix]
     runs-on: ubuntu-24.04
     permissions:
       packages: write
@@ -131,7 +131,6 @@ jobs:
 
   release:
     needs: [setup-env, build-matrix]
-    if: github.event_name == 'push'
     runs-on: ubuntu-24.04
     permissions:
       contents: write
