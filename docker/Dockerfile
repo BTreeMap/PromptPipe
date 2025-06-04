@@ -1,5 +1,3 @@
-ARG TARGETARCH
-
 FROM scratch
 
 COPY --chown=nobody:nogroup artifacts/promptpipe-${TARGETARCH} /opt/promptpipe/promptpipe
