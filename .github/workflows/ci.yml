@@ -121,9 +121,8 @@ jobs:
           context: docker
           file: docker/Dockerfile
           platforms: linux/amd64,linux/arm64
-          build-args: |
-            TARGETARCH=${{ matrix.platform }}
-            SOURCE_DATE_EPOCH=${{ needs.setup-env.outputs.source_date_epoch }}
+          env:
+            SOURCE_DATE_EPOCH: ${{ needs.setup-env.outputs.source_date_epoch }}
           tags: |
             ghcr.io/${{ needs.setup-env.outputs.repo }}:latest
             ghcr.io/${{ needs.setup-env.outputs.repo }}:${{ needs.setup-env.outputs.date }}
