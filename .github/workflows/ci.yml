@@ -1,0 +1,114 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 0 * * *'
+
+jobs:
+  setup-env:
+    runs-on: ubuntu-24.04
+    outputs:
+      date: ${{ steps.vars.outputs.date }}
+      date_time: ${{ steps.vars.outputs.date_time }}
+      source_date_epoch: ${{ steps.vars.outputs.source_date_epoch }}
+      repo: ${{ steps.vars.outputs.repo }}
+      short_sha: ${{ steps.vars.outputs.short_sha }}
+    steps:
+      - name: Generate common variables
+        id: vars
+        run: |
+          now=$(date +%s)
+          date=$(date -u -d "@$now" '+%Y-%m-%d')
+          date_time=$(date -u -d "@$now" '+%Y-%m-%d.%H-%M-%S')
+          year_month=$(date -u -d "@$now" '+%Y-%m')
+          source_date_epoch=$(date -u -d "${year_month}-01 00:00:00" '+%s')
+          echo "date=$date" >> $GITHUB_OUTPUT
+          echo "date_time=$date_time" >> $GITHUB_OUTPUT
+          echo "source_date_epoch=$source_date_epoch" >> $GITHUB_OUTPUT
+          echo "repo=${GITHUB_REPOSITORY,,}" >> $GITHUB_OUTPUT
+          echo "short_sha=${GITHUB_SHA:0:8}" >> $GITHUB_OUTPUT
+
+  build-matrix:
+    needs: setup-env
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - platform: amd64
+            runner: ubuntu-24.04
+          - platform: arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Cache Go modules
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/go-build
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+          check-latest: true
+
+      - name: Install dependencies
+        run: go mod download
+
+      - name: Run tests
+        run: go test ./...
+
+      - name: Build static binary
+        env:
+          CGO_ENABLED: 0
+          GOOS: linux
+          GOARCH: ${{ matrix.platform }}
+          SOURCE_DATE_EPOCH: ${{ needs.setup-env.outputs.source_date_epoch }}
+        run: |
+          mkdir -p build
+          go build -ldflags="-s -w -buildid= " -o build/promptpipe-${{ matrix.platform }} ./cmd/PromptPipe
+
+      - name: Archive artifacts
+        run: |
+          mkdir -p artifacts/promptpipe-${{ matrix.platform }}
+          cp build/promptpipe-${{ matrix.platform }} artifacts/promptpipe-${{ matrix.platform }}
+          tar -czf artifacts/promptpipe-${{ matrix.platform }}.tar.gz -C artifacts promptpipe-${{ matrix.platform }}
+
+  docker-build:
+    needs: build-matrix
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push multi-arch image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          build-args: |
+            SOURCE_DATE_EPOCH=${{ needs.setup-env.outputs.source_date_epoch }}
+          tags: ghcr.io/${{ needs.setup-env.outputs.repo }}:latest,ghcr.io/${{ needs.setup-env.outputs.repo }}:${{ needs.setup-env.outputs.date_time }}
+          push: true
