@@ -87,8 +87,6 @@ DATABASE_URL="postgres://user:pass@host:port/dbname?sslmode=disable"
 API_ADDR=":8080"
 # (Optional) OpenAI API key for GenAI operations
 OPENAI_API_KEY="your_openai_api_key"
-# Messaging driver to use (e.g., "whatsapp", "twilio")
-MESSAGING_DRIVER="whatsapp"
 ```
 
 ## Usage
@@ -106,7 +104,7 @@ MESSAGING_DRIVER="whatsapp"
 - `-db-driver string`: database driver for WhatsApp and Postgres store (overrides $WHATSAPP_DB_DRIVER / $DATABASE_URL)
 - `-db-dsn string`   : database DSN for WhatsApp and Postgres store (overrides $WHATSAPP_DB_DSN / $DATABASE_URL)
 - `-openai-api-key string`: OpenAI API key (overrides $OPENAI_API_KEY)
-- `-messaging-driver string`: messaging service to use (overrides $MESSAGING_DRIVER)
+- `-default-cron string`: default cron schedule for prompts (overrides $DEFAULT_SCHEDULE)
 
 ## API Reference
 
@@ -196,6 +194,7 @@ Represents a message to be sent, supporting multiple flow types (static, GenAI, 
   "to": "string (E.164 phone number)",
   "cron": "string (cron expression, optional for /send)",
   "type": "string (one of \"static\", \"genai\", \"branch\", \"custom\"; defaults to \"static\")",
+  "state": "string (current state for custom flows, optional)",
   "body": "string (message content or prompt template)",
   "system_prompt": "string (optional system prompt for GenAI)",
   "user_prompt": "string (optional user prompt for GenAI)",
@@ -207,6 +206,7 @@ Represents a message to be sent, supporting multiple flow types (static, GenAI, 
 - `to`: The recipient's WhatsApp phone number in E.164 format (e.g., `+15551234567`).
 - `cron`: A standard cron expression (e.g., `0 9 * * *` for 9 AM daily). Required for `/schedule`.
 - `type`: The type of flow to use for generating the message (e.g., "static", "genai", "branch", "custom").
+- `state`: Optional current state for custom flows.
 - `body`: The text content of the message or prompt template.
 - `system_prompt`: Optional system prompt for generating dynamic content using GenAI.
 - `user_prompt`: Optional user prompt for generating dynamic content using GenAI.
@@ -219,13 +219,13 @@ Represents a delivery or read receipt for a sent message.
 ```json
 {
   "to": "string (E.164 phone number)",
-  "status": "string (e.g., \"sent\", \"delivered\", \"read\")",
+  "status": "string (e.g., \"sent\", \"delivered\", \"read\", \"failed\", \"error\", \"scheduled\", \"cancelled\")",
   "time": "int64 (Unix timestamp)"
 }
 ```
 
 - `to`: The recipient's WhatsApp phone number.
-- `status`: The status of the message (e.g., "sent", "delivered", "read").
+- `status`: The status of the message (e.g., "sent", "delivered", "read", "failed", "error", "scheduled", "cancelled").
 - `time`: Unix timestamp of when the receipt event occurred.
 
 ### Response
@@ -257,9 +257,11 @@ The system tracks message events (sent, delivered, read) and stores them. These 
 PromptPipe supports a unified storage interface for message receipts, with two implementations:
 
 - **In-Memory Store**: Used for testing and development. Fast, but not persistent.
-- **PostgreSQL Store**: Used in production. Set the `DATABASE_URL` environment variable to enable this backend. The database must have a `receipts` table with columns: `recipient TEXT`, `status TEXT`, `time BIGINT`.
+- **PostgreSQL Store**: Used in production. Provide the database DSN via the `-db-dsn` flag or `DATABASE_URL` environment variable to enable this backend. The database must have the following tables:
+  - `receipts` (`id SERIAL PRIMARY KEY`, `recipient TEXT NOT NULL`, `status TEXT NOT NULL`, `time BIGINT NOT NULL`)
+  - `responses` (`id SERIAL PRIMARY KEY`, `sender TEXT NOT NULL`, `body TEXT NOT NULL`, `time BIGINT NOT NULL`)
 
-The system will use the PostgreSQL store if `DATABASE_URL` is set, otherwise it defaults to in-memory storage.
+The system will use the PostgreSQL store if a valid DSN is provided, otherwise it defaults to the in-memory store.
 
 ## Environment Variables
 
@@ -271,7 +273,6 @@ The system will use the PostgreSQL store if `DATABASE_URL` is set, otherwise it 
 | DATABASE_URL         | PostgreSQL connection string (optional)     |
 | API_ADDR             | API server address                         |
 | OPENAI_API_KEY       | API key for OpenAI GenAI operations         |
-| MESSAGING_DRIVER     | Messaging driver to use (e.g., "whatsapp", "twilio") |
 
 ## Custom Flows
 
