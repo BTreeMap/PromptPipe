@@ -77,33 +77,42 @@ func Run(waOpts []whatsapp.Option, storeOpts []store.Option, genaiOpts []genai.O
 		slog.Error("Failed to create WhatsApp client", "error", err)
 		os.Exit(1)
 	}
+	slog.Debug("WhatsApp client created successfully")
 	msgService = messaging.NewWhatsAppService(whClient)
+	slog.Debug("Messaging service initialized")
 	// Start messaging service
 	if err := msgService.Start(context.Background()); err != nil {
 		slog.Error("Failed to start messaging service", "error", err)
 		os.Exit(1)
 	}
+	slog.Debug("Messaging service started")
 	// Forward receipts and responses to store
 	go func() {
+		slog.Debug("Starting receipt forwarding routine")
 		for r := range msgService.Receipts() {
 			if err := st.AddReceipt(r); err != nil {
 				slog.Error("Error storing receipt", "error", err)
 			}
 		}
 	}()
+	slog.Debug("Receipt forwarding routine started")
 	go func() {
+		slog.Debug("Starting response forwarding routine")
 		for resp := range msgService.Responses() {
 			if err := st.AddResponse(resp); err != nil {
 				slog.Error("Error storing response", "error", err)
 			}
 		}
 	}()
+	slog.Debug("Response forwarding routine started")
 
 	// Initialize scheduler
 	sched = scheduler.NewScheduler()
+	slog.Debug("Scheduler initialized")
 
 	// Configure default schedule
 	defaultCron = apiCfg.DefaultCron
+	slog.Debug("Default cron schedule set", "defaultCron", defaultCron)
 
 	// Choose storage backend: Postgres if DSN provided via options, else in-memory
 	if len(storeOpts) > 0 {
@@ -113,12 +122,15 @@ func Run(waOpts []whatsapp.Option, storeOpts []store.Option, genaiOpts []genai.O
 			os.Exit(1)
 		}
 		st = ps
+		slog.Debug("Connected to Postgres store")
 	} else {
 		st = store.NewInMemoryStore()
+		slog.Debug("Using in-memory store")
 	}
 
 	// Initialize GenAI client if API key provided via options
 	if len(genaiOpts) > 0 {
+		slog.Debug("Initializing GenAI client")
 		gaClient, err = genai.NewClient(genaiOpts...)
 		if err != nil {
 			slog.Error("Failed to create GenAI client", "error", err)
@@ -126,6 +138,7 @@ func Run(waOpts []whatsapp.Option, storeOpts []store.Option, genaiOpts []genai.O
 		}
 		// Register GenAI flow generator
 		flow.Register(models.PromptTypeGenAI, &flow.GenAIGenerator{Client: gaClient})
+		slog.Debug("GenAI client created and generator registered")
 	} else {
 		gaClient = nil
 	}
@@ -136,6 +149,8 @@ func Run(waOpts []whatsapp.Option, storeOpts []store.Option, genaiOpts []genai.O
 		flow.Register(models.PromptTypeGenAI, &flow.GenAIGenerator{Client: gaClient})
 	}
 
+	// Register HTTP handlers
+	slog.Debug("Registering HTTP handlers")
 	http.HandleFunc("/send", sendHandler)
 	http.HandleFunc("/schedule", scheduleHandler)
 	http.HandleFunc("/receipts", receiptsHandler)
@@ -143,6 +158,7 @@ func Run(waOpts []whatsapp.Option, storeOpts []store.Option, genaiOpts []genai.O
 	http.HandleFunc("/response", responseHandler)
 	http.HandleFunc("/responses", responsesHandler)
 	http.HandleFunc("/stats", statsHandler)
+	slog.Debug("HTTP handlers registered")
 	// Start HTTP server with graceful shutdown
 	srv := &http.Server{Addr: addr, Handler: nil}
 	go func() {
@@ -152,6 +168,7 @@ func Run(waOpts []whatsapp.Option, storeOpts []store.Option, genaiOpts []genai.O
 			os.Exit(1)
 		}
 	}()
+	slog.Debug("HTTP server started in background")
 	// Wait for interrupt signal to gracefully shutdown
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
@@ -162,6 +179,7 @@ func Run(waOpts []whatsapp.Option, storeOpts []store.Option, genaiOpts []genai.O
 		os.Exit(1)
 	}
 	sched.Stop()
+	slog.Debug("Scheduler stopped")
 }
 
 func sendHandler(w http.ResponseWriter, r *http.Request) {

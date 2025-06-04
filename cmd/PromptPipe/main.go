@@ -19,11 +19,14 @@ func main() {
 
 	if err := godotenv.Load(); err != nil {
 		slog.Debug("failed to load .env file", "error", err)
+	} else {
+		slog.Debug("successfully loaded .env file")
 	}
 	// Read environment variables
 	envDbDriver := os.Getenv("WHATSAPP_DB_DRIVER")
 	envWhatsAppDSN := os.Getenv("WHATSAPP_DB_DSN")
 	envDatabaseURL := os.Getenv("DATABASE_URL")
+	slog.Debug("environment variables loaded", "WHATSAPP_DB_DRIVER", envDbDriver, "WHATSAPP_DB_DSN", envWhatsAppDSN, "DATABASE_URL", envDatabaseURL)
 	// Default to WhatsApp DSN if specific not set
 	if envWhatsAppDSN == "" {
 		envWhatsAppDSN = envDatabaseURL
@@ -31,6 +34,7 @@ func main() {
 	envOpenAIKey := os.Getenv("OPENAI_API_KEY")
 	envAPIAddr := os.Getenv("API_ADDR")
 	envDefaultCron := os.Getenv("DEFAULT_SCHEDULE")
+	slog.Debug("additional environment variables", "OPENAI_API_KEY_SET", envOpenAIKey != "", "API_ADDR", envAPIAddr, "DEFAULT_SCHEDULE", envDefaultCron)
 
 	// Command-line options (flags) with environment defaults
 	qrOutput := flag.String("qr-output", "", "path to write login QR code")
@@ -44,6 +48,7 @@ func main() {
 	apiAddr := flag.String("api-addr", envAPIAddr, "API server address (overrides $API_ADDR)")
 	defaultCron := flag.String("default-cron", envDefaultCron, "default cron schedule for prompts (overrides $DEFAULT_SCHEDULE)")
 	flag.Parse()
+	slog.Debug("flags parsed", "qrOutput", *qrOutput, "numeric", *numeric, "dbDriver", *dbDriver, "dbDSN", *dbDSN, "openaiKeySet", *openaiKey != "", "apiAddr", *apiAddr, "defaultCron", *defaultCron)
 
 	// Build WhatsApp options
 	var waOpts []whatsapp.Option
@@ -82,5 +87,6 @@ func main() {
 	}
 
 	// Start the service
+	slog.Debug("starting API with options", "whatsapp_opts_count", len(waOpts), "store_opts_count", len(storeOpts), "genai_opts_count", len(genaiOpts), "api_opts_count", len(apiOpts))
 	api.Run(waOpts, storeOpts, genaiOpts, apiOpts)
 }
