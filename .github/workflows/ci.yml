@@ -88,10 +88,15 @@ jobs:
     permissions:
       packages: write
     steps:
-      - name: Download built binaries
+      - name: Download amd64 binary
         uses: actions/download-artifact@v4
         with:
-          name: binaries-amd64, binaries-arm64
+          name: binaries-amd64
+          path: docker/artifacts
+      - name: Download arm64 binary
+        uses: actions/download-artifact@v4
+        with:
+          name: binaries-arm64
           path: docker/artifacts
 
       - name: Set up QEMU
@@ -117,7 +122,7 @@ jobs:
             TARGETARCH=${{ matrix.platform }}
             SOURCE_DATE_EPOCH=${{ needs.setup-env.outputs.source_date_epoch }}
           tags: |
-            ghcr.io/${{ needs.setup-env.outputs.repo }}:unstable
+            ghcr.io/${{ needs.setup-env.outputs.repo }}:latest
             ghcr.io/${{ needs.setup-env.outputs.repo }}:${{ needs.setup-env.outputs.date }}
             ghcr.io/${{ needs.setup-env.outputs.repo }}:${{ needs.setup-env.outputs.date }}.${{ needs.setup-env.outputs.short_sha }}
             ghcr.io/${{ needs.setup-env.outputs.repo }}:${{ needs.setup-env.outputs.date_time }}
