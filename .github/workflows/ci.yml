@@ -85,6 +85,8 @@ jobs:
   docker-build:
     needs: build-matrix
     runs-on: ubuntu-24.04
+    permissions:
+      package: write
     steps:
       - name: Download built binaries
         uses: actions/download-artifact@v3
