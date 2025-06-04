@@ -7,7 +7,7 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -74,25 +74,27 @@ func Run(waOpts []whatsapp.Option, storeOpts []store.Option, genaiOpts []genai.O
 	// Initialize WhatsApp client and wrap in messaging service
 	whClient, err := whatsapp.NewClient(waOpts...)
 	if err != nil {
-		log.Fatalf("Failed to create WhatsApp client: %v", err)
+		slog.Error("Failed to create WhatsApp client", "error", err)
+		os.Exit(1)
 	}
 	msgService = messaging.NewWhatsAppService(whClient)
 	// Start messaging service
 	if err := msgService.Start(context.Background()); err != nil {
-		log.Fatalf("Failed to start messaging service: %v", err)
+		slog.Error("Failed to start messaging service", "error", err)
+		os.Exit(1)
 	}
 	// Forward receipts and responses to store
 	go func() {
 		for r := range msgService.Receipts() {
 			if err := st.AddReceipt(r); err != nil {
-				log.Printf("Error storing receipt: %v", err)
+				slog.Error("Error storing receipt", "error", err)
 			}
 		}
 	}()
 	go func() {
 		for resp := range msgService.Responses() {
 			if err := st.AddResponse(resp); err != nil {
-				log.Printf("Error storing response: %v", err)
+				slog.Error("Error storing response", "error", err)
 			}
 		}
 	}()
@@ -107,7 +109,8 @@ func Run(waOpts []whatsapp.Option, storeOpts []store.Option, genaiOpts []genai.O
 	if len(storeOpts) > 0 {
 		ps, err := store.NewPostgresStore(storeOpts...)
 		if err != nil {
-			log.Fatalf("Failed to connect to Postgres store: %v", err)
+			slog.Error("Failed to connect to Postgres store", "error", err)
+			os.Exit(1)
 		}
 		st = ps
 	} else {
@@ -118,7 +121,8 @@ func Run(waOpts []whatsapp.Option, storeOpts []store.Option, genaiOpts []genai.O
 	if len(genaiOpts) > 0 {
 		gaClient, err = genai.NewClient(genaiOpts...)
 		if err != nil {
-			log.Fatalf("Failed to create GenAI client: %v", err)
+			slog.Error("Failed to create GenAI client", "error", err)
+			os.Exit(1)
 		}
 		// Register GenAI flow generator
 		flow.Register(models.PromptTypeGenAI, &flow.GenAIGenerator{Client: gaClient})
@@ -142,18 +146,20 @@ func Run(waOpts []whatsapp.Option, storeOpts []store.Option, genaiOpts []genai.O
 	// Start HTTP server with graceful shutdown
 	srv := &http.Server{Addr: addr, Handler: nil}
 	go func() {
-		log.Printf("PromptPipe API running on %s", addr)
+		slog.Info("PromptPipe API running", "addr", addr)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("API server error: %v", err)
+			slog.Error("API server error", "error", err)
+			os.Exit(1)
 		}
 	}()
 	// Wait for interrupt signal to gracefully shutdown
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
 	<-quit
-	log.Println("Shutting down server...")
+	slog.Info("Shutting down server")
 	if err := srv.Shutdown(context.Background()); err != nil {
-		log.Fatalf("Server Shutdown failed: %v", err)
+		slog.Error("Server Shutdown failed", "error", err)
+		os.Exit(1)
 	}
 	sched.Stop()
 }
@@ -166,7 +172,7 @@ func sendHandler(w http.ResponseWriter, r *http.Request) {
 	var p models.Prompt
 	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		log.Printf("Invalid JSON in sendHandler: %v", err)
+		slog.Warn("Invalid JSON in sendHandler", "error", err)
 		return
 	}
 
@@ -183,14 +189,14 @@ func sendHandler(w http.ResponseWriter, r *http.Request) {
 	msg, err := flow.Generate(context.Background(), p)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		log.Printf("Flow generation error: %v", err)
+		slog.Error("Flow generation error in sendHandler", "error", err)
 		return
 	}
 
 	err = msgService.SendMessage(context.Background(), p.To, msg)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		log.Printf("Error sending message: %v", err)
+		slog.Error("Error sending message", "error", err)
 		return
 	}
 	w.WriteHeader(http.StatusOK)
@@ -204,7 +210,7 @@ func scheduleHandler(w http.ResponseWriter, r *http.Request) {
 	var p models.Prompt
 	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		log.Printf("Invalid JSON in scheduleHandler: %v", err)
+		slog.Warn("Invalid JSON in scheduleHandler", "error", err)
 		return
 	}
 	// Validate required fields: to
@@ -250,19 +256,19 @@ func scheduleHandler(w http.ResponseWriter, r *http.Request) {
 		// Generate message body via flow
 		msg, err := flow.Generate(context.Background(), job)
 		if err != nil {
-			log.Printf("Flow generation error: %v", err)
+			slog.Error("Flow generation error in scheduled job", "error", err)
 			return
 		}
 		if err := msgService.SendMessage(context.Background(), job.To, msg); err != nil {
-			log.Printf("Scheduled job send error: %v", err)
+			slog.Error("Scheduled job send error", "error", err)
 			return
 		}
 		if err := st.AddReceipt(models.Receipt{To: job.To, Status: "sent", Time: time.Now().Unix()}); err != nil {
-			log.Printf("Error adding scheduled receipt: %v", err)
+			slog.Error("Error adding scheduled receipt", "error", err)
 		}
 	}); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		log.Printf("Error scheduling job: %v", err)
+		slog.Error("Error scheduling job", "error", err)
 		return
 	}
 	w.WriteHeader(http.StatusCreated)
@@ -280,7 +286,7 @@ func receiptsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(receipts); err != nil {
-		log.Printf("Error encoding receipts response: %v", err)
+		slog.Error("Error encoding receipts response", "error", err)
 	}
 }
 
@@ -293,13 +299,13 @@ func responseHandler(w http.ResponseWriter, r *http.Request) {
 	var resp models.Response
 	if err := json.NewDecoder(r.Body).Decode(&resp); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		log.Printf("Invalid JSON in responseHandler: %v", err)
+		slog.Warn("Invalid JSON in responseHandler", "error", err)
 		return
 	}
 	resp.Time = time.Now().Unix()
 	if err := st.AddResponse(resp); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		log.Printf("Error adding response: %v", err)
+		slog.Error("Error adding response", "error", err)
 		return
 	}
 	w.WriteHeader(http.StatusCreated)
@@ -318,7 +324,7 @@ func responsesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(responses); err != nil {
-		log.Printf("Error encoding responses response: %v", err)
+		slog.Error("Error encoding responses response", "error", err)
 	}
 }
 
@@ -351,6 +357,6 @@ func statsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(stats); err != nil {
-		log.Printf("Error encoding stats response: %v", err)
+		slog.Error("Error encoding stats response", "error", err)
 	}
 }

@@ -2,7 +2,7 @@ package main
 
 import (
 	"flag"
-	"log"
+	"log/slog"
 	"os"
 
 	"github.com/BTreeMap/PromptPipe/internal/api"
@@ -13,8 +13,12 @@ import (
 )
 
 func main() {
+	// Initialize structured logger
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	slog.SetDefault(logger)
+
 	if err := godotenv.Load(); err != nil {
-		log.Printf("DEBUG: failed to load .env file: %v", err)
+		slog.Debug("failed to load .env file", "error", err)
 	}
 	// Read environment variables
 	envDbDriver := os.Getenv("WHATSAPP_DB_DRIVER")
