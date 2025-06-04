@@ -116,7 +116,12 @@ jobs:
           build-args: |
             TARGETARCH=${{ matrix.platform }}
             SOURCE_DATE_EPOCH=${{ needs.setup-env.outputs.source_date_epoch }}
-          tags: ghcr.io/${{ needs.setup-env.outputs.repo }}:latest,ghcr.io/${{ needs.setup-env.outputs.repo }}:${{ needs.setup-env.outputs.date_time }}
+          tags: |
+            ghcr.io/${{ needs.setup-env.outputs.repo }}:unstable
+            ghcr.io/${{ needs.setup-env.outputs.repo }}:${{ needs.setup-env.outputs.date }}
+            ghcr.io/${{ needs.setup-env.outputs.repo }}:${{ needs.setup-env.outputs.date }}.${{ needs.setup-env.outputs.short_sha }}
+            ghcr.io/${{ needs.setup-env.outputs.repo }}:${{ needs.setup-env.outputs.date_time }}
+            ghcr.io/${{ needs.setup-env.outputs.repo }}:${{ needs.setup-env.outputs.date_time }}.${{ needs.setup-env.outputs.short_sha }}
           push: true
 
   release:
