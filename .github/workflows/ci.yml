@@ -47,7 +47,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Cache Go modules
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ~/.cache/go-build
           key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
@@ -55,9 +55,9 @@ jobs:
             ${{ runner.os }}-go-
 
       - name: Set up Go
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v5
         with:
-          go-version: '1.21'
+          go-version: '1.24'
           check-latest: true
 
       - name: Install dependencies
@@ -76,18 +76,21 @@ jobs:
           mkdir -p build
           go build -ldflags="-s -w -buildid= " -o build/promptpipe-${{ matrix.platform }} ./cmd/PromptPipe
 
-      - name: Archive artifacts
-        run: |
-          mkdir -p artifacts/promptpipe-${{ matrix.platform }}
-          cp build/promptpipe-${{ matrix.platform }} artifacts/promptpipe-${{ matrix.platform }}
-          tar -czf artifacts/promptpipe-${{ matrix.platform }}.tar.gz -C artifacts promptpipe-${{ matrix.platform }}
-
+      - name: Upload built binary
+        uses: actions/upload-artifact@v3
+        with:
+          name: binaries-${{ matrix.platform }}
+          path: build/promptpipe-${{ matrix.platform }}
+      
   docker-build:
     needs: build-matrix
     runs-on: ubuntu-24.04
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - name: Download built binaries
+        uses: actions/download-artifact@v3
+        with:
+          name: binaries-amd64, binaries-arm64
+          path: docker/artifacts
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v2
@@ -105,10 +108,41 @@ jobs:
       - name: Build and push multi-arch image
         uses: docker/build-push-action@v6
         with:
-          context: .
+          context: docker
           file: docker/Dockerfile
           platforms: linux/amd64,linux/arm64
           build-args: |
+            TARGETARCH=${{ matrix.platform }}
             SOURCE_DATE_EPOCH=${{ needs.setup-env.outputs.source_date_epoch }}
           tags: ghcr.io/${{ needs.setup-env.outputs.repo }}:latest,ghcr.io/${{ needs.setup-env.outputs.repo }}:${{ needs.setup-env.outputs.date_time }}
           push: true
+
+  release:
+    needs: [setup-env, build-matrix]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Download amd64 binary
+        uses: actions/download-artifact@v3
+        with:
+          name: binaries-amd64
+          path: release/artifacts
+      - name: Download arm64 binary
+        uses: actions/download-artifact@v3
+        with:
+          name: binaries-arm64
+          path: release/artifacts
+      - name: Set release version
+        id: version
+        run: |
+          ver="${{ needs.setup-env.outputs.date_time }}.${{ needs.setup-env.outputs.short_sha }}"
+          echo "version=$ver" >> $GITHUB_OUTPUT
+      - name: Create or update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          target_commitish: ${{ github.sha }}
+          files: |
+            release/artifacts/*
