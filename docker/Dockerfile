@@ -2,7 +2,7 @@ FROM scratch
 
 ARG TARGETARCH
 
-COPY --chown=nobody:nogroup artifacts/promptpipe-${TARGETARCH} /opt/promptpipe/promptpipe
+COPY artifacts/promptpipe-${TARGETARCH} /opt/promptpipe/promptpipe
 
 ENV PATH="/opt/promptpipe:${PATH}"
 
