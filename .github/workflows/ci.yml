@@ -88,6 +88,9 @@ jobs:
     permissions:
       packages: write
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Download amd64 binary
         uses: actions/download-artifact@v4
         with:
@@ -127,7 +130,7 @@ jobs:
             ghcr.io/${{ needs.setup-env.outputs.repo }}:${{ needs.setup-env.outputs.date }}.${{ needs.setup-env.outputs.short_sha }}
             ghcr.io/${{ needs.setup-env.outputs.repo }}:${{ needs.setup-env.outputs.date_time }}
             ghcr.io/${{ needs.setup-env.outputs.repo }}:${{ needs.setup-env.outputs.date_time }}.${{ needs.setup-env.outputs.short_sha }}
-          push: true
+          outputs: "type=registry,compression=zstd,force-compression=true,compression-level=3,rewrite-timestamp=true,oci-mediatypes=true"
 
   release:
     needs: [setup-env, build-matrix]
