@@ -14,7 +14,7 @@ import (
 
 func main() {
 	if err := godotenv.Load(); err != nil {
-		log.Fatalf("Error loading .env file: %v", err)
+		log.Printf("DEBUG: failed to load .env file: %v", err)
 	}
 	// Read environment variables
 	envDbDriver := os.Getenv("WHATSAPP_DB_DRIVER")
