@@ -2,8 +2,8 @@ FROM scratch
 
 ARG TARGETARCH
 
-COPY artifacts/promptpipe-${TARGETARCH} /opt/promptpipe/promptpipe
+COPY --chmod=755 artifacts/promptpipe-${TARGETARCH} /opt/promptpipe/promptpipe
 
-ENV PATH="/opt/promptpipe:${PATH}"
+ENV PATH="/opt/promptpipe"
 
 ENTRYPOINT ["promptpipe"]
