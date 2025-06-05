@@ -6,9 +6,9 @@ require (
 	github.com/joho/godotenv v1.5.1
 	github.com/lib/pq v1.10.9
 	github.com/mdp/qrterminal/v3 v3.2.1
-	github.com/openai/openai-go v1.0.0
+	github.com/openai/openai-go v1.3.0
 	github.com/robfig/cron/v3 v3.0.1
-	go.mau.fi/whatsmeow v0.0.0-20250521125706-91ac75c2f61a
+	go.mau.fi/whatsmeow v0.0.0-20250603144927-2b269a5d396a
 )
 
 require (
@@ -26,7 +26,7 @@ require (
 	go.mau.fi/libsignal v0.2.0 // indirect
 	go.mau.fi/util v0.8.7 // indirect
 	golang.org/x/crypto v0.38.0 // indirect
-	golang.org/x/exp v0.0.0-20250506013437-ce4c2cf36ca6 // indirect
+	golang.org/x/exp v0.0.0-20250531010427-b6e5de432a8b // indirect
 	golang.org/x/net v0.40.0 // indirect
 	golang.org/x/sys v0.33.0 // indirect
 	golang.org/x/term v0.32.0 // indirect
