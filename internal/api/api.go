@@ -115,18 +115,39 @@ func Run(waOpts []whatsapp.Option, storeOpts []store.Option, genaiOpts []genai.O
 	defaultCron = apiCfg.DefaultCron
 	slog.Debug("Default cron schedule set", "defaultCron", defaultCron)
 
-	// Choose storage backend: Postgres if DSN provided via options, else in-memory
+	// Choose storage backend based on DSN type in options
 	if len(storeOpts) > 0 {
-		ps, err := store.NewPostgresStore(storeOpts...)
-		if err != nil {
-			slog.Error("Failed to connect to Postgres store", "error", err)
-			os.Exit(1)
+		// Apply options to determine DSN type
+		var cfg store.Opts
+		for _, opt := range storeOpts {
+			opt(&cfg)
 		}
-		st = ps
-		slog.Debug("Connected to Postgres store")
+
+		// Check if it's a PostgreSQL DSN using the shared detection function
+		if cfg.DSN != "" && store.DetectDSNType(cfg.DSN) == "postgres" {
+			slog.Debug("Initializing PostgreSQL store", "dsn_set", cfg.DSN != "", "dsn_type", "postgresql")
+			ps, err := store.NewPostgresStore(storeOpts...)
+			if err != nil {
+				slog.Error("Failed to connect to PostgreSQL store", "error", err, "dsn_length", len(cfg.DSN))
+				os.Exit(1)
+			}
+			st = ps
+			slog.Info("Connected to PostgreSQL store successfully")
+		} else {
+			// Use SQLite store for file paths
+			slog.Debug("Initializing SQLite store", "db_path", cfg.DSN, "dsn_type", "sqlite")
+			ss, err := store.NewSQLiteStore(storeOpts...)
+			if err != nil {
+				slog.Error("Failed to connect to SQLite store", "error", err, "db_path", cfg.DSN)
+				os.Exit(1)
+			}
+			st = ss
+			slog.Info("Connected to SQLite store successfully", "db_path", cfg.DSN)
+		}
 	} else {
+		slog.Debug("No store options provided, using in-memory store")
 		st = store.NewInMemoryStore()
-		slog.Debug("Using in-memory store")
+		slog.Info("Using in-memory store - data will not persist across restarts")
 	}
 
 	// Initialize GenAI client if API key provided via options

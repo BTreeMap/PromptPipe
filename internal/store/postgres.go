@@ -20,21 +20,6 @@ type PostgresStore struct {
 	db *sql.DB
 }
 
-// Opts holds configuration for the Postgres store, allowing override of connection string.
-type Opts struct {
-	DSN string // overrides DATABASE_URL
-}
-
-// Option defines a configuration option for the Postgres store.
-type Option func(*Opts)
-
-// WithPostgresDSN overrides the DSN used by the Postgres store.
-func WithPostgresDSN(dsn string) Option {
-	return func(o *Opts) {
-		o.DSN = dsn
-	}
-}
-
 // NewPostgresStore creates a new Postgres store based on provided options.
 func NewPostgresStore(opts ...Option) (*PostgresStore, error) {
 	// Apply options

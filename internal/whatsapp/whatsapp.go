@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"os"
 
+	"github.com/BTreeMap/PromptPipe/internal/store"
 	"github.com/mdp/qrterminal/v3"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
@@ -79,14 +80,29 @@ func NewClient(opts ...Option) (*Client, error) {
 
 	// Determine database driver and DSN based on options or defaults
 	dbDriver := cfg.DBDriver
-	if dbDriver == "" {
-		dbDriver = "postgres"
-	}
 	dbDSN := cfg.DBDSN
-	if dbDSN == "" {
-		dbDSN = "postgres://postgres:postgres@localhost:5432/whatsapp?sslmode=disable"
+
+	// Auto-detect driver based on DSN if driver not explicitly set
+	if dbDriver == "" {
+		if dbDSN != "" && store.DetectDSNType(dbDSN) == "postgres" {
+			dbDriver = "postgres"
+			slog.Debug("WhatsApp client auto-detected PostgreSQL driver", "dsn_type", "postgresql")
+		} else {
+			dbDriver = "sqlite3"
+			slog.Debug("WhatsApp client auto-detected SQLite driver", "dsn_type", "sqlite")
+		}
 	}
-	slog.Debug("WhatsApp NewClient initializing DB store", "driver", dbDriver)
+
+	// Set default DSN if not provided
+	if dbDSN == "" {
+		if dbDriver == "postgres" {
+			dbDSN = "postgres://postgres:postgres@localhost:5432/whatsapp?sslmode=disable"
+		} else {
+			dbDSN = "/var/lib/promptpipe/whatsapp.db"
+		}
+	}
+
+	slog.Debug("WhatsApp NewClient initializing DB store", "driver", dbDriver, "dsn_set", dbDSN != "")
 	logger := waLog.Stdout("Database", "INFO", true)
 	ctx := context.Background()
 	container, err := sqlstore.New(ctx, dbDriver, dbDSN, logger)
