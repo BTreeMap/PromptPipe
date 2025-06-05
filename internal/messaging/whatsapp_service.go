@@ -2,6 +2,7 @@ package messaging
 
 import (
 	"context"
+	"log/slog"
 	"time"
 
 	"github.com/BTreeMap/PromptPipe/internal/models"
@@ -28,26 +29,33 @@ func NewWhatsAppService(client whatsapp.WhatsAppSender) *WhatsAppService {
 
 // Start begins background processing (e.g., event polling). Currently a no-op.
 func (s *WhatsAppService) Start(ctx context.Context) error {
+	slog.Debug("WhatsAppService Start invoked")
 	// TODO: subscribe to WhatsApp events and feed receipts/responses channels.
+	slog.Debug("WhatsAppService Start no-op implementation")
 	return nil
 }
 
 // Stop stops background processing.
 func (s *WhatsAppService) Stop() error {
+	slog.Info("WhatsAppService Stop invoked")
 	close(s.done)
 	close(s.receipts)
 	close(s.responses)
+	slog.Info("WhatsAppService stopped and channels closed")
 	return nil
 }
 
 // SendMessage sends a message and emits a sent receipt.
 func (s *WhatsAppService) SendMessage(ctx context.Context, to string, body string) error {
+	slog.Debug("WhatsAppService SendMessage invoked", "to", to, "body_length", len(body))
 	err := s.client.SendMessage(ctx, to, body)
 	if err != nil {
+		slog.Error("WhatsAppService SendMessage error", "error", err, "to", to)
 		return err
 	}
 	// Emit sent receipt
 	s.receipts <- models.Receipt{To: to, Status: "sent", Time: time.Now().Unix()}
+	slog.Info("WhatsAppService message sent and receipt emitted", "to", to)
 	return nil
 }
 

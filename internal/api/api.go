@@ -57,6 +57,7 @@ func WithDefaultCron(cron string) Option {
 
 // Run starts the API server and initializes dependencies, applying module options.
 func Run(waOpts []whatsapp.Option, storeOpts []store.Option, genaiOpts []genai.Option, apiOpts []Option) {
+	slog.Debug("API Run invoked", "whatsappOpts", len(waOpts), "storeOpts", len(storeOpts), "genaiOpts", len(genaiOpts), "apiOpts", len(apiOpts))
 	var err error
 
 	// Apply API server options
@@ -173,29 +174,33 @@ func Run(waOpts []whatsapp.Option, storeOpts []store.Option, genaiOpts []genai.O
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
 	<-quit
-	slog.Info("Shutting down server")
+	slog.Info("Shutdown signal received, shutting down server")
 	if err := srv.Shutdown(context.Background()); err != nil {
 		slog.Error("Server Shutdown failed", "error", err)
 		os.Exit(1)
 	}
+	slog.Info("API server shutdown complete")
 	sched.Stop()
 	slog.Debug("Scheduler stopped")
 }
 
 func sendHandler(w http.ResponseWriter, r *http.Request) {
+	slog.Debug("sendHandler invoked", "method", r.Method, "path", r.URL.Path)
 	if r.Method != http.MethodPost {
+		slog.Warn("sendHandler method not allowed", "method", r.Method)
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
 	var p models.Prompt
 	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
+		slog.Warn("Failed to decode JSON in sendHandler", "error", err)
 		w.WriteHeader(http.StatusBadRequest)
-		slog.Warn("Invalid JSON in sendHandler", "error", err)
 		return
 	}
-
+	slog.Debug("sendHandler parsed prompt", "to", p.To, "type", p.Type)
 	// Validate required field: to
 	if p.To == "" {
+		slog.Warn("sendHandler missing recipient", "prompt", p)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -206,33 +211,37 @@ func sendHandler(w http.ResponseWriter, r *http.Request) {
 	// Generate message body via pluggable flow
 	msg, err := flow.Generate(context.Background(), p)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
 		slog.Error("Flow generation error in sendHandler", "error", err)
+		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
 	err = msgService.SendMessage(context.Background(), p.To, msg)
 	if err != nil {
+		slog.Error("Error sending message in sendHandler", "error", err, "to", p.To)
 		w.WriteHeader(http.StatusInternalServerError)
-		slog.Error("Error sending message", "error", err)
 		return
 	}
+	slog.Info("Message sent successfully", "to", p.To)
 	w.WriteHeader(http.StatusOK)
 }
 
 func scheduleHandler(w http.ResponseWriter, r *http.Request) {
+	slog.Debug("scheduleHandler invoked", "method", r.Method, "path", r.URL.Path)
 	if r.Method != http.MethodPost {
+		slog.Warn("scheduleHandler method not allowed", "method", r.Method)
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
 	var p models.Prompt
 	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
+		slog.Warn("Failed to decode JSON in scheduleHandler", "error", err)
 		w.WriteHeader(http.StatusBadRequest)
-		slog.Warn("Invalid JSON in scheduleHandler", "error", err)
 		return
 	}
 	// Validate required fields: to
 	if p.To == "" {
+		slog.Warn("scheduleHandler missing recipient", "prompt", p)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -243,34 +252,41 @@ func scheduleHandler(w http.ResponseWriter, r *http.Request) {
 	switch p.Type {
 	case models.PromptTypeStatic:
 		if p.To == "" || p.Body == "" {
+			slog.Warn("scheduleHandler static prompt missing body", "prompt", p)
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
 	case models.PromptTypeGenAI:
 		if p.To == "" || gaClient == nil || p.SystemPrompt == "" || p.UserPrompt == "" {
+			slog.Warn("scheduleHandler genai prompt invalid or no genai client", "prompt", p)
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
 	case models.PromptTypeBranch:
 		if p.To == "" || len(p.BranchOptions) == 0 {
+			slog.Warn("scheduleHandler branch prompt missing options", "prompt", p)
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
 	default:
+		slog.Warn("scheduleHandler unsupported prompt type", "type", p.Type)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 	// Apply default schedule if none provided
 	if p.Cron == "" {
 		if defaultCron == "" {
+			slog.Warn("scheduleHandler missing cron schedule and no default set", "prompt", p)
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
 		p.Cron = defaultCron
 	}
 	// Capture prompt locally for closure
+	slog.Debug("scheduleHandler scheduling job", "to", p.To, "cron", p.Cron)
 	job := p
 	if err := sched.AddJob(p.Cron, func() {
+		slog.Debug("scheduled job triggered", "to", job.To)
 		// Generate message body via flow
 		msg, err := flow.Generate(context.Background(), job)
 		if err != nil {
@@ -278,30 +294,35 @@ func scheduleHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if err := msgService.SendMessage(context.Background(), job.To, msg); err != nil {
-			slog.Error("Scheduled job send error", "error", err)
+			slog.Error("Scheduled job send error", "error", err, "to", job.To)
 			return
 		}
 		if err := st.AddReceipt(models.Receipt{To: job.To, Status: "sent", Time: time.Now().Unix()}); err != nil {
 			slog.Error("Error adding scheduled receipt", "error", err)
 		}
 	}); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
 		slog.Error("Error scheduling job", "error", err)
+		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
+	slog.Info("Job scheduled successfully", "to", p.To, "cron", p.Cron)
 	w.WriteHeader(http.StatusCreated)
 }
 
 func receiptsHandler(w http.ResponseWriter, r *http.Request) {
+	slog.Debug("receiptsHandler invoked", "method", r.Method, "path", r.URL.Path)
 	if r.Method != http.MethodGet {
+		slog.Warn("receiptsHandler method not allowed", "method", r.Method)
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
 	receipts, err := st.GetReceipts()
 	if err != nil {
+		slog.Error("Error fetching receipts", "error", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
+	slog.Debug("receipts fetched", "count", len(receipts))
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(receipts); err != nil {
 		slog.Error("Error encoding receipts response", "error", err)
@@ -310,36 +331,44 @@ func receiptsHandler(w http.ResponseWriter, r *http.Request) {
 
 // responseHandler handles incoming participant responses (POST /response).
 func responseHandler(w http.ResponseWriter, r *http.Request) {
+	slog.Debug("responseHandler invoked", "method", r.Method, "path", r.URL.Path)
 	if r.Method != http.MethodPost {
+		slog.Warn("responseHandler method not allowed", "method", r.Method)
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
 	var resp models.Response
 	if err := json.NewDecoder(r.Body).Decode(&resp); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
 		slog.Warn("Invalid JSON in responseHandler", "error", err)
+		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
+	slog.Debug("responseHandler parsed response", "from", resp.From)
 	resp.Time = time.Now().Unix()
 	if err := st.AddResponse(resp); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
 		slog.Error("Error adding response", "error", err)
+		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
+	slog.Info("Response recorded", "from", resp.From)
 	w.WriteHeader(http.StatusCreated)
 }
 
 // responsesHandler returns all collected responses (GET /responses).
 func responsesHandler(w http.ResponseWriter, r *http.Request) {
+	slog.Debug("responsesHandler invoked", "method", r.Method, "path", r.URL.Path)
 	if r.Method != http.MethodGet {
+		slog.Warn("responsesHandler method not allowed", "method", r.Method)
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
 	responses, err := st.GetResponses()
 	if err != nil {
+		slog.Error("Error fetching responses", "error", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
+	slog.Debug("responses fetched", "count", len(responses))
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(responses); err != nil {
 		slog.Error("Error encoding responses response", "error", err)
@@ -348,12 +377,15 @@ func responsesHandler(w http.ResponseWriter, r *http.Request) {
 
 // statsHandler returns statistics about collected responses (GET /stats).
 func statsHandler(w http.ResponseWriter, r *http.Request) {
+	slog.Debug("statsHandler invoked", "method", r.Method, "path", r.URL.Path)
 	if r.Method != http.MethodGet {
+		slog.Warn("statsHandler method not allowed", "method", r.Method)
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
 	responses, err := st.GetResponses()
 	if err != nil {
+		slog.Error("Error fetching responses in statsHandler", "error", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -373,6 +405,7 @@ func statsHandler(w http.ResponseWriter, r *http.Request) {
 		"responses_per_sender": perSender,
 		"avg_response_length":  avgLen,
 	}
+	slog.Debug("stats computed", "total_responses", total, "avg_response_length", avgLen)
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(stats); err != nil {
 		slog.Error("Error encoding stats response", "error", err)

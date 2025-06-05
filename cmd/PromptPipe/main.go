@@ -87,6 +87,8 @@ func main() {
 	}
 
 	// Start the service
-	slog.Debug("starting API with options", "whatsapp_opts_count", len(waOpts), "store_opts_count", len(storeOpts), "genai_opts_count", len(genaiOpts), "api_opts_count", len(apiOpts))
+	slog.Info("Bootstrapping PromptPipe with configured modules")
+	slog.Debug("Module options counts", "whatsapp", len(waOpts), "store", len(storeOpts), "genai", len(genaiOpts), "api", len(apiOpts))
 	api.Run(waOpts, storeOpts, genaiOpts, apiOpts)
+	slog.Info("PromptPipe exited")
 }

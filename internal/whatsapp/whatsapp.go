@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 
 	"github.com/mdp/qrterminal/v3"
@@ -74,6 +75,7 @@ func NewClient(opts ...Option) (*Client, error) {
 	for _, opt := range opts {
 		opt(&cfg)
 	}
+	slog.Debug("WhatsApp NewClient options set", "DBDriver", cfg.DBDriver, "DBDSN_set", cfg.DBDSN != "", "QRPath_set", cfg.QRPath != "", "NumericCode", cfg.NumericCode)
 
 	// Determine database driver and DSN based on options or defaults
 	dbDriver := cfg.DBDriver
@@ -84,30 +86,37 @@ func NewClient(opts ...Option) (*Client, error) {
 	if dbDSN == "" {
 		dbDSN = "postgres://postgres:postgres@localhost:5432/whatsapp?sslmode=disable"
 	}
+	slog.Debug("WhatsApp NewClient initializing DB store", "driver", dbDriver)
 	logger := waLog.Stdout("Database", "INFO", true)
 	ctx := context.Background()
 	container, err := sqlstore.New(ctx, dbDriver, dbDSN, logger)
 	if err != nil {
+		slog.Error("Failed to initialize WhatsApp DB store", "error", err)
 		return nil, err
 	}
+	slog.Debug("WhatsApp DB store initialized")
 	deviceStore, err := container.GetFirstDevice(ctx)
 	if err != nil {
+		slog.Error("Failed to get first device from store", "error", err)
 		return nil, err
 	}
+	slog.Debug("WhatsApp device store retrieved")
 	clientLog := waLog.Stdout("Client", "INFO", true)
 	waClient := whatsmeow.NewClient(deviceStore, clientLog)
 	if waClient.Store.ID == nil {
-		// No ID stored, new login
+		slog.Info("WhatsApp login required; starting QR code flow")
 		qrChan, _ := waClient.GetQRChannel(context.Background())
 		err = waClient.Connect()
 		if err != nil {
-			return nil, err
+			slog.Error("Failed to connect to WhatsApp during login", "error", err)
+			return nil, fmt.Errorf("failed to connect to WhatsApp: %w", err)
 		}
 		// Determine output writer for QR or code
 		writer := io.Writer(os.Stdout)
 		if cfg.QRPath != "" {
 			f, ferr := os.Create(cfg.QRPath)
 			if ferr != nil {
+				slog.Error("Failed to create QR file", "error", ferr)
 				return nil, fmt.Errorf("failed to create QR file: %w", ferr)
 			}
 			defer f.Close()
@@ -115,20 +124,25 @@ func NewClient(opts ...Option) (*Client, error) {
 		}
 		for evt := range qrChan {
 			if evt.Event == "code" {
+				slog.Debug("WhatsApp login event code received", "code", evt.Code)
 				if cfg.NumericCode {
 					fmt.Fprintln(writer, evt.Code)
 				} else {
 					qrterminal.GenerateHalfBlock(evt.Code, qrterminal.L, writer)
 				}
 			} else {
+				slog.Debug("WhatsApp login event", "event", evt.Event)
 				fmt.Println("Login event:", evt.Event)
 			}
 		}
 	}
 	// Connect to WhatsApp server
+	slog.Debug("Connecting to WhatsApp server")
 	if err := waClient.Connect(); err != nil {
+		slog.Error("Failed to connect to WhatsApp server", "error", err)
 		return nil, fmt.Errorf("failed to connect to WhatsApp: %w", err)
 	}
+	slog.Info("WhatsApp client connected successfully")
 	return &Client{waClient: waClient}, nil
 }
 

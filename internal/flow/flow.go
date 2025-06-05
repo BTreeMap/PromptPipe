@@ -4,6 +4,7 @@ package flow
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/BTreeMap/PromptPipe/internal/models"
 )
@@ -28,9 +29,17 @@ func Get(pt models.PromptType) (Generator, bool) {
 
 // Generate finds and runs the Generator for the prompt's type.
 func Generate(ctx context.Context, p models.Prompt) (string, error) {
+	slog.Debug("Flow Generate invoked", "type", p.Type, "to", p.To)
 	if gen, ok := Get(p.Type); ok {
-		return gen.Generate(ctx, p)
+		result, err := gen.Generate(ctx, p)
+		if err != nil {
+			slog.Error("Flow generator error", "type", p.Type, "error", err)
+		} else {
+			slog.Debug("Flow Generate succeeded", "type", p.Type)
+		}
+		return result, err
 	}
+	slog.Error("No generator registered for prompt type", "type", p.Type)
 	return "", fmt.Errorf("no generator registered for prompt type %s", p.Type)
 }
 

@@ -4,6 +4,8 @@
 package scheduler
 
 import (
+	"log/slog"
+
 	"github.com/robfig/cron/v3"
 )
 
@@ -31,17 +33,25 @@ func NewScheduler(opts ...Option) *Scheduler {
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 	c := cron.New(cron.WithParser(parser), cron.WithChain(cron.Recover(cron.DefaultLogger)))
 	c.Start()
+	slog.Info("Scheduler started")
 	return &Scheduler{cron: c}
 }
 
 // AddJob schedules a task using the provided cron expression.
 // It returns an error if the expression is invalid.
 func (s *Scheduler) AddJob(expr string, task func()) error {
-	_, err := s.cron.AddFunc(expr, task)
-	return err
+	slog.Debug("Scheduler AddJob invoked", "expr", expr)
+	id, err := s.cron.AddFunc(expr, task)
+	if err != nil {
+		slog.Error("Scheduler AddJob failed", "expr", expr, "error", err)
+		return err
+	}
+	slog.Info("Scheduler job added", "expr", expr, "jobID", id)
+	return nil
 }
 
 // Stop stops the cron scheduler and waits for running jobs to finish.
 func (s *Scheduler) Stop() {
 	s.cron.Stop()
+	slog.Info("Scheduler stopped")
 }

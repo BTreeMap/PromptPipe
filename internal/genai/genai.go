@@ -5,6 +5,7 @@ package genai
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
@@ -71,6 +72,7 @@ func NewClient(opts ...Option) (*Client, error) {
 
 // GeneratePrompt generates content based on provided system and user prompts.
 func (c *Client) GeneratePrompt(system, user string) (string, error) {
+	slog.Debug("GeneratePrompt invoked", "system", system, "user", user)
 	// Prepare chat completion parameters
 	params := openai.ChatCompletionNewParams{
 		Model: openai.ChatModelGPT4oMini,
@@ -81,10 +83,14 @@ func (c *Client) GeneratePrompt(system, user string) (string, error) {
 	}
 	resp, err := c.chat.Create(context.Background(), params)
 	if err != nil {
+		slog.Error("GenAI chat.Create failed", "error", err)
 		return "", err
 	}
 	if len(resp.Choices) == 0 {
+		slog.Warn("GeneratePrompt no choices returned")
 		return "", fmt.Errorf("no choices returned")
 	}
-	return resp.Choices[0].Message.Content, nil
+	content := resp.Choices[0].Message.Content
+	slog.Debug("GeneratePrompt succeeded", "length", len(content))
+	return content, nil
 }
