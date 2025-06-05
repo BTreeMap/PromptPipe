@@ -1,5 +1,6 @@
 build:
-	go build -o PromptPipe cmd/PromptPipe/main.go
+	mkdir -p build
+	go build -o build/PromptPipe cmd/PromptPipe/main.go
 
 test:
 	go test ./...
