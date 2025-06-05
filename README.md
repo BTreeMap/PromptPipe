@@ -254,25 +254,66 @@ The system tracks message events (sent, delivered, read) and stores them. These 
 
 ## Storage Backends
 
-PromptPipe supports a unified storage interface for message receipts, with two implementations:
+PromptPipe supports a unified storage interface for message receipts and responses, with three implementations:
 
-- **In-Memory Store**: Used for testing and development. Fast, but not persistent.
-- **PostgreSQL Store**: Used in production. Provide the database DSN via the `-db-dsn` flag or `DATABASE_URL` environment variable to enable this backend. The database must have the following tables:
-  - `receipts` (`id SERIAL PRIMARY KEY`, `recipient TEXT NOT NULL`, `status TEXT NOT NULL`, `time BIGINT NOT NULL`)
-  - `responses` (`id SERIAL PRIMARY KEY`, `sender TEXT NOT NULL`, `body TEXT NOT NULL`, `time BIGINT NOT NULL`)
+- **SQLite Store**: Default storage backend. Stores data in a SQLite database file. By default, uses `/var/lib/promptpipe/promptpipe.db`. Configured via the `-db-dsn` flag or `DATABASE_URL` environment variable with a file path.
+- **PostgreSQL Store**: Enterprise storage backend. Provide a PostgreSQL DSN via the `-db-dsn` flag or `DATABASE_URL` environment variable to enable this backend. The system auto-detects PostgreSQL DSNs (containing `postgres://`, `host=`, or multiple key=value pairs).
+- **In-Memory Store**: Used for testing and development. Fast, but not persistent. Used when no database configuration is provided.
 
-The system will use the PostgreSQL store if a valid DSN is provided, otherwise it defaults to the in-memory store.
+All backends support the same schema with the following tables:
+
+- `receipts` (`id SERIAL PRIMARY KEY`, `recipient TEXT NOT NULL`, `status TEXT NOT NULL`, `time BIGINT NOT NULL`)
+- `responses` (`id SERIAL PRIMARY KEY`, `sender TEXT NOT NULL`, `body TEXT NOT NULL`, `time BIGINT NOT NULL`)
+
+## Configuration
+
+### State Directory
+
+PromptPipe uses a state directory to store SQLite databases and other persistent data:
+
+- **Default**: `/var/lib/promptpipe`
+- **Environment Variable**: `PROMPTPIPE_STATE_DIR`
+- **Command Line Flag**: `-state-dir`
+
+The SQLite database file is automatically placed at `{state-dir}/promptpipe.db` unless a specific database DSN is provided.
+
+### Database Configuration
+
+The database can be configured in several ways (in order of precedence):
+
+1. **Command Line Flag**: `-db-dsn <connection-string-or-file-path>`
+2. **Environment Variables**: `WHATSAPP_DB_DSN` or `DATABASE_URL`
+3. **Default**: SQLite database at `{state-dir}/promptpipe.db`
+
+Examples:
+
+```bash
+# Use SQLite in custom location
+./promptpipe -db-dsn /path/to/my/database.db
+
+# Use PostgreSQL
+./promptpipe -db-dsn "postgres://user:password@localhost/promptpipe"
+
+# Use custom state directory (SQLite will be at /custom/path/promptpipe.db)
+./promptpipe -state-dir /custom/path
+
+# Environment variable configuration
+export DATABASE_URL="postgres://user:password@localhost/promptpipe"
+export PROMPTPIPE_STATE_DIR="/custom/state/dir"
+./promptpipe
+```
 
 ## Environment Variables
 
-| Variable             | Description                                 |
-|----------------------|---------------------------------------------|
-| WHATSAPP_DB_DRIVER   | Database driver for Whatsmeow storage       |
-| WHATSAPP_DB_DSN      | Data source name for Whatsmeow DB           |
-| DEFAULT_SCHEDULE     | Default cron schedule for prompts           |
-| DATABASE_URL         | PostgreSQL connection string (optional)     |
-| API_ADDR             | API server address                         |
-| OPENAI_API_KEY       | API key for OpenAI GenAI operations         |
+| Variable               | Description                                 |
+|------------------------|---------------------------------------------|
+| PROMPTPIPE_STATE_DIR   | State directory for PromptPipe data        |
+| WHATSAPP_DB_DRIVER     | Database driver for Whatsmeow storage      |
+| WHATSAPP_DB_DSN        | Data source name for Whatsmeow DB          |
+| DATABASE_URL           | Database connection string (PostgreSQL/SQLite) |
+| DEFAULT_SCHEDULE       | Default cron schedule for prompts          |
+| API_ADDR               | API server address                          |
+| OPENAI_API_KEY         | API key for OpenAI GenAI operations        |
 
 ## Custom Flows
 
