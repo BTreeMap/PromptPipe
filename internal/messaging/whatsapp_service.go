@@ -54,7 +54,7 @@ func (s *WhatsAppService) SendMessage(ctx context.Context, to string, body strin
 		return err
 	}
 	// Emit sent receipt
-	s.receipts <- models.Receipt{To: to, Status: "sent", Time: time.Now().Unix()}
+	s.receipts <- models.Receipt{To: to, Status: models.StatusTypeSent, Time: time.Now().Unix()}
 	slog.Info("WhatsAppService message sent and receipt emitted", "to", to)
 	return nil
 }

@@ -14,7 +14,7 @@ import (
 )
 
 //go:embed migrations.sql
-var migrations string
+var postgresMigrations string
 
 type PostgresStore struct {
 	db *sql.DB
@@ -49,7 +49,7 @@ func NewPostgresStore(opts ...Option) (*PostgresStore, error) {
 	slog.Debug("Postgres ping successful")
 	// Run migrations to ensure receipts table exists
 	slog.Debug("Running Postgres migrations")
-	if _, err := db.Exec(migrations); err != nil {
+	if _, err := db.Exec(postgresMigrations); err != nil {
 		slog.Error("Failed to run migrations", "error", err)
 		return nil, fmt.Errorf("failed to run migrations: %w", err)
 	}

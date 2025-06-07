@@ -12,7 +12,11 @@ import (
 
 	"github.com/BTreeMap/PromptPipe/internal/models"
 	_ "github.com/mattn/go-sqlite3"
+	_ "embed"
 )
+
+//go:embed migrations.sql
+var sqliteMigrations string
 
 type SQLiteStore struct {
 	db *sql.DB
@@ -60,7 +64,7 @@ func NewSQLiteStore(opts ...Option) (*SQLiteStore, error) {
 
 	// Run migrations to ensure tables exist
 	slog.Debug("Running SQLite migrations")
-	if _, err := db.Exec(migrations); err != nil {
+	if _, err := db.Exec(sqliteMigrations); err != nil {
 		slog.Error("Failed to run migrations", "error", err)
 		return nil, fmt.Errorf("failed to run migrations: %w", err)
 	}

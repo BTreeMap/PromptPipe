@@ -87,33 +87,6 @@ func Run(waOpts []whatsapp.Option, storeOpts []store.Option, genaiOpts []genai.O
 		os.Exit(1)
 	}
 	slog.Debug("Messaging service started")
-	// Forward receipts and responses to store
-	go func() {
-		slog.Debug("Starting receipt forwarding routine")
-		for r := range msgService.Receipts() {
-			if err := st.AddReceipt(r); err != nil {
-				slog.Error("Error storing receipt", "error", err)
-			}
-		}
-	}()
-	slog.Debug("Receipt forwarding routine started")
-	go func() {
-		slog.Debug("Starting response forwarding routine")
-		for resp := range msgService.Responses() {
-			if err := st.AddResponse(resp); err != nil {
-				slog.Error("Error storing response", "error", err)
-			}
-		}
-	}()
-	slog.Debug("Response forwarding routine started")
-
-	// Initialize scheduler
-	sched = scheduler.NewScheduler()
-	slog.Debug("Scheduler initialized")
-
-	// Configure default schedule
-	defaultCron = apiCfg.DefaultCron
-	slog.Debug("Default cron schedule set", "defaultCron", defaultCron)
 
 	// Choose storage backend based on DSN type in options
 	if len(storeOpts) > 0 {
@@ -150,6 +123,34 @@ func Run(waOpts []whatsapp.Option, storeOpts []store.Option, genaiOpts []genai.O
 		slog.Info("Using in-memory store - data will not persist across restarts")
 	}
 
+	// After store initialization, forward receipts and responses regardless of store type
+	go func() {
+		slog.Debug("Starting receipt forwarding routine")
+		for r := range msgService.Receipts() {
+			if err := st.AddReceipt(r); err != nil {
+				slog.Error("Error storing receipt", "error", err)
+			}
+		}
+	}()
+	slog.Debug("Receipt forwarding routine started")
+	go func() {
+		slog.Debug("Starting response forwarding routine")
+		for resp := range msgService.Responses() {
+			if err := st.AddResponse(resp); err != nil {
+				slog.Error("Error storing response", "error", err)
+			}
+		}
+	}()
+	slog.Debug("Response forwarding routine started")
+
+	// Initialize scheduler
+	sched = scheduler.NewScheduler()
+	slog.Debug("Scheduler initialized")
+
+	// Configure default schedule
+	defaultCron = apiCfg.DefaultCron
+	slog.Debug("Default cron schedule set", "defaultCron", defaultCron)
+
 	// Initialize GenAI client if API key provided via options
 	if len(genaiOpts) > 0 {
 		slog.Debug("Initializing GenAI client")
@@ -163,12 +164,6 @@ func Run(waOpts []whatsapp.Option, storeOpts []store.Option, genaiOpts []genai.O
 		slog.Debug("GenAI client created and generator registered")
 	} else {
 		gaClient = nil
-	}
-
-	// Register flow generators
-	// Static and branch are registered init(); register GenAI if available
-	if gaClient != nil {
-		flow.Register(models.PromptTypeGenAI, &flow.GenAIGenerator{Client: gaClient})
 	}
 
 	// Register HTTP handlers
@@ -208,6 +203,7 @@ func Run(waOpts []whatsapp.Option, storeOpts []store.Option, genaiOpts []genai.O
 func sendHandler(w http.ResponseWriter, r *http.Request) {
 	slog.Debug("sendHandler invoked", "method", r.Method, "path", r.URL.Path)
 	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", http.MethodPost)
 		slog.Warn("sendHandler method not allowed", "method", r.Method)
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
@@ -244,12 +240,16 @@ func sendHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.Info("Message sent successfully", "to", p.To)
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
+	// Respond with empty JSON
+	w.Write([]byte(`{"status":"ok"}`))
 }
 
 func scheduleHandler(w http.ResponseWriter, r *http.Request) {
 	slog.Debug("scheduleHandler invoked", "method", r.Method, "path", r.URL.Path)
 	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", http.MethodPost)
 		slog.Warn("scheduleHandler method not allowed", "method", r.Method)
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
@@ -306,28 +306,35 @@ func scheduleHandler(w http.ResponseWriter, r *http.Request) {
 	// Capture prompt locally for closure
 	slog.Debug("scheduleHandler scheduling job", "to", p.To, "cron", p.Cron)
 	job := p
-	if err := sched.AddJob(p.Cron, func() {
+	if addErr := sched.AddJob(p.Cron, func() {
 		slog.Debug("scheduled job triggered", "to", job.To)
 		// Generate message body via flow
-		msg, err := flow.Generate(context.Background(), job)
-		if err != nil {
-			slog.Error("Flow generation error in scheduled job", "error", err)
+		msg, genErr := flow.Generate(context.Background(), job)
+		if genErr != nil {
+			slog.Error("Flow generation error in scheduled job", "error", genErr)
 			return
 		}
-		if err := msgService.SendMessage(context.Background(), job.To, msg); err != nil {
-			slog.Error("Scheduled job send error", "error", err, "to", job.To)
+		// Send message
+		if sendErr := msgService.SendMessage(context.Background(), job.To, msg); sendErr != nil {
+			slog.Error("Scheduled job send error", "error", sendErr, "to", job.To)
 			return
 		}
-		if err := st.AddReceipt(models.Receipt{To: job.To, Status: "sent", Time: time.Now().Unix()}); err != nil {
-			slog.Error("Error adding scheduled receipt", "error", err)
+		// Add receipt
+		recErr := st.AddReceipt(models.Receipt{To: job.To, Status: models.StatusTypeSent, Time: time.Now().Unix()})
+		if recErr != nil {
+			slog.Error("Error adding scheduled receipt", "error", recErr)
 		}
-	}); err != nil {
-		slog.Error("Error scheduling job", "error", err)
+	}); addErr != nil {
+		slog.Error("Error scheduling job", "error", addErr)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
+	// Job scheduled successfully
 	slog.Info("Job scheduled successfully", "to", p.To, "cron", p.Cron)
+	// Respond with JSON status
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
+	w.Write([]byte(`{"status":"scheduled"}`))
 }
 
 func receiptsHandler(w http.ResponseWriter, r *http.Request) {
