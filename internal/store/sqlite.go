@@ -10,9 +10,10 @@ import (
 	"os"
 	"path/filepath"
 
+	_ "embed"
+
 	"github.com/BTreeMap/PromptPipe/internal/models"
 	_ "github.com/mattn/go-sqlite3"
-	_ "embed"
 )
 
 //go:embed migrations.sql

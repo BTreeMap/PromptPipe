@@ -201,6 +201,7 @@ func Run(waOpts []whatsapp.Option, storeOpts []store.Option, genaiOpts []genai.O
 }
 
 func sendHandler(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
 	slog.Debug("sendHandler invoked", "method", r.Method, "path", r.URL.Path)
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", http.MethodPost)
@@ -247,6 +248,7 @@ func sendHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func scheduleHandler(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
 	slog.Debug("scheduleHandler invoked", "method", r.Method, "path", r.URL.Path)
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", http.MethodPost)
@@ -340,6 +342,7 @@ func scheduleHandler(w http.ResponseWriter, r *http.Request) {
 func receiptsHandler(w http.ResponseWriter, r *http.Request) {
 	slog.Debug("receiptsHandler invoked", "method", r.Method, "path", r.URL.Path)
 	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", http.MethodGet)
 		slog.Warn("receiptsHandler method not allowed", "method", r.Method)
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
@@ -352,6 +355,7 @@ func receiptsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	slog.Debug("receipts fetched", "count", len(receipts))
 	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(w).Encode(receipts); err != nil {
 		slog.Error("Error encoding receipts response", "error", err)
 	}
@@ -361,6 +365,7 @@ func receiptsHandler(w http.ResponseWriter, r *http.Request) {
 func responseHandler(w http.ResponseWriter, r *http.Request) {
 	slog.Debug("responseHandler invoked", "method", r.Method, "path", r.URL.Path)
 	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", http.MethodPost)
 		slog.Warn("responseHandler method not allowed", "method", r.Method)
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
@@ -379,13 +384,16 @@ func responseHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.Info("Response recorded", "from", resp.From)
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
+	w.Write([]byte(`{"status":"recorded"}`))
 }
 
 // responsesHandler returns all collected responses (GET /responses).
 func responsesHandler(w http.ResponseWriter, r *http.Request) {
 	slog.Debug("responsesHandler invoked", "method", r.Method, "path", r.URL.Path)
 	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", http.MethodGet)
 		slog.Warn("responsesHandler method not allowed", "method", r.Method)
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
@@ -398,6 +406,7 @@ func responsesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	slog.Debug("responses fetched", "count", len(responses))
 	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(w).Encode(responses); err != nil {
 		slog.Error("Error encoding responses response", "error", err)
 	}
@@ -407,6 +416,7 @@ func responsesHandler(w http.ResponseWriter, r *http.Request) {
 func statsHandler(w http.ResponseWriter, r *http.Request) {
 	slog.Debug("statsHandler invoked", "method", r.Method, "path", r.URL.Path)
 	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", http.MethodGet)
 		slog.Warn("statsHandler method not allowed", "method", r.Method)
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
@@ -435,6 +445,7 @@ func statsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	slog.Debug("stats computed", "total_responses", total, "avg_response_length", avgLen)
 	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(w).Encode(stats); err != nil {
 		slog.Error("Error encoding stats response", "error", err)
 	}
