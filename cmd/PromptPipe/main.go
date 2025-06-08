@@ -135,6 +135,9 @@ func main() {
 	slog.Info("Bootstrapping PromptPipe with configured modules")
 	slog.Debug("Module options counts", "whatsapp", len(waOpts), "store", len(storeOpts), "genai", len(genaiOpts), "api", len(apiOpts))
 	slog.Debug("Final configuration", "state_dir", *stateDir, "db_dsn", *dbDSN, "api_addr", *apiAddr)
-	api.Run(waOpts, storeOpts, genaiOpts, apiOpts)
-	slog.Info("PromptPipe exited")
+	if err := api.Run(waOpts, storeOpts, genaiOpts, apiOpts); err != nil {
+		slog.Error("PromptPipe failed to run", "error", err)
+		os.Exit(1) // Exit with error code if Run returns an error
+	}
+	slog.Info("PromptPipe exited successfully") // Updated log message
 }

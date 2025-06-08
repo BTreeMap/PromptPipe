@@ -7,6 +7,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"os"
@@ -56,7 +57,8 @@ func WithDefaultCron(cron string) Option {
 }
 
 // Run starts the API server and initializes dependencies, applying module options.
-func Run(waOpts []whatsapp.Option, storeOpts []store.Option, genaiOpts []genai.Option, apiOpts []Option) {
+// It returns an error if initialization fails.
+func Run(waOpts []whatsapp.Option, storeOpts []store.Option, genaiOpts []genai.Option, apiOpts []Option) error {
 	slog.Debug("API Run invoked", "whatsappOpts", len(waOpts), "storeOpts", len(storeOpts), "genaiOpts", len(genaiOpts), "apiOpts", len(apiOpts))
 	var err error
 
@@ -76,7 +78,7 @@ func Run(waOpts []whatsapp.Option, storeOpts []store.Option, genaiOpts []genai.O
 	whClient, err := whatsapp.NewClient(waOpts...)
 	if err != nil {
 		slog.Error("Failed to create WhatsApp client", "error", err)
-		os.Exit(1)
+		return err
 	}
 	slog.Debug("WhatsApp client created successfully")
 	msgService = messaging.NewWhatsAppService(whClient)
@@ -84,7 +86,7 @@ func Run(waOpts []whatsapp.Option, storeOpts []store.Option, genaiOpts []genai.O
 	// Start messaging service
 	if err := msgService.Start(context.Background()); err != nil {
 		slog.Error("Failed to start messaging service", "error", err)
-		os.Exit(1)
+		return err
 	}
 	slog.Debug("Messaging service started")
 
@@ -102,7 +104,7 @@ func Run(waOpts []whatsapp.Option, storeOpts []store.Option, genaiOpts []genai.O
 			ps, err := store.NewPostgresStore(storeOpts...)
 			if err != nil {
 				slog.Error("Failed to connect to PostgreSQL store", "error", err, "dsn_length", len(cfg.DSN))
-				os.Exit(1)
+				return err
 			}
 			st = ps
 			slog.Info("Connected to PostgreSQL store successfully")
@@ -112,7 +114,7 @@ func Run(waOpts []whatsapp.Option, storeOpts []store.Option, genaiOpts []genai.O
 			ss, err := store.NewSQLiteStore(storeOpts...)
 			if err != nil {
 				slog.Error("Failed to connect to SQLite store", "error", err, "db_path", cfg.DSN)
-				os.Exit(1)
+				return err
 			}
 			st = ss
 			slog.Info("Connected to SQLite store successfully", "db_path", cfg.DSN)
@@ -157,7 +159,7 @@ func Run(waOpts []whatsapp.Option, storeOpts []store.Option, genaiOpts []genai.O
 		gaClient, err = genai.NewClient(genaiOpts...)
 		if err != nil {
 			slog.Error("Failed to create GenAI client", "error", err)
-			os.Exit(1)
+			return err
 		}
 		// Register GenAI flow generator
 		flow.Register(models.PromptTypeGenAI, &flow.GenAIGenerator{Client: gaClient})
@@ -180,9 +182,8 @@ func Run(waOpts []whatsapp.Option, storeOpts []store.Option, genaiOpts []genai.O
 	srv := &http.Server{Addr: addr, Handler: nil}
 	go func() {
 		slog.Info("PromptPipe API running", "addr", addr)
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			slog.Error("API server error", "error", err)
-			os.Exit(1)
 		}
 	}()
 	slog.Debug("HTTP server started in background")
@@ -191,13 +192,17 @@ func Run(waOpts []whatsapp.Option, storeOpts []store.Option, genaiOpts []genai.O
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
 	<-quit
 	slog.Info("Shutdown signal received, shutting down server")
-	if err := srv.Shutdown(context.Background()); err != nil {
+
+	ctxShutdown, cancelShutdown := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelShutdown()
+
+	if err := srv.Shutdown(ctxShutdown); err != nil {
 		slog.Error("Server Shutdown failed", "error", err)
-		os.Exit(1)
 	}
 	slog.Info("API server shutdown complete")
 	sched.Stop()
 	slog.Debug("Scheduler stopped")
+	return nil
 }
 
 func sendHandler(w http.ResponseWriter, r *http.Request) {
