@@ -35,25 +35,25 @@ func NewPostgresStore(opts ...Option) (*PostgresStore, error) {
 		return nil, fmt.Errorf("database DSN not set")
 	}
 
-	slog.Debug("Opening Postgres database connection")
+	slog.Debug("Opening Postgres database connection", "dsn", dsn) // Log the DSN for observability
 	db, err := sql.Open("postgres", dsn)
 	if err != nil {
-		slog.Error("Failed to open Postgres connection", "error", err)
+		slog.Error("Failed to open Postgres connection", "dsn", dsn, "error", err)
 		return nil, err
 	}
-	slog.Debug("Postgres database opened")
+	slog.Debug("Postgres database opened", "dsn", dsn)
 	if err := db.Ping(); err != nil {
-		slog.Error("Postgres ping failed", "error", err)
+		slog.Error("Postgres ping failed", "dsn", dsn, "error", err)
 		return nil, err
 	}
-	slog.Debug("Postgres ping successful")
+	slog.Debug("Postgres ping successful", "dsn", dsn)
 	// Run migrations to ensure receipts table exists
-	slog.Debug("Running Postgres migrations")
+	slog.Debug("Running Postgres migrations", "dsn", dsn)
 	if _, err := db.Exec(postgresMigrations); err != nil {
-		slog.Error("Failed to run migrations", "error", err)
+		slog.Error("Failed to run migrations", "dsn", dsn, "error", err)
 		return nil, fmt.Errorf("failed to run migrations: %w", err)
 	}
-	slog.Debug("Postgres migrations applied successfully")
+	slog.Debug("Postgres migrations applied successfully", "dsn", dsn)
 	return &PostgresStore{db: db}, nil
 }
 

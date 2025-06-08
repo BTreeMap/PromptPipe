@@ -39,7 +39,7 @@ func (g *MicroHealthInterventionGenerator) Generate(ctx context.Context, p model
 		// Feeling poll
 		return "How do you feel about this first step?\n1. 😊 Excited\n2. 🤔 Curious\n3. 😃 Motivated\n4. 📖 Need info\n5. ⚖️ Not sure\n(Reply with ‘1’–‘5’)", nil
 	default:
-		slog.Error("MicroHealthIntervention unsupported state", "state", p.State)
+		slog.Error("MicroHealthIntervention unsupported state", "state", p.State, "to", p.To)
 		return "", fmt.Errorf("unsupported micro health intervention state '%s'", p.State)
 	}
 }

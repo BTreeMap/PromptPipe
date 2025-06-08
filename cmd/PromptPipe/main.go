@@ -85,8 +85,6 @@ func main() {
 		}
 	}
 
-	slog.Debug("flags parsed", "qrOutput", *qrOutput, "numeric", *numeric, "stateDir", *stateDir, "dbDriver", *dbDriver, "dbDSN", *dbDSN, "openaiKeySet", *openaiKey != "", "apiAddr", *apiAddr, "defaultCron", *defaultCron)
-
 	// Build WhatsApp options
 	var waOpts []whatsapp.Option
 	if *qrOutput != "" {

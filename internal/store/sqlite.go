@@ -44,7 +44,7 @@ func NewSQLiteStore(opts ...Option) (*SQLiteStore, error) {
 	// Ensure the directory exists
 	dir := filepath.Dir(dsn)
 	if err := os.MkdirAll(dir, 0755); err != nil {
-		slog.Error("Failed to create database directory", "error", err, "dir", dir)
+		slog.Error("Failed to create database directory", "error", err, "dir", dir, "dsn", dsn)
 		return nil, fmt.Errorf("failed to create database directory: %w", err)
 	}
 	slog.Debug("SQLite database directory verified/created", "dir", dir, "db_path", dsn)
@@ -52,24 +52,24 @@ func NewSQLiteStore(opts ...Option) (*SQLiteStore, error) {
 	slog.Debug("Opening SQLite database connection", "path", dsn)
 	db, err := sql.Open("sqlite3", dsn)
 	if err != nil {
-		slog.Error("Failed to open SQLite connection", "error", err)
+		slog.Error("Failed to open SQLite connection", "error", err, "dsn", dsn)
 		return nil, err
 	}
-	slog.Debug("SQLite database opened")
+	slog.Debug("SQLite database opened", "dsn", dsn)
 
 	if err := db.Ping(); err != nil {
-		slog.Error("SQLite ping failed", "error", err)
+		slog.Error("SQLite ping failed", "error", err, "dsn", dsn)
 		return nil, err
 	}
-	slog.Debug("SQLite ping successful")
+	slog.Debug("SQLite ping successful", "dsn", dsn)
 
 	// Run migrations to ensure tables exist
-	slog.Debug("Running SQLite migrations")
+	slog.Debug("Running SQLite migrations", "dsn", dsn)
 	if _, err := db.Exec(sqliteMigrations); err != nil {
-		slog.Error("Failed to run migrations", "error", err)
+		slog.Error("Failed to run migrations", "error", err, "dsn", dsn)
 		return nil, fmt.Errorf("failed to run migrations: %w", err)
 	}
-	slog.Debug("SQLite migrations applied successfully")
+	slog.Debug("SQLite migrations applied successfully", "dsn", dsn)
 
 	return &SQLiteStore{db: db}, nil
 }

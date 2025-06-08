@@ -33,13 +33,13 @@ func Generate(ctx context.Context, p models.Prompt) (string, error) {
 	if gen, ok := Get(p.Type); ok {
 		result, err := gen.Generate(ctx, p)
 		if err != nil {
-			slog.Error("Flow generator error", "type", p.Type, "error", err)
+			slog.Error("Flow generator error", "type", p.Type, "to", p.To, "error", err)
 		} else {
-			slog.Debug("Flow Generate succeeded", "type", p.Type)
+			slog.Debug("Flow Generate succeeded", "type", p.Type, "to", p.To)
 		}
 		return result, err
 	}
-	slog.Error("No generator registered for prompt type", "type", p.Type)
+	slog.Error("No generator registered for prompt type", "type", p.Type, "to", p.To)
 	return "", fmt.Errorf("no generator registered for prompt type %s", p.Type)
 }
 
