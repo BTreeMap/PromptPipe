@@ -17,7 +17,7 @@ type Store interface {
 	GetReceipts() ([]models.Receipt, error)
 	AddResponse(r models.Response) error
 	GetResponses() ([]models.Response, error)
-	ClearReceipts() error // for tests
+	ClearReceipts() error  // for tests
 	ClearResponses() error // for tests
 }
 

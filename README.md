@@ -70,7 +70,7 @@ make build
 go build -o PromptPipe cmd/PromptPipe/main.go
 ```
 
-## Configuration
+## Example Configuration
 
 Create a `.env` file or export the following environment variables:
 
@@ -79,6 +79,8 @@ Create a `.env` file or export the following environment variables:
 WHATSAPP_DB_DRIVER=postgres
 # Whatsmeow DB DSN for SQL store
 WHATSAPP_DB_DSN="postgres://postgres:postgres@localhost:5432/whatsapp?sslmode=disable"
+# (Optional) State directory for PromptPipe data
+PROMPTPIPE_STATE_DIR="/var/lib/promptpipe"
 # (Optional) Default cron schedule for prompts
 DEFAULT_SCHEDULE="0 9 * * *"  # 9 AM daily
 # (Optional) PostgreSQL connection string for receipts
@@ -101,6 +103,7 @@ OPENAI_API_KEY="your_openai_api_key"
 - `-api-addr string` : API server address (overrides $API_ADDR)
 - `-qr-output string` : path to write login QR code (default: stdout)
 - `-numeric-code`    : use numeric login code instead of QR code
+- `-state-dir string`: state directory for PromptPipe data (overrides $PROMPTPIPE_STATE_DIR)
 - `-db-driver string`: database driver for WhatsApp and Postgres store (overrides $WHATSAPP_DB_DRIVER / $DATABASE_URL)
 - `-db-dsn string`   : database DSN for WhatsApp and Postgres store (overrides $WHATSAPP_DB_DSN / $DATABASE_URL)
 - `-openai-api-key string`: OpenAI API key (overrides $OPENAI_API_KEY)
@@ -116,6 +119,8 @@ Schedules a new prompt to be sent according to a cron expression.
 
 **Request Body:** `Prompt` object (see [Data Models](#prompt)). Supports optional `system_prompt` and `user_prompt` fields for GenAI content.
 
+**Response Body:** `{"status":"scheduled"}`
+
 **Responses:**
 
 - `201 Created`: Prompt successfully scheduled.
@@ -127,6 +132,8 @@ Schedules a new prompt to be sent according to a cron expression.
 Sends a prompt immediately.
 
 **Request Body:** `Prompt` object (see [Data Models](#prompt), `cron` field is ignored). Supports optional `system_prompt` and `user_prompt` fields to generate dynamic content.
+
+**Response Body:** `{"status":"ok"}`
 
 **Responses:**
 
@@ -150,6 +157,8 @@ Fetches all stored delivery and read receipt events.
 Collects a participant's response message.
 
 **Request Body:** `Response` object (see [Data Models](#response)).
+
+**Response Body:** `{"status":"recorded"}`
 
 **Responses:**
 
