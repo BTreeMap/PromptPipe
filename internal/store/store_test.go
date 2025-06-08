@@ -101,6 +101,14 @@ func TestInMemoryStore(t *testing.T) {
 	if len(receipts) != 0 {
 		t.Errorf("ClearReceipts: expected 0 receipts, got %d", len(receipts))
 	}
+
+	if err := s.ClearResponses(); err != nil {
+		t.Fatalf("ClearResponses failed: %v", err)
+	}
+	responses, _ = s.GetResponses()
+	if len(responses) != 0 {
+		t.Errorf("ClearResponses: expected 0 responses, got %d", len(responses))
+	}
 }
 
 func TestPostgresStore(t *testing.T) {
@@ -113,14 +121,16 @@ func TestPostgresStore(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewPostgresStore failed: %v", err)
 	}
+	defer s.Close() // Correctly call Close on s
 
 	// Clear existing data for a clean test run
 	if err := s.ClearReceipts(); err != nil {
 		// It's okay if the table doesn't exist yet on the first run before migrations
 		// t.Logf("ClearReceipts (pre-test) failed, possibly due to no table: %v", err)
 	}
-	// Also clear responses if a ClearResponses method exists or by direct query
-	// For now, assuming ClearReceipts also clears related test data or we manage responses separately.
+	if err := s.ClearResponses(); err != nil {
+		// t.Logf("ClearResponses (pre-test) failed, possibly due to no table: %v", err)
+	}
 
 	r1 := models.Receipt{To: "pg_test_1", Status: models.StatusTypeDelivered, Time: 100}
 	if err := s.AddReceipt(r1); err != nil {
@@ -165,7 +175,18 @@ func TestPostgresStore(t *testing.T) {
 	if err := s.ClearReceipts(); err != nil {
 		t.Fatalf("ClearReceipts failed: %v", err)
 	}
-	// Add similar clearing for responses if necessary
+	receipts, _ = s.GetReceipts()
+	if len(receipts) != 0 {
+		t.Errorf("ClearReceipts: expected 0 receipts, got %d", len(receipts))
+	}
+
+	if err := s.ClearResponses(); err != nil {
+		t.Fatalf("ClearResponses failed: %v", err)
+	}
+	responses, _ = s.GetResponses()
+	if len(responses) != 0 {
+		t.Errorf("ClearResponses: expected 0 responses, got %d", len(responses))
+	}
 }
 
 func TestSQLiteStore(t *testing.T) {
@@ -205,7 +226,7 @@ func TestSQLiteStore(t *testing.T) {
 		t.Fatalf("GetResponses failed: %v", err)
 	}
 	if len(responses) != 1 || responses[0].From != resp1.From || responses[0].Body != resp1.Body || responses[0].Time != resp1.Time {
-		t.Errorf("GetResponses: expected %+v, got %+v", resp1, responses)
+		t.Errorf("GetResponses: expected %+v, got %+v", resp1, responses[0])
 	}
 
 	if err := s.ClearReceipts(); err != nil {
@@ -215,7 +236,14 @@ func TestSQLiteStore(t *testing.T) {
 	if len(receipts) != 0 {
 		t.Errorf("ClearReceipts: expected 0 receipts, got %d", len(receipts))
 	}
-	// Add similar clearing for responses if necessary
+
+	if err := s.ClearResponses(); err != nil {
+		t.Fatalf("ClearResponses failed: %v", err)
+	}
+	responses, _ = s.GetResponses()
+	if len(responses) != 0 {
+		t.Errorf("ClearResponses: expected 0 responses, got %d", len(responses))
+	}
 }
 
 func getenvOrSkip(t *testing.T, key string) string {

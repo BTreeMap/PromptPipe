@@ -18,6 +18,7 @@ type Store interface {
 	AddResponse(r models.Response) error
 	GetResponses() ([]models.Response, error)
 	ClearReceipts() error // for tests
+	ClearResponses() error // for tests
 }
 
 // Opts holds configuration options for store implementations.
@@ -114,5 +115,14 @@ func (s *InMemoryStore) ClearReceipts() error {
 	defer s.mu.Unlock()
 	s.receipts = s.receipts[:0] // Clear slice efficiently
 	slog.Debug("InMemoryStore ClearReceipts succeeded")
+	return nil
+}
+
+// ClearResponses clears all stored responses (for tests).
+func (s *InMemoryStore) ClearResponses() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.responses = s.responses[:0] // Clear slice efficiently
+	slog.Debug("InMemoryStore ClearResponses succeeded")
 	return nil
 }

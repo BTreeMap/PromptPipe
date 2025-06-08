@@ -122,5 +122,33 @@ func (s *PostgresStore) GetResponses() ([]models.Response, error) {
 // ClearReceipts deletes all records in receipts table (for tests).
 func (s *PostgresStore) ClearReceipts() error {
 	_, err := s.db.Exec("DELETE FROM receipts")
+	if err != nil {
+		slog.Error("PostgresStore ClearReceipts failed", "error", err)
+		return err
+	}
+	slog.Debug("PostgresStore ClearReceipts succeeded")
+	return nil
+}
+
+// ClearResponses deletes all records in responses table (for tests).
+func (s *PostgresStore) ClearResponses() error {
+	_, err := s.db.Exec("DELETE FROM responses")
+	if err != nil {
+		slog.Error("PostgresStore ClearResponses failed", "error", err)
+		return err
+	}
+	slog.Debug("PostgresStore ClearResponses succeeded")
+	return nil
+}
+
+// Close closes the PostgreSQL database connection.
+func (s *PostgresStore) Close() error {
+	slog.Debug("Closing PostgreSQL database connection")
+	err := s.db.Close()
+	if err != nil {
+		slog.Error("Failed to close PostgreSQL database", "error", err)
+	} else {
+		slog.Debug("PostgreSQL database connection closed successfully")
+	}
 	return err
 }

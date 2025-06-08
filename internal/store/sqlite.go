@@ -139,7 +139,23 @@ func (s *SQLiteStore) GetResponses() ([]models.Response, error) {
 // ClearReceipts deletes all records in receipts table (for tests).
 func (s *SQLiteStore) ClearReceipts() error {
 	_, err := s.db.Exec("DELETE FROM receipts")
-	return err
+	if err != nil {
+		slog.Error("SQLiteStore ClearReceipts failed", "error", err)
+		return err
+	}
+	slog.Debug("SQLiteStore ClearReceipts succeeded")
+	return nil
+}
+
+// ClearResponses deletes all records in responses table (for tests).
+func (s *SQLiteStore) ClearResponses() error {
+	_, err := s.db.Exec("DELETE FROM responses")
+	if err != nil {
+		slog.Error("SQLiteStore ClearResponses failed", "error", err)
+		return err
+	}
+	slog.Debug("SQLiteStore ClearResponses succeeded")
+	return nil
 }
 
 // Close closes the SQLite database connection.
