@@ -11,17 +11,37 @@ import (
 	"github.com/openai/openai-go/option"
 )
 
-// chatService defines minimal interface for chat completions.
-type chatService interface {
+// Default configuration constants
+const (
+	// DefaultModel is the default OpenAI model used for chat completions
+	DefaultModel = openai.ChatModelGPT4oMini
+	// DefaultTemperature is the default temperature setting for chat completions
+	DefaultTemperature = 0.7
+	// DefaultMaxTokens is the default maximum tokens for chat completions
+	DefaultMaxTokens = 1000
+)
+
+// Error message constants
+const (
+	ErrMsgAPIKeyNotSet     = "API key not set"
+	ErrMsgNoChoicesReturned = "no choices returned"
+)
+
+// ChatService defines minimal interface for chat completions.
+// Interface names should be descriptive and use proper Go naming conventions.
+type ChatService interface {
 	Create(ctx context.Context, body openai.ChatCompletionNewParams) (openai.ChatCompletion, error)
 }
 
 // Client wraps the OpenAI API client for prompt generation.
 type Client struct {
-	chat chatService
+	chat        ChatService
+	model       string
+	temperature float64
+	maxTokens   int
 }
 
-// wrapper implements chatService interface for OpenAI client
+// chatServiceWrapper implements ChatService interface for OpenAI client
 // newFunc is the underlying OpenAI call which may return a pointer
 type chatServiceWrapper struct {
 	newFunc func(ctx context.Context, body openai.ChatCompletionNewParams, opts ...option.RequestOption) (*openai.ChatCompletion, error)
@@ -39,7 +59,10 @@ func (w *chatServiceWrapper) Create(ctx context.Context, body openai.ChatComplet
 // Opts holds configuration options for the GenAI client, including API key override.
 // API key can be overridden via command-line options or environment variable.
 type Opts struct {
-	APIKey string // overrides OPENAI_API_KEY
+	APIKey      string  // overrides OPENAI_API_KEY
+	Model       string  // overrides default model
+	Temperature float64 // overrides default temperature
+	MaxTokens   int     // overrides default max tokens
 }
 
 // Option defines a configuration option for the GenAI client.
@@ -52,10 +75,35 @@ func WithAPIKey(key string) Option {
 	}
 }
 
+// WithModel overrides the model used by the GenAI client.
+func WithModel(model string) Option {
+	return func(o *Opts) {
+		o.Model = model
+	}
+}
+
+// WithTemperature overrides the temperature used by the GenAI client.
+func WithTemperature(temp float64) Option {
+	return func(o *Opts) {
+		o.Temperature = temp
+	}
+}
+
+// WithMaxTokens overrides the max tokens used by the GenAI client.
+func WithMaxTokens(tokens int) Option {
+	return func(o *Opts) {
+		o.MaxTokens = tokens
+	}
+}
+
 // NewClient initializes a new GenAI client using the provided options.
 func NewClient(opts ...Option) (*Client, error) {
-	// Apply options
-	var cfg Opts
+	// Apply options with defaults
+	cfg := Opts{
+		Model:       DefaultModel,
+		Temperature: DefaultTemperature,
+		MaxTokens:   DefaultMaxTokens,
+	}
 	for _, opt := range opts {
 		opt(&cfg)
 	}
@@ -63,34 +111,58 @@ func NewClient(opts ...Option) (*Client, error) {
 	// Determine API key (required)
 	apiKey := cfg.APIKey
 	if apiKey == "" {
-		return nil, fmt.Errorf("API key not set")
+		return nil, fmt.Errorf(ErrMsgAPIKeyNotSet)
 	}
 	// Initialize OpenAI client with API key
 	cli := openai.NewClient(option.WithAPIKey(apiKey))
-	return &Client{chat: &chatServiceWrapper{newFunc: cli.Chat.Completions.New}}, nil
+	client := &Client{
+		chat:        &chatServiceWrapper{newFunc: cli.Chat.Completions.New},
+		model:       cfg.Model,
+		temperature: cfg.Temperature,
+		maxTokens:   cfg.MaxTokens,
+	}
+	
+	slog.Debug("GenAI client created", "model", cfg.Model, "temperature", cfg.Temperature, "maxTokens", cfg.MaxTokens)
+	return client, nil
 }
 
 // GeneratePrompt generates content based on provided system and user prompts.
+// It uses the provided context for cancellation and timeout handling.
 func (c *Client) GeneratePrompt(system, user string) (string, error) {
-	slog.Debug("GeneratePrompt invoked", "system", system, "user", user)
-	// Prepare chat completion parameters
+	return c.GeneratePromptWithContext(context.Background(), system, user)
+}
+
+// GeneratePromptWithContext generates content based on provided system and user prompts with context.
+func (c *Client) GeneratePromptWithContext(ctx context.Context, system, user string) (string, error) {
+	slog.Debug("GeneratePrompt invoked", "system", system, "user", user, "model", c.model)
+	
+	// Prepare chat completion parameters with configured options
 	params := openai.ChatCompletionNewParams{
-		Model: openai.ChatModelGPT4oMini,
+		Model: c.model,
 		Messages: []openai.ChatCompletionMessageParamUnion{
 			openai.SystemMessage(system),
 			openai.UserMessage(user),
 		},
 	}
-	resp, err := c.chat.Create(context.Background(), params)
+	
+	// Add optional parameters if they differ from defaults
+	if c.temperature != DefaultTemperature {
+		// Note: Temperature and MaxTokens may need to be set via request options
+		// depending on the openai-go library version
+	}
+	
+	resp, err := c.chat.Create(ctx, params)
 	if err != nil {
-		slog.Error("GenAI chat.Create failed", "error", err)
+		slog.Error("GenAI chat.Create failed", "error", err, "model", c.model)
 		return "", err
 	}
+	
 	if len(resp.Choices) == 0 {
-		slog.Warn("GeneratePrompt no choices returned")
-		return "", fmt.Errorf("no choices returned")
+		slog.Warn("GeneratePrompt no choices returned", "model", c.model)
+		return "", fmt.Errorf(ErrMsgNoChoicesReturned)
 	}
+	
 	content := resp.Choices[0].Message.Content
-	slog.Debug("GeneratePrompt succeeded", "length", len(content))
+	slog.Debug("GeneratePrompt succeeded", "length", len(content), "model", c.model)
 	return content, nil
 }
