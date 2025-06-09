@@ -143,12 +143,8 @@ func (c *Client) GeneratePromptWithContext(ctx context.Context, system, user str
 			openai.SystemMessage(system),
 			openai.UserMessage(user),
 		},
-	}
-
-	// Add optional parameters if they differ from defaults
-	if c.temperature != DefaultTemperature {
-		// Note: Temperature and MaxTokens may need to be set via request options
-		// depending on the openai-go library version
+		Temperature: openai.Float(c.temperature),
+		MaxTokens:   openai.Int(int64(c.maxTokens)),
 	}
 
 	resp, err := c.chat.Create(ctx, params)

@@ -1,4 +1,4 @@
--- SQL migration for PromptPipe receipts table
+-- SQL migration for PromptPipe SQLite tables
 CREATE TABLE IF NOT EXISTS receipts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     recipient TEXT NOT NULL,

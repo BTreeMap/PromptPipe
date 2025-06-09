@@ -11,7 +11,7 @@ import (
 	"github.com/BTreeMap/PromptPipe/internal/models"
 )
 
-// Store defines the interface for storing receipts and responses.
+// Store defines the interface for storing receipts, responses, and flow state.
 type Store interface {
 	AddReceipt(r models.Receipt) error
 	GetReceipts() ([]models.Receipt, error)
@@ -20,6 +20,10 @@ type Store interface {
 	ClearReceipts() error  // for tests
 	ClearResponses() error // for tests
 	Close() error          // for proper resource cleanup
+	// Flow state management
+	SaveFlowState(state models.FlowState) error
+	GetFlowState(participantID, flowType string) (*models.FlowState, error)
+	DeleteFlowState(participantID, flowType string) error
 }
 
 // Opts holds configuration options for store implementations.
@@ -56,17 +60,19 @@ func DetectDSNType(dsn string) string {
 // InMemoryStore is a simple in-memory implementation of the Store interface.
 // Data is stored in memory and will be lost when the application restarts.
 type InMemoryStore struct {
-	receipts  []models.Receipt
-	responses []models.Response
-	mu        sync.RWMutex
+	receipts   []models.Receipt
+	responses  []models.Response
+	flowStates map[string]models.FlowState // key: participantID_flowType
+	mu         sync.RWMutex
 }
 
 // NewInMemoryStore creates a new in-memory store.
 func NewInMemoryStore() *InMemoryStore {
 	slog.Debug("Creating new in-memory store")
 	return &InMemoryStore{
-		receipts:  make([]models.Receipt, 0),
-		responses: make([]models.Response, 0),
+		receipts:   make([]models.Receipt, 0),
+		responses:  make([]models.Response, 0),
+		flowStates: make(map[string]models.FlowState),
 	}
 }
 
@@ -131,5 +137,40 @@ func (s *InMemoryStore) ClearResponses() error {
 // Close is a no-op for in-memory store as there are no resources to clean up.
 func (s *InMemoryStore) Close() error {
 	slog.Debug("InMemoryStore Close called (no-op)")
+	return nil
+}
+
+// SaveFlowState stores or updates flow state for a participant.
+func (s *InMemoryStore) SaveFlowState(state models.FlowState) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	key := state.ParticipantID + "_" + state.FlowType
+	s.flowStates[key] = state
+	slog.Debug("InMemoryStore SaveFlowState succeeded", "participantID", state.ParticipantID, "flowType", state.FlowType, "state", state.CurrentState)
+	return nil
+}
+
+// GetFlowState retrieves flow state for a participant.
+func (s *InMemoryStore) GetFlowState(participantID, flowType string) (*models.FlowState, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	key := participantID + "_" + flowType
+	if state, exists := s.flowStates[key]; exists {
+		slog.Debug("InMemoryStore GetFlowState found", "participantID", participantID, "flowType", flowType, "state", state.CurrentState)
+		// Return a copy to prevent external modifications
+		stateCopy := state
+		return &stateCopy, nil
+	}
+	slog.Debug("InMemoryStore GetFlowState not found", "participantID", participantID, "flowType", flowType)
+	return nil, nil
+}
+
+// DeleteFlowState removes flow state for a participant.
+func (s *InMemoryStore) DeleteFlowState(participantID, flowType string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	key := participantID + "_" + flowType
+	delete(s.flowStates, key)
+	slog.Debug("InMemoryStore DeleteFlowState succeeded", "participantID", participantID, "flowType", flowType)
 	return nil
 }

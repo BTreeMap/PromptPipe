@@ -182,6 +182,11 @@ func (c *Client) SendMessage(ctx context.Context, to string, body string) error 
 	return err
 }
 
+// GetClient returns the underlying whatsmeow client for event handling
+func (c *Client) GetClient() *whatsmeow.Client {
+	return c.waClient
+}
+
 // MockClient implements the same interface as Client but does nothing (for tests)
 // In tests, use whatsapp.NewMockClient() instead of NewClient to avoid real WhatsApp connections.
 // Update api_test.go to use MockClient for waClient.

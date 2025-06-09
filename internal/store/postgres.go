@@ -6,6 +6,7 @@ package store
 import (
 	"database/sql"
 	_ "embed"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 
@@ -13,7 +14,7 @@ import (
 	_ "github.com/lib/pq"
 )
 
-//go:embed migrations.sql
+//go:embed migrations_postgres.sql
 var postgresMigrations string
 
 type PostgresStore struct {
@@ -151,4 +152,84 @@ func (s *PostgresStore) Close() error {
 		slog.Debug("PostgreSQL database connection closed successfully")
 	}
 	return err
+}
+
+// SaveFlowState stores or updates flow state for a participant.
+func (s *PostgresStore) SaveFlowState(state models.FlowState) error {
+	query := `
+		INSERT INTO flow_states (participant_id, flow_type, current_state, state_data, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6)
+		ON CONFLICT (participant_id, flow_type)
+		DO UPDATE SET 
+			current_state = EXCLUDED.current_state,
+			state_data = EXCLUDED.state_data,
+			updated_at = EXCLUDED.updated_at`
+	
+	// Convert state_data map to JSON bytes
+	var stateDataJSON []byte
+	var err error
+	if state.StateData != nil && len(state.StateData) > 0 {
+		stateDataJSON, err = json.Marshal(state.StateData)
+		if err != nil {
+			slog.Error("PostgresStore SaveFlowState JSON marshal failed", "error", err, "participantID", state.ParticipantID)
+			return err
+		}
+	}
+	
+	_, err = s.db.Exec(query, state.ParticipantID, state.FlowType, state.CurrentState, 
+		stateDataJSON, state.CreatedAt, state.UpdatedAt)
+	if err != nil {
+		slog.Error("PostgresStore SaveFlowState failed", "error", err, "participantID", state.ParticipantID, "flowType", state.FlowType)
+		return err
+	}
+	slog.Debug("PostgresStore SaveFlowState succeeded", "participantID", state.ParticipantID, "flowType", state.FlowType, "state", state.CurrentState)
+	return nil
+}
+
+// GetFlowState retrieves flow state for a participant.
+func (s *PostgresStore) GetFlowState(participantID, flowType string) (*models.FlowState, error) {
+	query := `SELECT participant_id, flow_type, current_state, state_data, created_at, updated_at 
+			  FROM flow_states WHERE participant_id = $1 AND flow_type = $2`
+	
+	var state models.FlowState
+	var stateDataJSON []byte
+	
+	err := s.db.QueryRow(query, participantID, flowType).Scan(
+		&state.ParticipantID, &state.FlowType, &state.CurrentState, 
+		&stateDataJSON, &state.CreatedAt, &state.UpdatedAt)
+	
+	if err == sql.ErrNoRows {
+		slog.Debug("PostgresStore GetFlowState not found", "participantID", participantID, "flowType", flowType)
+		return nil, nil
+	}
+	if err != nil {
+		slog.Error("PostgresStore GetFlowState failed", "error", err, "participantID", participantID, "flowType", flowType)
+		return nil, err
+	}
+	
+	// Convert JSON back to map[string]string
+	if len(stateDataJSON) > 0 {
+		state.StateData = make(map[string]string)
+		if err := json.Unmarshal(stateDataJSON, &state.StateData); err != nil {
+			slog.Error("PostgresStore GetFlowState JSON unmarshal failed", "error", err, "participantID", participantID)
+			// Continue with empty map rather than failing
+			state.StateData = make(map[string]string)
+		}
+	}
+	
+	slog.Debug("PostgresStore GetFlowState found", "participantID", participantID, "flowType", flowType, "state", state.CurrentState)
+	return &state, nil
+}
+
+// DeleteFlowState removes flow state for a participant.
+func (s *PostgresStore) DeleteFlowState(participantID, flowType string) error {
+	query := `DELETE FROM flow_states WHERE participant_id = $1 AND flow_type = $2`
+	
+	_, err := s.db.Exec(query, participantID, flowType)
+	if err != nil {
+		slog.Error("PostgresStore DeleteFlowState failed", "error", err, "participantID", participantID, "flowType", flowType)
+		return err
+	}
+	slog.Debug("PostgresStore DeleteFlowState succeeded", "participantID", participantID, "flowType", flowType)
+	return nil
 }
