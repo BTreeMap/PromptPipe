@@ -16,13 +16,13 @@ import (
 
 // newTestServer creates a Server instance for testing with in-memory dependencies.
 func newTestServer() *Server {
-	return &Server{
-		msgService:  messaging.NewWhatsAppService(whatsapp.NewMockClient()),
-		sched:       scheduler.NewScheduler(),
-		st:          store.NewInMemoryStore(),
-		defaultCron: "",
-		gaClient:    nil,
-	}
+	return NewServer(
+		messaging.NewWhatsAppService(whatsapp.NewMockClient()),
+		scheduler.NewScheduler(),
+		store.NewInMemoryStore(),
+		"",
+		nil,
+	)
 }
 
 // Test helper functions

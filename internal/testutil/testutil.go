@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"testing"
 
 	"github.com/BTreeMap/PromptPipe/internal/api"
 	"github.com/BTreeMap/PromptPipe/internal/messaging"
@@ -15,6 +14,16 @@ import (
 	"github.com/BTreeMap/PromptPipe/internal/store"
 	"github.com/BTreeMap/PromptPipe/internal/whatsapp"
 )
+
+// TestingT defines the interface that testing types must implement.
+// This allows both *testing.T and mock implementations to be used.
+type TestingT interface {
+	Helper()
+	Error(args ...interface{})
+	Errorf(format string, args ...interface{})
+	Fatal(args ...interface{})
+	Fatalf(format string, args ...interface{})
+}
 
 // NewTestServer creates a test API server with in-memory dependencies.
 // This centralizes the test server creation logic used across multiple test files.
@@ -27,7 +36,7 @@ func NewTestServer() *api.Server {
 }
 
 // AssertHTTPStatus checks the HTTP status code and fails the test if it doesn't match.
-func AssertHTTPStatus(t *testing.T, expected, actual int, context string) {
+func AssertHTTPStatus(t TestingT, expected, actual int, context string) {
 	t.Helper()
 	if actual != expected {
 		t.Errorf("%s: expected status %d, got %d", context, expected, actual)
@@ -35,7 +44,7 @@ func AssertHTTPStatus(t *testing.T, expected, actual int, context string) {
 }
 
 // AssertJSONResponse decodes JSON response and validates the status field.
-func AssertJSONResponse(t *testing.T, rr *httptest.ResponseRecorder, expectedStatus string) map[string]interface{} {
+func AssertJSONResponse(t TestingT, rr *httptest.ResponseRecorder, expectedStatus string) map[string]interface{} {
 	t.Helper()
 	var response map[string]interface{}
 	if err := json.NewDecoder(rr.Body).Decode(&response); err != nil {
@@ -54,7 +63,7 @@ func AssertJSONResponse(t *testing.T, rr *httptest.ResponseRecorder, expectedSta
 }
 
 // CreateHTTPRequest creates an HTTP request with optional JSON body for testing.
-func CreateHTTPRequest(t *testing.T, method, url string, body interface{}) *http.Request {
+func CreateHTTPRequest(t TestingT, method, url string, body interface{}) *http.Request {
 	t.Helper()
 	var reqBody *bytes.Buffer
 	if body != nil {
@@ -74,8 +83,19 @@ func CreateHTTPRequest(t *testing.T, method, url string, body interface{}) *http
 	return req
 }
 
+// CreateJSONRequest creates an HTTP request with a JSON string body for testing.
+// This is a convenience wrapper around CreateHTTPRequest for JSON string bodies.
+func CreateJSONRequest(t TestingT, method, url, jsonBody string) *http.Request {
+	t.Helper()
+	req, err := http.NewRequest(method, url, bytes.NewBuffer([]byte(jsonBody)))
+	if err != nil {
+		t.Fatalf("failed to create request: %v", err)
+	}
+	return req
+}
+
 // AssertResponseCount validates the number of responses in store matches expected.
-func AssertResponseCount(t *testing.T, store store.Store, expected int, context string) {
+func AssertResponseCount(t TestingT, store store.Store, expected int, context string) {
 	t.Helper()
 	responses, err := store.GetResponses()
 	if err != nil {
@@ -87,7 +107,7 @@ func AssertResponseCount(t *testing.T, store store.Store, expected int, context 
 }
 
 // SeedTestData adds sample data to the store for testing.
-func SeedTestData(t *testing.T, store store.Store) {
+func SeedTestData(t TestingT, store store.Store) {
 	t.Helper()
 	
 	// Add test receipts
@@ -116,7 +136,7 @@ func SeedTestData(t *testing.T, store store.Store) {
 }
 
 // AssertPromptEquals compares two Prompt structs for equality in tests.
-func AssertPromptEquals(t *testing.T, expected, actual models.Prompt, context string) {
+func AssertPromptEquals(t TestingT, expected, actual models.Prompt, context string) {
 	t.Helper()
 	if actual.To != expected.To ||
 		actual.Cron != expected.Cron ||
@@ -144,7 +164,7 @@ func AssertPromptEquals(t *testing.T, expected, actual models.Prompt, context st
 }
 
 // MustMarshalJSON marshals an object to JSON and fails test on error.
-func MustMarshalJSON(t *testing.T, v interface{}) []byte {
+func MustMarshalJSON(t TestingT, v interface{}) []byte {
 	t.Helper()
 	data, err := json.Marshal(v)
 	if err != nil {
@@ -154,7 +174,7 @@ func MustMarshalJSON(t *testing.T, v interface{}) []byte {
 }
 
 // MustUnmarshalJSON unmarshals JSON data into target and fails test on error.
-func MustUnmarshalJSON(t *testing.T, data []byte, target interface{}) {
+func MustUnmarshalJSON(t TestingT, data []byte, target interface{}) {
 	t.Helper()
 	if err := json.Unmarshal(data, target); err != nil {
 		t.Fatalf("failed to unmarshal JSON: %v", err)

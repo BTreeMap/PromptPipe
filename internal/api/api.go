@@ -77,6 +77,17 @@ type Server struct {
 	gaClient    *genai.Client
 }
 
+// NewServer creates a new API server instance with the provided dependencies.
+func NewServer(msgService messaging.Service, sched *scheduler.Scheduler, st store.Store, defaultCron string, gaClient *genai.Client) *Server {
+	return &Server{
+		msgService:  msgService,
+		sched:       sched,
+		st:          st,
+		defaultCron: defaultCron,
+		gaClient:    gaClient,
+	}
+}
+
 // Opts holds configuration options for the API server, such as HTTP address and default cron schedule.
 type Opts struct {
 	Addr        string // overrides API_ADDR
