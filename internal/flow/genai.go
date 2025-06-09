@@ -15,5 +15,5 @@ type GenAIGenerator struct {
 
 // Generate generates the prompt body using GenAI.
 func (g *GenAIGenerator) Generate(ctx context.Context, p models.Prompt) (string, error) {
-	return g.Client.GeneratePrompt(p.SystemPrompt, p.UserPrompt)
+	return g.Client.GeneratePromptWithContext(ctx, p.SystemPrompt, p.UserPrompt)
 }
