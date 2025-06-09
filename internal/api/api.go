@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/BTreeMap/PromptPipe/internal/flow"
-
 	"github.com/BTreeMap/PromptPipe/internal/genai"
 	"github.com/BTreeMap/PromptPipe/internal/messaging"
 	"github.com/BTreeMap/PromptPipe/internal/models"
@@ -25,13 +24,14 @@ import (
 	"github.com/BTreeMap/PromptPipe/internal/whatsapp"
 )
 
-var (
+// Server holds all dependencies for the API server.
+type Server struct {
 	msgService  messaging.Service
 	sched       *scheduler.Scheduler
-	st          store.Store // Use the interface for flexibility
-	defaultCron string      // default cron schedule from opts
+	st          store.Store
+	defaultCron string
 	gaClient    *genai.Client
-)
+}
 
 // Opts holds configuration options for the API server, such as HTTP address and default cron schedule.
 type Opts struct {
@@ -60,7 +60,9 @@ func WithDefaultCron(cron string) Option {
 // It returns an error if initialization fails.
 func Run(waOpts []whatsapp.Option, storeOpts []store.Option, genaiOpts []genai.Option, apiOpts []Option) error {
 	slog.Debug("API Run invoked", "whatsappOpts", len(waOpts), "storeOpts", len(storeOpts), "genaiOpts", len(genaiOpts), "apiOpts", len(apiOpts))
-	var err error
+
+	// Create server instance
+	server := &Server{}
 
 	// Apply API server options
 	var apiCfg Opts
@@ -81,10 +83,10 @@ func Run(waOpts []whatsapp.Option, storeOpts []store.Option, genaiOpts []genai.O
 		return err
 	}
 	slog.Debug("WhatsApp client created successfully")
-	msgService = messaging.NewWhatsAppService(whClient)
+	server.msgService = messaging.NewWhatsAppService(whClient)
 	slog.Debug("Messaging service initialized")
 	// Start messaging service
-	if err := msgService.Start(context.Background()); err != nil {
+	if err := server.msgService.Start(context.Background()); err != nil {
 		slog.Error("Failed to start messaging service", "error", err)
 		return err
 	}
@@ -106,7 +108,7 @@ func Run(waOpts []whatsapp.Option, storeOpts []store.Option, genaiOpts []genai.O
 				slog.Error("Failed to connect to PostgreSQL store", "error", err, "dsn_length", len(cfg.DSN))
 				return err
 			}
-			st = ps
+			server.st = ps
 			slog.Info("Connected to PostgreSQL store successfully")
 		} else {
 			// Use SQLite store for file paths
@@ -116,20 +118,20 @@ func Run(waOpts []whatsapp.Option, storeOpts []store.Option, genaiOpts []genai.O
 				slog.Error("Failed to connect to SQLite store", "error", err, "db_path", cfg.DSN)
 				return err
 			}
-			st = ss
+			server.st = ss
 			slog.Info("Connected to SQLite store successfully", "db_path", cfg.DSN)
 		}
 	} else {
 		slog.Debug("No store options provided, using in-memory store")
-		st = store.NewInMemoryStore()
+		server.st = store.NewInMemoryStore()
 		slog.Info("Using in-memory store - data will not persist across restarts")
 	}
 
 	// After store initialization, forward receipts and responses regardless of store type
 	go func() {
 		slog.Debug("Starting receipt forwarding routine")
-		for r := range msgService.Receipts() {
-			if err := st.AddReceipt(r); err != nil {
+		for r := range server.msgService.Receipts() {
+			if err := server.st.AddReceipt(r); err != nil {
 				slog.Error("Error storing receipt", "error", err)
 			}
 		}
@@ -137,8 +139,8 @@ func Run(waOpts []whatsapp.Option, storeOpts []store.Option, genaiOpts []genai.O
 	slog.Debug("Receipt forwarding routine started")
 	go func() {
 		slog.Debug("Starting response forwarding routine")
-		for resp := range msgService.Responses() {
-			if err := st.AddResponse(resp); err != nil {
+		for resp := range server.msgService.Responses() {
+			if err := server.st.AddResponse(resp); err != nil {
 				slog.Error("Error storing response", "error", err)
 			}
 		}
@@ -146,37 +148,38 @@ func Run(waOpts []whatsapp.Option, storeOpts []store.Option, genaiOpts []genai.O
 	slog.Debug("Response forwarding routine started")
 
 	// Initialize scheduler
-	sched = scheduler.NewScheduler()
+	server.sched = scheduler.NewScheduler()
 	slog.Debug("Scheduler initialized")
 
 	// Configure default schedule
-	defaultCron = apiCfg.DefaultCron
-	slog.Debug("Default cron schedule set", "defaultCron", defaultCron)
+	server.defaultCron = apiCfg.DefaultCron
+	slog.Debug("Default cron schedule set", "defaultCron", server.defaultCron)
 
 	// Initialize GenAI client if API key provided via options
 	if len(genaiOpts) > 0 {
 		slog.Debug("Initializing GenAI client")
-		gaClient, err = genai.NewClient(genaiOpts...)
+		var err error
+		server.gaClient, err = genai.NewClient(genaiOpts...)
 		if err != nil {
 			slog.Error("Failed to create GenAI client", "error", err)
 			return err
 		}
 		// Register GenAI flow generator
-		flow.Register(models.PromptTypeGenAI, &flow.GenAIGenerator{Client: gaClient})
+		flow.Register(models.PromptTypeGenAI, &flow.GenAIGenerator{Client: server.gaClient})
 		slog.Debug("GenAI client created and generator registered")
 	} else {
-		gaClient = nil
+		server.gaClient = nil
 	}
 
 	// Register HTTP handlers
 	slog.Debug("Registering HTTP handlers")
-	http.HandleFunc("/send", sendHandler)
-	http.HandleFunc("/schedule", scheduleHandler)
-	http.HandleFunc("/receipts", receiptsHandler)
+	http.HandleFunc("/send", server.sendHandler)
+	http.HandleFunc("/schedule", server.scheduleHandler)
+	http.HandleFunc("/receipts", server.receiptsHandler)
 	// Endpoints for incoming message responses and statistics
-	http.HandleFunc("/response", responseHandler)
-	http.HandleFunc("/responses", responsesHandler)
-	http.HandleFunc("/stats", statsHandler)
+	http.HandleFunc("/response", server.responseHandler)
+	http.HandleFunc("/responses", server.responsesHandler)
+	http.HandleFunc("/stats", server.statsHandler)
 	slog.Debug("HTTP handlers registered")
 	// Start HTTP server with graceful shutdown
 	srv := &http.Server{Addr: addr, Handler: nil}
@@ -200,13 +203,15 @@ func Run(waOpts []whatsapp.Option, storeOpts []store.Option, genaiOpts []genai.O
 		slog.Error("Server Shutdown failed", "error", err)
 	}
 	slog.Info("API server shutdown complete")
-	sched.Stop()
+	server.sched.Stop()
 	slog.Debug("Scheduler stopped")
 	return nil
 }
 
-func sendHandler(w http.ResponseWriter, r *http.Request) {
-	defer r.Body.Close()
+func (s *Server) sendHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Body != nil {
+		defer r.Body.Close()
+	}
 	slog.Debug("sendHandler invoked", "method", r.Method, "path", r.URL.Path)
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", http.MethodPost)
@@ -239,7 +244,7 @@ func sendHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = msgService.SendMessage(context.Background(), p.To, msg)
+	err = s.msgService.SendMessage(context.Background(), p.To, msg)
 	if err != nil {
 		slog.Error("Error sending message in sendHandler", "error", err, "to", p.To)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -252,8 +257,10 @@ func sendHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(`{"status":"ok"}`))
 }
 
-func scheduleHandler(w http.ResponseWriter, r *http.Request) {
-	defer r.Body.Close()
+func (s *Server) scheduleHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Body != nil {
+		defer r.Body.Close()
+	}
 	slog.Debug("scheduleHandler invoked", "method", r.Method, "path", r.URL.Path)
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", http.MethodPost)
@@ -285,7 +292,7 @@ func scheduleHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	case models.PromptTypeGenAI:
-		if p.To == "" || gaClient == nil || p.SystemPrompt == "" || p.UserPrompt == "" {
+		if p.To == "" || s.gaClient == nil || p.SystemPrompt == "" || p.UserPrompt == "" {
 			slog.Warn("scheduleHandler genai prompt invalid or no genai client", "prompt", p)
 			w.WriteHeader(http.StatusBadRequest)
 			return
@@ -303,17 +310,17 @@ func scheduleHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	// Apply default schedule if none provided
 	if p.Cron == "" {
-		if defaultCron == "" {
+		if s.defaultCron == "" {
 			slog.Warn("scheduleHandler missing cron schedule and no default set", "prompt", p)
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		p.Cron = defaultCron
+		p.Cron = s.defaultCron
 	}
 	// Capture prompt locally for closure
 	slog.Debug("scheduleHandler scheduling job", "to", p.To, "cron", p.Cron)
 	job := p
-	if addErr := sched.AddJob(p.Cron, func() {
+	if addErr := s.sched.AddJob(p.Cron, func() {
 		slog.Debug("scheduled job triggered", "to", job.To)
 		// Generate message body via flow
 		msg, genErr := flow.Generate(context.Background(), job)
@@ -322,12 +329,12 @@ func scheduleHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		// Send message
-		if sendErr := msgService.SendMessage(context.Background(), job.To, msg); sendErr != nil {
+		if sendErr := s.msgService.SendMessage(context.Background(), job.To, msg); sendErr != nil {
 			slog.Error("Scheduled job send error", "error", sendErr, "to", job.To)
 			return
 		}
 		// Add receipt
-		recErr := st.AddReceipt(models.Receipt{To: job.To, Status: models.StatusTypeSent, Time: time.Now().Unix()})
+		recErr := s.st.AddReceipt(models.Receipt{To: job.To, Status: models.StatusTypeSent, Time: time.Now().Unix()})
 		if recErr != nil {
 			slog.Error("Error adding scheduled receipt", "error", recErr)
 		}
@@ -344,7 +351,7 @@ func scheduleHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(`{"status":"scheduled"}`))
 }
 
-func receiptsHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) receiptsHandler(w http.ResponseWriter, r *http.Request) {
 	slog.Debug("receiptsHandler invoked", "method", r.Method, "path", r.URL.Path)
 	if r.Method != http.MethodGet {
 		w.Header().Set("Allow", http.MethodGet)
@@ -352,7 +359,7 @@ func receiptsHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	receipts, err := st.GetReceipts()
+	receipts, err := s.st.GetReceipts()
 	if err != nil {
 		slog.Error("Error fetching receipts", "error", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -367,7 +374,7 @@ func receiptsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // responseHandler handles incoming participant responses (POST /response).
-func responseHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) responseHandler(w http.ResponseWriter, r *http.Request) {
 	slog.Debug("responseHandler invoked", "method", r.Method, "path", r.URL.Path)
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", http.MethodPost)
@@ -383,7 +390,7 @@ func responseHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	slog.Debug("responseHandler parsed response", "from", resp.From)
 	resp.Time = time.Now().Unix()
-	if err := st.AddResponse(resp); err != nil {
+	if err := s.st.AddResponse(resp); err != nil {
 		slog.Error("Error adding response", "error", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -395,7 +402,7 @@ func responseHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // responsesHandler returns all collected responses (GET /responses).
-func responsesHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) responsesHandler(w http.ResponseWriter, r *http.Request) {
 	slog.Debug("responsesHandler invoked", "method", r.Method, "path", r.URL.Path)
 	if r.Method != http.MethodGet {
 		w.Header().Set("Allow", http.MethodGet)
@@ -403,7 +410,7 @@ func responsesHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	responses, err := st.GetResponses()
+	responses, err := s.st.GetResponses()
 	if err != nil {
 		slog.Error("Error fetching responses", "error", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -418,7 +425,7 @@ func responsesHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // statsHandler returns statistics about collected responses (GET /stats).
-func statsHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) statsHandler(w http.ResponseWriter, r *http.Request) {
 	slog.Debug("statsHandler invoked", "method", r.Method, "path", r.URL.Path)
 	if r.Method != http.MethodGet {
 		w.Header().Set("Allow", http.MethodGet)
@@ -426,7 +433,7 @@ func statsHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	responses, err := st.GetResponses()
+	responses, err := s.st.GetResponses()
 	if err != nil {
 		slog.Error("Error fetching responses in statsHandler", "error", err)
 		w.WriteHeader(http.StatusInternalServerError)
