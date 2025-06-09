@@ -211,25 +211,25 @@ func Run(waOpts []whatsapp.Option, storeOpts []store.Option, genaiOpts []genai.O
 		slog.Error("Server Shutdown failed", "error", err)
 	}
 	slog.Info("API server shutdown complete")
-	
+
 	// Stop scheduler
 	server.sched.Stop()
 	slog.Debug("Scheduler stopped")
-	
+
 	// Close store to clean up database connections
 	if err := server.st.Close(); err != nil {
 		slog.Error("Store cleanup failed", "error", err)
 	} else {
 		slog.Debug("Store cleanup completed")
 	}
-	
+
 	// Stop messaging service
 	if err := server.msgService.Stop(); err != nil {
 		slog.Error("Messaging service stop failed", "error", err)
 	} else {
 		slog.Debug("Messaging service stopped")
 	}
-	
+
 	return nil
 }
 

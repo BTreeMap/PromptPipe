@@ -20,7 +20,7 @@ const (
 
 // Opts holds configuration options for the Scheduler (e.g., custom cron parser).
 type Opts struct {
-	ShutdownTimeout time.Duration // timeout for graceful shutdown
+	ShutdownTimeout time.Duration    // timeout for graceful shutdown
 	ParserFields    cron.ParseOption // cron parser configuration
 }
 
@@ -57,12 +57,12 @@ func NewScheduler(opts ...Option) *Scheduler {
 	for _, opt := range opts {
 		opt(&cfg)
 	}
-	
+
 	// Use configured cron parser and enable recovery
 	parser := cron.NewParser(cfg.ParserFields)
 	c := cron.New(cron.WithParser(parser), cron.WithChain(cron.Recover(cron.DefaultLogger)))
 	c.Start()
-	
+
 	slog.Info("Scheduler started", "shutdownTimeout", cfg.ShutdownTimeout)
 	return &Scheduler{
 		cron:            c,
@@ -88,7 +88,7 @@ func (s *Scheduler) AddJob(expr string, task func()) error {
 func (s *Scheduler) Stop() {
 	slog.Debug("Scheduler stopping", "shutdownTimeout", s.shutdownTimeout)
 	ctx := s.cron.Stop()
-	
+
 	// Wait for running jobs to complete with timeout
 	select {
 	case <-ctx.Done():

@@ -23,7 +23,7 @@ const (
 
 // Error message constants
 const (
-	ErrMsgAPIKeyNotSet     = "API key not set"
+	ErrMsgAPIKeyNotSet      = "API key not set"
 	ErrMsgNoChoicesReturned = "no choices returned"
 )
 
@@ -121,7 +121,7 @@ func NewClient(opts ...Option) (*Client, error) {
 		temperature: cfg.Temperature,
 		maxTokens:   cfg.MaxTokens,
 	}
-	
+
 	slog.Debug("GenAI client created", "model", cfg.Model, "temperature", cfg.Temperature, "maxTokens", cfg.MaxTokens)
 	return client, nil
 }
@@ -135,7 +135,7 @@ func (c *Client) GeneratePrompt(system, user string) (string, error) {
 // GeneratePromptWithContext generates content based on provided system and user prompts with context.
 func (c *Client) GeneratePromptWithContext(ctx context.Context, system, user string) (string, error) {
 	slog.Debug("GeneratePrompt invoked", "system", system, "user", user, "model", c.model)
-	
+
 	// Prepare chat completion parameters with configured options
 	params := openai.ChatCompletionNewParams{
 		Model: c.model,
@@ -144,24 +144,24 @@ func (c *Client) GeneratePromptWithContext(ctx context.Context, system, user str
 			openai.UserMessage(user),
 		},
 	}
-	
+
 	// Add optional parameters if they differ from defaults
 	if c.temperature != DefaultTemperature {
 		// Note: Temperature and MaxTokens may need to be set via request options
 		// depending on the openai-go library version
 	}
-	
+
 	resp, err := c.chat.Create(ctx, params)
 	if err != nil {
 		slog.Error("GenAI chat.Create failed", "error", err, "model", c.model)
 		return "", err
 	}
-	
+
 	if len(resp.Choices) == 0 {
 		slog.Warn("GeneratePrompt no choices returned", "model", c.model)
 		return "", fmt.Errorf(ErrMsgNoChoicesReturned)
 	}
-	
+
 	content := resp.Choices[0].Message.Content
 	slog.Debug("GeneratePrompt succeeded", "length", len(content), "model", c.model)
 	return content, nil
