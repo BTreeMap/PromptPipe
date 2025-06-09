@@ -15,6 +15,8 @@ import (
 const (
 	// DefaultChannelBufferSize defines the default buffer size for receipt and response channels
 	DefaultChannelBufferSize = 100
+	// DefaultChannelTimeout defines the default timeout for non-blocking channel operations
+	DefaultChannelTimeout = 1 * time.Second
 )
 
 // WhatsAppService implements Service using the Whatsmeow-based whatsapp client.
@@ -161,8 +163,8 @@ func (s *WhatsAppService) handleIncomingMessage(evt *events.Message) {
 	select {
 	case s.responses <- response:
 		slog.Info("WhatsAppService incoming message forwarded", "from", response.From)
-	case <-time.After(time.Second):
-		slog.Warn("WhatsAppService responses channel blocked, dropping message", "from", response.From)
+	case <-time.After(DefaultChannelTimeout):
+		slog.Warn("WhatsAppService responses channel blocked, dropping message", "from", response.From, "timeout", DefaultChannelTimeout)
 	}
 }
 
@@ -200,8 +202,8 @@ func (s *WhatsAppService) handleMessageReceipt(evt *events.Receipt) {
 	select {
 	case s.receipts <- receipt:
 		slog.Info("WhatsAppService receipt forwarded", "to", receipt.To, "status", receipt.Status)
-	case <-time.After(time.Second):
-		slog.Warn("WhatsAppService receipts channel blocked, dropping receipt", "to", receipt.To)
+	case <-time.After(DefaultChannelTimeout):
+		slog.Warn("WhatsAppService receipts channel blocked, dropping receipt", "to", receipt.To, "timeout", DefaultChannelTimeout)
 	}
 }
 

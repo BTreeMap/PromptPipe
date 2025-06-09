@@ -85,3 +85,176 @@ func TestResponseJSONTags(t *testing.T) {
 		t.Errorf("JSON unmarshaling of Response was incorrect.\nGot: %+v\nWant: %+v", respUnmarshaled, resp)
 	}
 }
+
+// Test validation functions
+func TestIsValidPromptType(t *testing.T) {
+	tests := []struct {
+		promptType PromptType
+		expected   bool
+	}{
+		{PromptTypeStatic, true},
+		{PromptTypeGenAI, true},
+		{PromptTypeBranch, true},
+		{PromptTypeCustom, true},
+		{PromptType("invalid"), false},
+		{PromptType(""), false},
+	}
+
+	for _, tt := range tests {
+		t.Run(string(tt.promptType), func(t *testing.T) {
+			result := IsValidPromptType(tt.promptType)
+			if result != tt.expected {
+				t.Errorf("IsValidPromptType(%v) = %v; want %v", tt.promptType, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestPromptValidate_Static(t *testing.T) {
+	tests := []struct {
+		name    string
+		prompt  Prompt
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name:    "valid static prompt",
+			prompt:  Prompt{To: "+123", Type: PromptTypeStatic, Body: "Hello world"},
+			wantErr: false,
+		},
+		{
+			name:    "static prompt missing recipient",
+			prompt:  Prompt{Type: PromptTypeStatic, Body: "Hello world"},
+			wantErr: true,
+			errMsg:  ErrMsgEmptyRecipient,
+		},
+		{
+			name:    "static prompt missing body",
+			prompt:  Prompt{To: "+123", Type: PromptTypeStatic},
+			wantErr: true,
+			errMsg:  ErrMsgMissingStaticBody,
+		},
+		{
+			name:    "static prompt body too long",
+			prompt:  Prompt{To: "+123", Type: PromptTypeStatic, Body: string(make([]byte, MaxPromptBodyLength+1))},
+			wantErr: true,
+			errMsg:  ErrMsgPromptBodyTooLong,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.prompt.Validate()
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("Validate() expected error but got none")
+				} else if err.Error() != tt.errMsg {
+					t.Errorf("Validate() error = %v; want %v", err.Error(), tt.errMsg)
+				}
+			} else if err != nil {
+				t.Errorf("Validate() unexpected error: %v", err)
+			}
+		})
+	}
+}
+
+func TestPromptValidate_GenAI(t *testing.T) {
+	tests := []struct {
+		name    string
+		prompt  Prompt
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name:    "valid genai prompt",
+			prompt:  Prompt{To: "+123", Type: PromptTypeGenAI, SystemPrompt: "System", UserPrompt: "User"},
+			wantErr: false,
+		},
+		{
+			name:    "genai prompt missing system prompt",
+			prompt:  Prompt{To: "+123", Type: PromptTypeGenAI, UserPrompt: "User"},
+			wantErr: true,
+			errMsg:  ErrMsgMissingSystemPrompt,
+		},
+		{
+			name:    "genai prompt missing user prompt",
+			prompt:  Prompt{To: "+123", Type: PromptTypeGenAI, SystemPrompt: "System"},
+			wantErr: true,
+			errMsg:  ErrMsgMissingUserPrompt,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.prompt.Validate()
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("Validate() expected error but got none")
+				} else if err.Error() != tt.errMsg {
+					t.Errorf("Validate() error = %v; want %v", err.Error(), tt.errMsg)
+				}
+			} else if err != nil {
+				t.Errorf("Validate() unexpected error: %v", err)
+			}
+		})
+	}
+}
+
+func TestPromptValidate_Branch(t *testing.T) {
+	validOptions := []BranchOption{
+		{Label: "Option A", Body: "Body A"},
+		{Label: "Option B", Body: "Body B"},
+	}
+
+	tests := []struct {
+		name    string
+		prompt  Prompt
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name:    "valid branch prompt",
+			prompt:  Prompt{To: "+123", Type: PromptTypeBranch, BranchOptions: validOptions},
+			wantErr: false,
+		},
+		{
+			name:    "branch prompt missing options",
+			prompt:  Prompt{To: "+123", Type: PromptTypeBranch},
+			wantErr: true,
+			errMsg:  ErrMsgMissingBranchOptions,
+		},
+		{
+			name:    "branch prompt too few options",
+			prompt:  Prompt{To: "+123", Type: PromptTypeBranch, BranchOptions: []BranchOption{{Label: "A", Body: "Body A"}}},
+			wantErr: true,
+			errMsg:  ErrMsgTooFewBranchOptions,
+		},
+		{
+			name:    "branch prompt empty label",
+			prompt:  Prompt{To: "+123", Type: PromptTypeBranch, BranchOptions: []BranchOption{{Label: "", Body: "Body A"}, {Label: "B", Body: "Body B"}}},
+			wantErr: true,
+			errMsg:  ErrMsgEmptyBranchLabel,
+		},
+		{
+			name:    "branch prompt empty body",
+			prompt:  Prompt{To: "+123", Type: PromptTypeBranch, BranchOptions: []BranchOption{{Label: "A", Body: ""}, {Label: "B", Body: "Body B"}}},
+			wantErr: true,
+			errMsg:  ErrMsgEmptyBranchBody,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.prompt.Validate()
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("Validate() expected error but got none")
+				} else if err.Error() != tt.errMsg {
+					t.Errorf("Validate() error = %v; want %v", err.Error(), tt.errMsg)
+				}
+			} else if err != nil {
+				t.Errorf("Validate() unexpected error: %v", err)
+			}
+		})
+	}
+}

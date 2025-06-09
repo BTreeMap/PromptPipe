@@ -25,25 +25,43 @@ func newTestServer() *Server {
 	}
 }
 
+// Test helper functions
+func assertHTTPStatus(t *testing.T, expected, actual int, context string) {
+	t.Helper()
+	if actual != expected {
+		t.Errorf("%s: expected status %d, got %d", context, expected, actual)
+	}
+}
+
+func assertJSONStatus(t *testing.T, rr *httptest.ResponseRecorder, expectedStatus string) {
+	t.Helper()
+	var response map[string]string
+	if err := json.NewDecoder(rr.Body).Decode(&response); err != nil {
+		t.Fatalf("failed to decode JSON response: %v", err)
+	}
+	if response["status"] != expectedStatus {
+		t.Errorf("expected status '%s', got '%s'", expectedStatus, response["status"])
+	}
+}
+
+func createJSONRequest(t *testing.T, method, url, jsonBody string) *http.Request {
+	t.Helper()
+	req, err := http.NewRequest(method, url, bytes.NewBuffer([]byte(jsonBody)))
+	if err != nil {
+		t.Fatalf("failed to create request: %v", err)
+	}
+	return req
+}
+
 func TestSendHandler_Success(t *testing.T) {
 	server := newTestServer()
 
-	req, _ := http.NewRequest("POST", "/send", bytes.NewBuffer([]byte(`{"to":"+123","body":"hi"}`)))
+	req := createJSONRequest(t, "POST", "/send", `{"to":"+123","body":"hi"}`)
 	rr := httptest.NewRecorder()
 	server.sendHandler(rr, req)
 
-	if rr.Code != http.StatusOK {
-		t.Errorf("expected 200, got %d", rr.Code)
-	}
-
-	var response map[string]string
-	if err := json.NewDecoder(rr.Body).Decode(&response); err != nil {
-		t.Errorf("failed to decode response: %v", err)
-	}
-
-	if response["status"] != "ok" {
-		t.Errorf("expected status 'ok', got '%s'", response["status"])
-	}
+	assertHTTPStatus(t, http.StatusOK, rr.Code, "send handler success")
+	assertJSONStatus(t, rr, "ok")
 }
 
 func TestSendHandler_MethodNotAllowed(t *testing.T) {
@@ -53,42 +71,28 @@ func TestSendHandler_MethodNotAllowed(t *testing.T) {
 	rr := httptest.NewRecorder()
 	server.sendHandler(rr, req)
 
-	if rr.Code != http.StatusMethodNotAllowed {
-		t.Errorf("expected 405, got %d", rr.Code)
-	}
+	assertHTTPStatus(t, http.StatusMethodNotAllowed, rr.Code, "send handler method not allowed")
 }
 
 func TestSendHandler_MissingRecipient(t *testing.T) {
 	server := newTestServer()
 
-	req, _ := http.NewRequest("POST", "/send", bytes.NewBuffer([]byte(`{"body":"hi"}`)))
+	req := createJSONRequest(t, "POST", "/send", `{"body":"hi"}`)
 	rr := httptest.NewRecorder()
 	server.sendHandler(rr, req)
 
-	if rr.Code != http.StatusBadRequest {
-		t.Errorf("expected 400, got %d", rr.Code)
-	}
+	assertHTTPStatus(t, http.StatusBadRequest, rr.Code, "send handler missing recipient")
 }
 
 func TestScheduleHandler_Success(t *testing.T) {
 	server := newTestServer()
 
-	req, _ := http.NewRequest("POST", "/schedule", bytes.NewBuffer([]byte(`{"to":"+123","cron":"* * * * *","body":"hi"}`)))
+	req := createJSONRequest(t, "POST", "/schedule", `{"to":"+123","cron":"* * * * *","body":"hi"}`)
 	rr := httptest.NewRecorder()
 	server.scheduleHandler(rr, req)
 
-	if rr.Code != http.StatusCreated {
-		t.Errorf("expected 201, got %d", rr.Code)
-	}
-
-	var response map[string]string
-	if err := json.NewDecoder(rr.Body).Decode(&response); err != nil {
-		t.Errorf("failed to decode response: %v", err)
-	}
-
-	if response["status"] != "scheduled" {
-		t.Errorf("expected status 'scheduled', got '%s'", response["status"])
-	}
+	assertHTTPStatus(t, http.StatusCreated, rr.Code, "schedule handler success")
+	assertJSONStatus(t, rr, "scheduled")
 }
 
 func TestScheduleHandler_MethodNotAllowed(t *testing.T) {
@@ -98,21 +102,17 @@ func TestScheduleHandler_MethodNotAllowed(t *testing.T) {
 	rr := httptest.NewRecorder()
 	server.scheduleHandler(rr, req)
 
-	if rr.Code != http.StatusMethodNotAllowed {
-		t.Errorf("expected 405, got %d", rr.Code)
-	}
+	assertHTTPStatus(t, http.StatusMethodNotAllowed, rr.Code, "schedule handler method not allowed")
 }
 
 func TestScheduleHandler_MissingRecipient(t *testing.T) {
 	server := newTestServer()
 
-	req, _ := http.NewRequest("POST", "/schedule", bytes.NewBuffer([]byte(`{"cron":"* * * * *","body":"hi"}`)))
+	req := createJSONRequest(t, "POST", "/schedule", `{"cron":"* * * * *","body":"hi"}`)
 	rr := httptest.NewRecorder()
 	server.scheduleHandler(rr, req)
 
-	if rr.Code != http.StatusBadRequest {
-		t.Errorf("expected 400, got %d", rr.Code)
-	}
+	assertHTTPStatus(t, http.StatusBadRequest, rr.Code, "schedule handler missing recipient")
 }
 
 func TestReceiptsHandler_Success(t *testing.T) {
@@ -122,9 +122,7 @@ func TestReceiptsHandler_Success(t *testing.T) {
 	rr := httptest.NewRecorder()
 	server.receiptsHandler(rr, req)
 
-	if rr.Code != http.StatusOK {
-		t.Errorf("expected 200, got %d", rr.Code)
-	}
+	assertHTTPStatus(t, http.StatusOK, rr.Code, "receipts handler success")
 
 	var receipts []models.Receipt
 	if err := json.NewDecoder(rr.Body).Decode(&receipts); err != nil {
@@ -139,22 +137,17 @@ func TestReceiptsHandler_MethodNotAllowed(t *testing.T) {
 	rr := httptest.NewRecorder()
 	server.receiptsHandler(rr, req)
 
-	if rr.Code != http.StatusMethodNotAllowed {
-		t.Errorf("expected 405, got %d", rr.Code)
-	}
+	assertHTTPStatus(t, http.StatusMethodNotAllowed, rr.Code, "receipts handler method not allowed")
 }
 
 func TestResponseHandler_Success(t *testing.T) {
 	server := newTestServer()
 
-	payload := `{"from":"+123","body":"hello"}`
-	req, _ := http.NewRequest("POST", "/response", bytes.NewBuffer([]byte(payload)))
+	req := createJSONRequest(t, "POST", "/response", `{"from":"+123","body":"hello"}`)
 	rr := httptest.NewRecorder()
 	server.responseHandler(rr, req)
 
-	if rr.Code != http.StatusCreated {
-		t.Errorf("expected 201 for POST /response, got %d", rr.Code)
-	}
+	assertHTTPStatus(t, http.StatusCreated, rr.Code, "response handler success")
 
 	// Verify the response was stored
 	responses, err := server.st.GetResponses()
@@ -170,14 +163,7 @@ func TestResponseHandler_Success(t *testing.T) {
 		t.Errorf("response not stored correctly: %+v", responses[0])
 	}
 
-	var response map[string]string
-	if err := json.NewDecoder(rr.Body).Decode(&response); err != nil {
-		t.Errorf("failed to decode response: %v", err)
-	}
-
-	if response["status"] != "recorded" {
-		t.Errorf("expected status 'recorded', got '%s'", response["status"])
-	}
+	assertJSONStatus(t, rr, "recorded")
 }
 
 func TestResponseHandler_MethodNotAllowed(t *testing.T) {
@@ -187,9 +173,7 @@ func TestResponseHandler_MethodNotAllowed(t *testing.T) {
 	rr := httptest.NewRecorder()
 	server.responseHandler(rr, req)
 
-	if rr.Code != http.StatusMethodNotAllowed {
-		t.Errorf("expected 405 for GET /response, got %d", rr.Code)
-	}
+	assertHTTPStatus(t, http.StatusMethodNotAllowed, rr.Code, "response handler method not allowed")
 }
 
 func TestResponsesHandler_Success(t *testing.T) {
@@ -202,9 +186,7 @@ func TestResponsesHandler_Success(t *testing.T) {
 	rr := httptest.NewRecorder()
 	server.responsesHandler(rr, req)
 
-	if rr.Code != http.StatusOK {
-		t.Errorf("expected 200 for GET /responses, got %d", rr.Code)
-	}
+	assertHTTPStatus(t, http.StatusOK, rr.Code, "responses handler success")
 
 	var responses []models.Response
 	if err := json.NewDecoder(rr.Body).Decode(&responses); err != nil {
@@ -223,9 +205,7 @@ func TestResponsesHandler_MethodNotAllowed(t *testing.T) {
 	rr := httptest.NewRecorder()
 	server.responsesHandler(rr, req)
 
-	if rr.Code != http.StatusMethodNotAllowed {
-		t.Errorf("expected 405 for POST /responses, got %d", rr.Code)
-	}
+	assertHTTPStatus(t, http.StatusMethodNotAllowed, rr.Code, "responses handler method not allowed")
 }
 
 func TestStatsHandler_Success(t *testing.T) {
@@ -240,9 +220,7 @@ func TestStatsHandler_Success(t *testing.T) {
 	rr := httptest.NewRecorder()
 	server.statsHandler(rr, req)
 
-	if rr.Code != http.StatusOK {
-		t.Errorf("expected 200 for GET /stats, got %d", rr.Code)
-	}
+	assertHTTPStatus(t, http.StatusOK, rr.Code, "stats handler success")
 
 	var stats map[string]interface{}
 	if err := json.NewDecoder(rr.Body).Decode(&stats); err != nil {
@@ -276,7 +254,91 @@ func TestStatsHandler_MethodNotAllowed(t *testing.T) {
 	rr := httptest.NewRecorder()
 	server.statsHandler(rr, req)
 
-	if rr.Code != http.StatusMethodNotAllowed {
-		t.Errorf("expected 405 for POST /stats, got %d", rr.Code)
+	assertHTTPStatus(t, http.StatusMethodNotAllowed, rr.Code, "stats handler method not allowed")
+}
+
+// Test validation functionality
+func TestSendHandler_ValidationErrors(t *testing.T) {
+	server := newTestServer()
+
+	tests := []struct {
+		name     string
+		jsonBody string
+		wantCode int
+	}{
+		{
+			name:     "empty recipient",
+			jsonBody: `{"body":"test message"}`,
+			wantCode: http.StatusBadRequest,
+		},
+		{
+			name:     "static prompt without body",
+			jsonBody: `{"to":"+123","type":"static"}`,
+			wantCode: http.StatusBadRequest,
+		},
+		{
+			name:     "genai prompt without system prompt",
+			jsonBody: `{"to":"+123","type":"genai","user_prompt":"test"}`,
+			wantCode: http.StatusBadRequest,
+		},
+		{
+			name:     "genai prompt without user prompt",
+			jsonBody: `{"to":"+123","type":"genai","system_prompt":"test"}`,
+			wantCode: http.StatusBadRequest,
+		},
+		{
+			name:     "branch prompt without options",
+			jsonBody: `{"to":"+123","type":"branch"}`,
+			wantCode: http.StatusBadRequest,
+		},
+		{
+			name:     "branch prompt with too few options",
+			jsonBody: `{"to":"+123","type":"branch","branch_options":[{"label":"A","body":"Option A"}]}`,
+			wantCode: http.StatusBadRequest,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := createJSONRequest(t, "POST", "/send", tt.jsonBody)
+			rr := httptest.NewRecorder()
+			server.sendHandler(rr, req)
+			assertHTTPStatus(t, tt.wantCode, rr.Code, tt.name)
+		})
+	}
+}
+
+func TestScheduleHandler_ValidationErrors(t *testing.T) {
+	server := newTestServer()
+
+	tests := []struct {
+		name     string
+		jsonBody string
+		wantCode int
+	}{
+		{
+			name:     "empty recipient",
+			jsonBody: `{"body":"test message","cron":"* * * * *"}`,
+			wantCode: http.StatusBadRequest,
+		},
+		{
+			name:     "static prompt without body",
+			jsonBody: `{"to":"+123","type":"static","cron":"* * * * *"}`,
+			wantCode: http.StatusBadRequest,
+		},
+		{
+			name:     "branch prompt with empty label",
+			jsonBody: `{"to":"+123","type":"branch","cron":"* * * * *","branch_options":[{"label":"","body":"Option A"},{"label":"B","body":"Option B"}]}`,
+			wantCode: http.StatusBadRequest,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := createJSONRequest(t, "POST", "/schedule", tt.jsonBody)
+			rr := httptest.NewRecorder()
+			server.scheduleHandler(rr, req)
+			assertHTTPStatus(t, tt.wantCode, rr.Code, tt.name)
+		})
 	}
 }

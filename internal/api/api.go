@@ -47,6 +47,8 @@ const (
 	DefaultServerAddress = ":8080"
 	// DefaultShutdownTimeout is the default timeout for graceful server shutdown
 	DefaultShutdownTimeout = 5 * time.Second
+	// DefaultScheduledJobTimeout is the default timeout for scheduled job operations
+	DefaultScheduledJobTimeout = 30 * time.Second
 )
 
 // HTTP error message constants
@@ -311,15 +313,17 @@ func (s *Server) sendHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.Debug("sendHandler parsed prompt", "to", p.To, "type", p.Type)
-	// Validate required field: to
-	if p.To == "" {
-		slog.Warn("sendHandler missing recipient", "prompt", p)
-		http.Error(w, ErrMsgMissingRecipient, http.StatusBadRequest)
-		return
-	}
+	
 	// Default to static type if not specified
 	if p.Type == "" {
 		p.Type = models.PromptTypeStatic
+	}
+	
+	// Validate prompt using the models validation
+	if err := p.Validate(); err != nil {
+		slog.Warn("sendHandler validation failed", "error", err, "prompt", p)
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 	// Generate message body via pluggable flow
 	msg, err := flow.Generate(context.Background(), p)
@@ -356,38 +360,23 @@ func (s *Server) scheduleHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, ErrMsgInvalidJSON, http.StatusBadRequest)
 		return
 	}
-	// Validate required fields: to
-	if p.To == "" {
-		slog.Warn("scheduleHandler missing recipient", "prompt", p)
-		http.Error(w, ErrMsgMissingRecipient, http.StatusBadRequest)
-		return
-	}
+	
+	// Default to static type if not specified
 	if p.Type == "" {
 		p.Type = models.PromptTypeStatic
 	}
-	// Additional validation based on type
-	switch p.Type {
-	case models.PromptTypeStatic:
-		if p.To == "" || p.Body == "" {
-			slog.Warn("scheduleHandler static prompt missing body", "prompt", p)
-			http.Error(w, ErrMsgMissingBodyForStaticPrompt, http.StatusBadRequest)
-			return
-		}
-	case models.PromptTypeGenAI:
-		if p.To == "" || s.gaClient == nil || p.SystemPrompt == "" || p.UserPrompt == "" {
-			slog.Warn("scheduleHandler genai prompt invalid or no genai client", "prompt", p)
-			http.Error(w, ErrMsgInvalidGenAIPrompt, http.StatusBadRequest)
-			return
-		}
-	case models.PromptTypeBranch:
-		if p.To == "" || len(p.BranchOptions) == 0 {
-			slog.Warn("scheduleHandler branch prompt missing options", "prompt", p)
-			http.Error(w, ErrMsgMissingBranchOptions, http.StatusBadRequest)
-			return
-		}
-	default:
-		slog.Warn("scheduleHandler unsupported prompt type", "type", p.Type)
-		http.Error(w, ErrMsgUnsupportedPromptType, http.StatusBadRequest)
+	
+	// Validate prompt using the models validation
+	if err := p.Validate(); err != nil {
+		slog.Warn("scheduleHandler validation failed", "error", err, "prompt", p)
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	
+	// Additional validation for GenAI client availability
+	if p.Type == models.PromptTypeGenAI && s.gaClient == nil {
+		slog.Warn("scheduleHandler genai client not configured", "prompt", p)
+		http.Error(w, ErrMsgInvalidGenAIPrompt, http.StatusBadRequest)
 		return
 	}
 	// Apply default schedule if none provided
@@ -404,14 +393,18 @@ func (s *Server) scheduleHandler(w http.ResponseWriter, r *http.Request) {
 	job := p
 	if addErr := s.sched.AddJob(p.Cron, func() {
 		slog.Debug("scheduled job triggered", "to", job.To)
+		// Create context with timeout for scheduled job operations
+		ctx, cancel := context.WithTimeout(context.Background(), DefaultScheduledJobTimeout)
+		defer cancel()
+		
 		// Generate message body via flow
-		msg, genErr := flow.Generate(context.Background(), job)
+		msg, genErr := flow.Generate(ctx, job)
 		if genErr != nil {
 			slog.Error("Flow generation error in scheduled job", "error", genErr)
 			return
 		}
 		// Send message
-		if sendErr := s.msgService.SendMessage(context.Background(), job.To, msg); sendErr != nil {
+		if sendErr := s.msgService.SendMessage(ctx, job.To, msg); sendErr != nil {
 			slog.Error("Scheduled job send error", "error", sendErr, "to", job.To)
 			return
 		}
