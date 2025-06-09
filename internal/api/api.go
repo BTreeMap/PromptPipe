@@ -24,6 +24,14 @@ import (
 	"github.com/BTreeMap/PromptPipe/internal/whatsapp"
 )
 
+// Default configuration constants
+const (
+	// DefaultServerAddress is the default HTTP server address
+	DefaultServerAddress = ":8080"
+	// DefaultShutdownTimeout is the default timeout for graceful server shutdown
+	DefaultShutdownTimeout = 5 * time.Second
+)
+
 // Server holds all dependencies for the API server.
 type Server struct {
 	msgService  messaging.Service
@@ -73,7 +81,7 @@ func Run(waOpts []whatsapp.Option, storeOpts []store.Option, genaiOpts []genai.O
 	// Determine server address with priority: CLI options > default
 	addr := apiCfg.Addr
 	if addr == "" {
-		addr = ":8080"
+		addr = DefaultServerAddress
 	}
 
 	// Initialize WhatsApp client and wrap in messaging service
@@ -196,7 +204,7 @@ func Run(waOpts []whatsapp.Option, storeOpts []store.Option, genaiOpts []genai.O
 	<-quit
 	slog.Info("Shutdown signal received, shutting down server")
 
-	ctxShutdown, cancelShutdown := context.WithTimeout(context.Background(), 5*time.Second)
+	ctxShutdown, cancelShutdown := context.WithTimeout(context.Background(), DefaultShutdownTimeout)
 	defer cancelShutdown()
 
 	if err := srv.Shutdown(ctxShutdown); err != nil {
