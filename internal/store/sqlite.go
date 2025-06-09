@@ -16,6 +16,12 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
+// Constants for SQLite store configuration
+const (
+	// DefaultDirPermissions defines the default permissions for database directories
+	DefaultDirPermissions = 0755
+)
+
 //go:embed migrations.sql
 var sqliteMigrations string
 
@@ -43,7 +49,7 @@ func NewSQLiteStore(opts ...Option) (*SQLiteStore, error) {
 
 	// Ensure the directory exists
 	dir := filepath.Dir(dsn)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, DefaultDirPermissions); err != nil {
 		slog.Error("Failed to create database directory", "error", err, "dir", dir, "dsn", dsn)
 		return nil, fmt.Errorf("failed to create database directory: %w", err)
 	}

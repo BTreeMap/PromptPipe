@@ -19,6 +19,7 @@ type Store interface {
 	GetResponses() ([]models.Response, error)
 	ClearReceipts() error  // for tests
 	ClearResponses() error // for tests
+	Close() error          // for proper resource cleanup
 }
 
 // Opts holds configuration options for store implementations.
@@ -124,5 +125,11 @@ func (s *InMemoryStore) ClearResponses() error {
 	defer s.mu.Unlock()
 	s.responses = s.responses[:0] // Clear slice efficiently
 	slog.Debug("InMemoryStore ClearResponses succeeded")
+	return nil
+}
+
+// Close is a no-op for in-memory store as there are no resources to clean up.
+func (s *InMemoryStore) Close() error {
+	slog.Debug("InMemoryStore Close called (no-op)")
 	return nil
 }
