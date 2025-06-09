@@ -53,19 +53,19 @@ const (
 
 // HTTP error message constants
 const (
-	ErrMsgInvalidJSON                     = "Invalid JSON format"
-	ErrMsgMissingRecipient               = "Missing required field: to"
-	ErrMsgMissingCronSchedule            = "Missing required field: cron schedule"
-	ErrMsgMissingBodyForStaticPrompt     = "Missing required field: body for static prompt"
-	ErrMsgMissingBranchOptions           = "Missing required field: branch_options for branch prompt"
-	ErrMsgInvalidGenAIPrompt             = "Invalid GenAI prompt or GenAI client not configured"
-	ErrMsgUnsupportedPromptType          = "Unsupported prompt type"
-	ErrMsgFailedToGenerateContent        = "Failed to generate message content"
-	ErrMsgFailedToSendMessage            = "Failed to send message"
-	ErrMsgFailedToScheduleJob            = "Failed to schedule job"
-	ErrMsgFailedToFetchReceipts          = "Failed to fetch receipts"
-	ErrMsgFailedToStoreResponse          = "Failed to store response"
-	ErrMsgFailedToFetchResponses         = "Failed to fetch responses"
+	ErrMsgInvalidJSON                = "Invalid JSON format"
+	ErrMsgMissingRecipient           = "Missing required field: to"
+	ErrMsgMissingCronSchedule        = "Missing required field: cron schedule"
+	ErrMsgMissingBodyForStaticPrompt = "Missing required field: body for static prompt"
+	ErrMsgMissingBranchOptions       = "Missing required field: branch_options for branch prompt"
+	ErrMsgInvalidGenAIPrompt         = "Invalid GenAI prompt or GenAI client not configured"
+	ErrMsgUnsupportedPromptType      = "Unsupported prompt type"
+	ErrMsgFailedToGenerateContent    = "Failed to generate message content"
+	ErrMsgFailedToSendMessage        = "Failed to send message"
+	ErrMsgFailedToScheduleJob        = "Failed to schedule job"
+	ErrMsgFailedToFetchReceipts      = "Failed to fetch receipts"
+	ErrMsgFailedToStoreResponse      = "Failed to store response"
+	ErrMsgFailedToFetchResponses     = "Failed to fetch responses"
 )
 
 // Server holds all dependencies for the API server.
@@ -324,12 +324,12 @@ func (s *Server) sendHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.Debug("sendHandler parsed prompt", "to", p.To, "type", p.Type)
-	
+
 	// Default to static type if not specified
 	if p.Type == "" {
 		p.Type = models.PromptTypeStatic
 	}
-	
+
 	// Validate prompt using the models validation
 	if err := p.Validate(); err != nil {
 		slog.Warn("sendHandler validation failed", "error", err, "prompt", p)
@@ -371,19 +371,19 @@ func (s *Server) scheduleHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, ErrMsgInvalidJSON, http.StatusBadRequest)
 		return
 	}
-	
+
 	// Default to static type if not specified
 	if p.Type == "" {
 		p.Type = models.PromptTypeStatic
 	}
-	
+
 	// Validate prompt using the models validation
 	if err := p.Validate(); err != nil {
 		slog.Warn("scheduleHandler validation failed", "error", err, "prompt", p)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	
+
 	// Additional validation for GenAI client availability
 	if p.Type == models.PromptTypeGenAI && s.gaClient == nil {
 		slog.Warn("scheduleHandler genai client not configured", "prompt", p)
@@ -407,7 +407,7 @@ func (s *Server) scheduleHandler(w http.ResponseWriter, r *http.Request) {
 		// Create context with timeout for scheduled job operations
 		ctx, cancel := context.WithTimeout(context.Background(), DefaultScheduledJobTimeout)
 		defer cancel()
-		
+
 		// Generate message body via flow
 		msg, genErr := flow.Generate(ctx, job)
 		if genErr != nil {

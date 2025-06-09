@@ -35,19 +35,19 @@ const (
 
 // Validation error constants
 const (
-	ErrMsgEmptyRecipient        = "recipient cannot be empty"
-	ErrMsgInvalidPromptType     = "invalid prompt type"
-	ErrMsgPromptBodyTooLong     = "prompt body exceeds maximum length"
-	ErrMsgBranchLabelTooLong    = "branch label exceeds maximum length"
-	ErrMsgBranchBodyTooLong     = "branch body exceeds maximum length"
-	ErrMsgTooManyBranchOptions  = "too many branch options"
-	ErrMsgTooFewBranchOptions   = "insufficient branch options"
-	ErrMsgEmptyBranchLabel      = "branch label cannot be empty"
-	ErrMsgEmptyBranchBody       = "branch body cannot be empty"
-	ErrMsgMissingSystemPrompt   = "system prompt is required for GenAI prompts"
-	ErrMsgMissingUserPrompt     = "user prompt is required for GenAI prompts"
-	ErrMsgMissingStaticBody     = "body is required for static prompts"
-	ErrMsgMissingBranchOptions  = "branch options are required for branch prompts"
+	ErrMsgEmptyRecipient       = "recipient cannot be empty"
+	ErrMsgInvalidPromptType    = "invalid prompt type"
+	ErrMsgPromptBodyTooLong    = "prompt body exceeds maximum length"
+	ErrMsgBranchLabelTooLong   = "branch label exceeds maximum length"
+	ErrMsgBranchBodyTooLong    = "branch body exceeds maximum length"
+	ErrMsgTooManyBranchOptions = "too many branch options"
+	ErrMsgTooFewBranchOptions  = "insufficient branch options"
+	ErrMsgEmptyBranchLabel     = "branch label cannot be empty"
+	ErrMsgEmptyBranchBody      = "branch body cannot be empty"
+	ErrMsgMissingSystemPrompt  = "system prompt is required for GenAI prompts"
+	ErrMsgMissingUserPrompt    = "user prompt is required for GenAI prompts"
+	ErrMsgMissingStaticBody    = "body is required for static prompts"
+	ErrMsgMissingBranchOptions = "branch options are required for branch prompts"
 )
 
 // IsValidPromptType checks if the given prompt type is supported.

@@ -24,11 +24,11 @@ func TestNewTestServer(t *testing.T) {
 
 func TestAssertHTTPStatus(t *testing.T) {
 	tests := []struct {
-		name           string
-		expected       int
-		actual         int
-		context        string
-		shouldFail     bool
+		name       string
+		expected   int
+		actual     int
+		context    string
+		shouldFail bool
 	}{
 		{
 			name:       "matching status codes",
@@ -38,7 +38,7 @@ func TestAssertHTTPStatus(t *testing.T) {
 			shouldFail: false,
 		},
 		{
-			name:       "different status codes", 
+			name:       "different status codes",
 			expected:   200,
 			actual:     404,
 			context:    "test context",
@@ -50,9 +50,9 @@ func TestAssertHTTPStatus(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create a mock testing.T to capture failures
 			mockT := &mockTestingT{}
-			
+
 			AssertHTTPStatus(mockT, tt.expected, tt.actual, tt.context)
-			
+
 			if tt.shouldFail && !mockT.failed {
 				t.Error("Expected test to fail but it passed")
 			}
@@ -79,7 +79,7 @@ func TestAssertJSONResponse(t *testing.T) {
 		{
 			name:           "valid JSON with different status",
 			jsonBody:       `{"status":"error","data":"test"}`,
-			expectedStatus: "ok", 
+			expectedStatus: "ok",
 			shouldFail:     true,
 		},
 		{
@@ -101,9 +101,9 @@ func TestAssertJSONResponse(t *testing.T) {
 			mockT := &mockTestingT{}
 			rr := httptest.NewRecorder()
 			rr.Body.WriteString(tt.jsonBody)
-			
+
 			var response map[string]interface{}
-			
+
 			// Handle potential panic from Fatalf calls
 			defer func() {
 				if r := recover(); r != nil {
@@ -113,9 +113,9 @@ func TestAssertJSONResponse(t *testing.T) {
 					}
 				}
 			}()
-			
+
 			response = AssertJSONResponse(mockT, rr, tt.expectedStatus)
-			
+
 			if tt.shouldFail && !mockT.failed {
 				t.Error("Expected test to fail but it passed")
 			}
@@ -144,7 +144,7 @@ func TestCreateHTTPRequest(t *testing.T) {
 		},
 		{
 			name:   "POST request with JSON body",
-			method: "POST", 
+			method: "POST",
 			url:    "/test",
 			body:   map[string]string{"key": "value"},
 		},
@@ -159,7 +159,7 @@ func TestCreateHTTPRequest(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			req := CreateHTTPRequest(t, tt.method, tt.url, tt.body)
-			
+
 			if req == nil {
 				t.Fatal("Expected request to be created, got nil")
 			}
@@ -188,7 +188,7 @@ func TestCreateJSONRequest(t *testing.T) {
 		},
 		{
 			name:     "POST request with JSON body",
-			method:   "POST", 
+			method:   "POST",
 			url:      "/test",
 			jsonBody: `{"key":"value"}`,
 		},
@@ -203,7 +203,7 @@ func TestCreateJSONRequest(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			req := CreateJSONRequest(t, tt.method, tt.url, tt.jsonBody)
-			
+
 			if req == nil {
 				t.Fatal("Expected request to be created, got nil")
 			}
@@ -219,26 +219,26 @@ func TestCreateJSONRequest(t *testing.T) {
 
 func TestAssertResponseCount(t *testing.T) {
 	st := store.NewInMemoryStore()
-	
+
 	// Test with empty store
 	mockT := &mockTestingT{}
 	AssertResponseCount(mockT, st, 0, "empty store")
 	if mockT.failed {
 		t.Errorf("Expected test to pass for empty store, but got: %s", mockT.errorMsg)
 	}
-	
+
 	// Add a response and test count
 	testResponse := models.Response{From: "+123", Body: "test", Time: 123}
 	if err := st.AddResponse(testResponse); err != nil {
 		t.Fatalf("Failed to add test response: %v", err)
 	}
-	
+
 	mockT = &mockTestingT{}
 	AssertResponseCount(mockT, st, 1, "one response")
 	if mockT.failed {
 		t.Errorf("Expected test to pass for one response, but got: %s", mockT.errorMsg)
 	}
-	
+
 	// Test with wrong expected count
 	mockT = &mockTestingT{}
 	AssertResponseCount(mockT, st, 2, "wrong count")
@@ -249,9 +249,9 @@ func TestAssertResponseCount(t *testing.T) {
 
 func TestSeedTestData(t *testing.T) {
 	st := store.NewInMemoryStore()
-	
+
 	SeedTestData(t, st)
-	
+
 	// Verify receipts were added
 	receipts, err := st.GetReceipts()
 	if err != nil {
@@ -260,7 +260,7 @@ func TestSeedTestData(t *testing.T) {
 	if len(receipts) != 2 {
 		t.Errorf("Expected 2 receipts, got %d", len(receipts))
 	}
-	
+
 	// Verify responses were added
 	responses, err := st.GetResponses()
 	if err != nil {
@@ -273,29 +273,29 @@ func TestSeedTestData(t *testing.T) {
 
 func TestAssertPromptEquals(t *testing.T) {
 	prompt1 := models.Prompt{
-		To:           "+123",
-		Type:         models.PromptTypeStatic,
-		Body:         "test message",
+		To:   "+123",
+		Type: models.PromptTypeStatic,
+		Body: "test message",
 		BranchOptions: []models.BranchOption{
 			{Label: "A", Body: "Option A"},
 			{Label: "B", Body: "Option B"},
 		},
 	}
-	
+
 	prompt2 := prompt1 // Same content
 	prompt3 := models.Prompt{
 		To:   "+456", // Different recipient
 		Type: models.PromptTypeStatic,
 		Body: "test message",
 	}
-	
+
 	// Test equal prompts
 	mockT := &mockTestingT{}
 	AssertPromptEquals(mockT, prompt1, prompt2, "equal prompts")
 	if mockT.failed {
 		t.Errorf("Expected equal prompts test to pass, but got: %s", mockT.errorMsg)
 	}
-	
+
 	// Test different prompts
 	mockT = &mockTestingT{}
 	AssertPromptEquals(mockT, prompt1, prompt3, "different prompts")
@@ -309,12 +309,12 @@ func TestMustMarshalJSON(t *testing.T) {
 		"key1": "value1",
 		"key2": 123,
 	}
-	
+
 	result := MustMarshalJSON(t, testData)
 	if result == nil {
 		t.Error("Expected JSON data to be returned")
 	}
-	
+
 	// Test with valid data
 	if len(result) == 0 {
 		t.Error("Expected non-empty JSON data")
@@ -324,9 +324,9 @@ func TestMustMarshalJSON(t *testing.T) {
 func TestMustUnmarshalJSON(t *testing.T) {
 	jsonData := []byte(`{"key":"value","number":123}`)
 	var target map[string]interface{}
-	
+
 	MustUnmarshalJSON(t, jsonData, &target)
-	
+
 	if target["key"] != "value" {
 		t.Errorf("Expected key to be 'value', got %v", target["key"])
 	}

@@ -57,13 +57,13 @@ func main() {
 
 // Config holds environment configuration
 type Config struct {
-	DbDriver     string
-	WhatsAppDSN  string
-	DatabaseURL  string
-	StateDir     string
-	OpenAIKey    string
-	APIAddr      string
-	DefaultCron  string
+	DbDriver    string
+	WhatsAppDSN string
+	DatabaseURL string
+	StateDir    string
+	OpenAIKey   string
+	APIAddr     string
+	DefaultCron string
 }
 
 // Flags holds command line flag values
