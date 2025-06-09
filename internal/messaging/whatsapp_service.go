@@ -34,7 +34,7 @@ func NewWhatsAppService(client whatsapp.WhatsAppSender) *WhatsAppService {
 		responses: make(chan models.Response, DefaultChannelBufferSize),
 		done:      make(chan struct{}),
 	}
-	
+
 	// If the client is a full Client (not just an interface), store it for event handling
 	if waClient, ok := client.(*whatsapp.Client); ok {
 		service.waClient = waClient
@@ -42,14 +42,14 @@ func NewWhatsAppService(client whatsapp.WhatsAppSender) *WhatsAppService {
 	} else {
 		slog.Debug("WhatsAppService created with interface client (likely mock)")
 	}
-	
+
 	return service
 }
 
 // Start begins background processing (e.g., event polling).
 func (s *WhatsAppService) Start(ctx context.Context) error {
 	slog.Debug("WhatsAppService Start invoked")
-	
+
 	if s.waClient != nil {
 		slog.Debug("WhatsAppService starting event handler")
 		// Start goroutine to handle WhatsApp events
@@ -58,7 +58,7 @@ func (s *WhatsAppService) Start(ctx context.Context) error {
 	} else {
 		slog.Debug("WhatsAppService no full client available, skipping event handling (likely mock)")
 	}
-	
+
 	return nil
 }
 
@@ -99,7 +99,7 @@ func (s *WhatsAppService) Responses() <-chan models.Response {
 // handleEvents processes WhatsApp events and feeds them into the appropriate channels
 func (s *WhatsAppService) handleEvents(ctx context.Context) {
 	slog.Debug("WhatsAppService handleEvents starting")
-	
+
 	if s.waClient == nil || s.waClient.GetClient() == nil {
 		slog.Error("WhatsAppService handleEvents: no client available")
 		return
@@ -119,7 +119,7 @@ func (s *WhatsAppService) handleEvents(ctx context.Context) {
 	})
 
 	slog.Debug("WhatsAppService event handler registered")
-	
+
 	// Keep handler running until context is cancelled
 	<-ctx.Done()
 	slog.Debug("WhatsAppService handleEvents stopping due to context cancellation")

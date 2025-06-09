@@ -182,7 +182,7 @@ func (s *SQLiteStore) SaveFlowState(state models.FlowState) error {
 	query := `
 		INSERT OR REPLACE INTO flow_states (participant_id, flow_type, current_state, state_data, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?)`
-	
+
 	// Convert state_data map to JSON string for SQLite
 	var stateDataJSON string
 	if state.StateData != nil && len(state.StateData) > 0 {
@@ -193,8 +193,8 @@ func (s *SQLiteStore) SaveFlowState(state models.FlowState) error {
 		}
 		stateDataJSON = string(jsonBytes)
 	}
-	
-	_, err := s.db.Exec(query, state.ParticipantID, state.FlowType, state.CurrentState, 
+
+	_, err := s.db.Exec(query, state.ParticipantID, state.FlowType, state.CurrentState,
 		stateDataJSON, state.CreatedAt, state.UpdatedAt)
 	if err != nil {
 		slog.Error("SQLiteStore SaveFlowState failed", "error", err, "participantID", state.ParticipantID, "flowType", state.FlowType)
@@ -208,14 +208,14 @@ func (s *SQLiteStore) SaveFlowState(state models.FlowState) error {
 func (s *SQLiteStore) GetFlowState(participantID, flowType string) (*models.FlowState, error) {
 	query := `SELECT participant_id, flow_type, current_state, state_data, created_at, updated_at 
 			  FROM flow_states WHERE participant_id = ? AND flow_type = ?`
-	
+
 	var state models.FlowState
 	var stateDataJSON string
-	
+
 	err := s.db.QueryRow(query, participantID, flowType).Scan(
-		&state.ParticipantID, &state.FlowType, &state.CurrentState, 
+		&state.ParticipantID, &state.FlowType, &state.CurrentState,
 		&stateDataJSON, &state.CreatedAt, &state.UpdatedAt)
-	
+
 	if err == sql.ErrNoRows {
 		slog.Debug("SQLiteStore GetFlowState not found", "participantID", participantID, "flowType", flowType)
 		return nil, nil
@@ -224,7 +224,7 @@ func (s *SQLiteStore) GetFlowState(participantID, flowType string) (*models.Flow
 		slog.Error("SQLiteStore GetFlowState failed", "error", err, "participantID", participantID, "flowType", flowType)
 		return nil, err
 	}
-	
+
 	// Convert JSON back to map[string]string
 	if stateDataJSON != "" {
 		state.StateData = make(map[string]string)
@@ -234,7 +234,7 @@ func (s *SQLiteStore) GetFlowState(participantID, flowType string) (*models.Flow
 			state.StateData = make(map[string]string)
 		}
 	}
-	
+
 	slog.Debug("SQLiteStore GetFlowState found", "participantID", participantID, "flowType", flowType, "state", state.CurrentState)
 	return &state, nil
 }
@@ -242,7 +242,7 @@ func (s *SQLiteStore) GetFlowState(participantID, flowType string) (*models.Flow
 // DeleteFlowState removes flow state for a participant.
 func (s *SQLiteStore) DeleteFlowState(participantID, flowType string) error {
 	query := `DELETE FROM flow_states WHERE participant_id = ? AND flow_type = ?`
-	
+
 	_, err := s.db.Exec(query, participantID, flowType)
 	if err != nil {
 		slog.Error("SQLiteStore DeleteFlowState failed", "error", err, "participantID", participantID, "flowType", flowType)
