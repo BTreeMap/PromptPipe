@@ -66,3 +66,44 @@ type Response struct {
 	Body string `json:"body"`
 	Time int64  `json:"time"`
 }
+
+// API Response types for consistent JSON responses
+
+// APIResponse represents a standard API response with a status.
+type APIResponse struct {
+	Status string `json:"status"`
+}
+
+// APIResponseStatus defines standard API response status values.
+type APIResponseStatus string
+
+const (
+	// APIStatusOK indicates a successful operation
+	APIStatusOK APIResponseStatus = "ok"
+	// APIStatusScheduled indicates a job was successfully scheduled
+	APIStatusScheduled APIResponseStatus = "scheduled"
+	// APIStatusRecorded indicates data was successfully recorded
+	APIStatusRecorded APIResponseStatus = "recorded"
+	// APIStatusError indicates an error occurred
+	APIStatusError APIResponseStatus = "error"
+)
+
+// NewAPIResponse creates a standard API response with the given status.
+func NewAPIResponse(status APIResponseStatus) APIResponse {
+	return APIResponse{Status: string(status)}
+}
+
+// NewOKResponse creates a standard "ok" API response.
+func NewOKResponse() APIResponse {
+	return NewAPIResponse(APIStatusOK)
+}
+
+// NewScheduledResponse creates a standard "scheduled" API response.
+func NewScheduledResponse() APIResponse {
+	return NewAPIResponse(APIStatusScheduled)
+}
+
+// NewRecordedResponse creates a standard "recorded" API response.
+func NewRecordedResponse() APIResponse {
+	return NewAPIResponse(APIStatusRecorded)
+}

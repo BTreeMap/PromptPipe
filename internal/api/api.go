@@ -25,22 +25,28 @@ import (
 	"github.com/BTreeMap/PromptPipe/internal/whatsapp"
 )
 
+// writeJSONResponse writes a JSON response to the http.ResponseWriter with the given status code.
+func writeJSONResponse(w http.ResponseWriter, statusCode int, response interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		slog.Error("Failed to encode JSON response", "error", err)
+		// Fallback to a simple error message using proper structure
+		w.WriteHeader(http.StatusInternalServerError)
+		fallbackResponse := models.NewAPIResponse(models.APIStatusError)
+		if fallbackErr := json.NewEncoder(w).Encode(fallbackResponse); fallbackErr != nil {
+			// Last resort: write minimal JSON
+			w.Write([]byte(`{"status":"error"}`))
+		}
+	}
+}
+
 // Default configuration constants
 const (
 	// DefaultServerAddress is the default HTTP server address
 	DefaultServerAddress = ":8080"
 	// DefaultShutdownTimeout is the default timeout for graceful server shutdown
 	DefaultShutdownTimeout = 5 * time.Second
-)
-
-// HTTP response constants
-const (
-	// HTTPResponseOK is the standard OK response
-	HTTPResponseOK = `{"status":"ok"}`
-	// HTTPResponseScheduled is the response for successfully scheduled jobs
-	HTTPResponseScheduled = `{"status":"scheduled"}`
-	// HTTPResponseRecorded is the response for successfully recorded items
-	HTTPResponseRecorded = `{"status":"recorded"}`
 )
 
 // Server holds all dependencies for the API server.
@@ -313,10 +319,7 @@ func (s *Server) sendHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.Info("Message sent successfully", "to", p.To)
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	// Respond with empty JSON
-	w.Write([]byte(HTTPResponseOK))
+	writeJSONResponse(w, http.StatusOK, models.NewOKResponse())
 }
 
 func (s *Server) scheduleHandler(w http.ResponseWriter, r *http.Request) {
@@ -407,10 +410,7 @@ func (s *Server) scheduleHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	// Job scheduled successfully
 	slog.Info("Job scheduled successfully", "to", p.To, "cron", p.Cron)
-	// Respond with JSON status
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	w.Write([]byte(HTTPResponseScheduled))
+	writeJSONResponse(w, http.StatusCreated, models.NewScheduledResponse())
 }
 
 func (s *Server) receiptsHandler(w http.ResponseWriter, r *http.Request) {
@@ -428,11 +428,7 @@ func (s *Server) receiptsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.Debug("receipts fetched", "count", len(receipts))
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(receipts); err != nil {
-		slog.Error("Error encoding receipts response", "error", err)
-	}
+	writeJSONResponse(w, http.StatusOK, receipts)
 }
 
 // responseHandler handles incoming participant responses (POST /response).
@@ -458,9 +454,7 @@ func (s *Server) responseHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.Info("Response recorded", "from", resp.From)
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	w.Write([]byte(HTTPResponseRecorded))
+	writeJSONResponse(w, http.StatusCreated, models.NewRecordedResponse())
 }
 
 // responsesHandler returns all collected responses (GET /responses).
@@ -479,11 +473,7 @@ func (s *Server) responsesHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.Debug("responses fetched", "count", len(responses))
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(responses); err != nil {
-		slog.Error("Error encoding responses response", "error", err)
-	}
+	writeJSONResponse(w, http.StatusOK, responses)
 }
 
 // statsHandler returns statistics about collected responses (GET /stats).
@@ -518,11 +508,7 @@ func (s *Server) statsHandler(w http.ResponseWriter, r *http.Request) {
 		"avg_response_length":  avgLen,
 	}
 	slog.Debug("stats computed", "total_responses", total, "avg_response_length", avgLen)
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(stats); err != nil {
-		slog.Error("Error encoding stats response", "error", err)
-	}
+	writeJSONResponse(w, http.StatusOK, stats)
 }
 
 // gracefulShutdown handles the proper shutdown sequence for all services
