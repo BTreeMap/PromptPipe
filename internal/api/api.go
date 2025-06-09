@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -30,6 +31,16 @@ const (
 	DefaultServerAddress = ":8080"
 	// DefaultShutdownTimeout is the default timeout for graceful server shutdown
 	DefaultShutdownTimeout = 5 * time.Second
+)
+
+// HTTP response constants
+const (
+	// HTTPResponseOK is the standard OK response
+	HTTPResponseOK = `{"status":"ok"}`
+	// HTTPResponseScheduled is the response for successfully scheduled jobs
+	HTTPResponseScheduled = `{"status":"scheduled"}`
+	// HTTPResponseRecorded is the response for successfully recorded items
+	HTTPResponseRecorded = `{"status":"recorded"}`
 )
 
 // Server holds all dependencies for the API server.
@@ -69,6 +80,21 @@ func WithDefaultCron(cron string) Option {
 func Run(waOpts []whatsapp.Option, storeOpts []store.Option, genaiOpts []genai.Option, apiOpts []Option) error {
 	slog.Debug("API Run invoked", "whatsappOpts", len(waOpts), "storeOpts", len(storeOpts), "genaiOpts", len(genaiOpts), "apiOpts", len(apiOpts))
 
+	// Create and configure server instance
+	server, addr, err := createAndConfigureServer(waOpts, storeOpts, genaiOpts, apiOpts)
+	if err != nil {
+		return fmt.Errorf("failed to create server: %w", err)
+	}
+
+	// Start the HTTP server
+	srv := startHTTPServer(addr, server)
+
+	// Wait for shutdown signal and perform graceful shutdown
+	return waitForShutdownAndCleanup(server, srv)
+}
+
+// createAndConfigureServer creates and configures a Server instance with all dependencies
+func createAndConfigureServer(waOpts []whatsapp.Option, storeOpts []store.Option, genaiOpts []genai.Option, apiOpts []Option) (*Server, string, error) {
 	// Create server instance
 	server := &Server{}
 
@@ -88,19 +114,42 @@ func Run(waOpts []whatsapp.Option, storeOpts []store.Option, genaiOpts []genai.O
 	whClient, err := whatsapp.NewClient(waOpts...)
 	if err != nil {
 		slog.Error("Failed to create WhatsApp client", "error", err)
-		return err
+		return nil, "", fmt.Errorf("failed to create WhatsApp client: %w", err)
 	}
 	slog.Debug("WhatsApp client created successfully")
 	server.msgService = messaging.NewWhatsAppService(whClient)
 	slog.Debug("Messaging service initialized")
+
 	// Start messaging service
 	if err := server.msgService.Start(context.Background()); err != nil {
 		slog.Error("Failed to start messaging service", "error", err)
-		return err
+		return nil, "", fmt.Errorf("failed to start messaging service: %w", err)
 	}
 	slog.Debug("Messaging service started")
 
-	// Choose storage backend based on DSN type in options
+	// Initialize store
+	if err := server.initializeStore(storeOpts); err != nil {
+		return nil, "", fmt.Errorf("failed to initialize store: %w", err)
+	}
+
+	// Initialize scheduler
+	server.sched = scheduler.NewScheduler()
+	slog.Debug("Scheduler initialized")
+
+	// Configure default schedule
+	server.defaultCron = apiCfg.DefaultCron
+	slog.Debug("Default cron schedule set", "defaultCron", server.defaultCron)
+
+	// Initialize GenAI client if options provided
+	if err := server.initializeGenAI(genaiOpts); err != nil {
+		return nil, "", fmt.Errorf("failed to initialize GenAI: %w", err)
+	}
+
+	return server, addr, nil
+}
+
+// initializeStore sets up the store backend based on provided options
+func (s *Server) initializeStore(storeOpts []store.Option) error {
 	if len(storeOpts) > 0 {
 		// Apply options to determine DSN type
 		var cfg store.Opts
@@ -114,9 +163,9 @@ func Run(waOpts []whatsapp.Option, storeOpts []store.Option, genaiOpts []genai.O
 			ps, err := store.NewPostgresStore(storeOpts...)
 			if err != nil {
 				slog.Error("Failed to connect to PostgreSQL store", "error", err, "dsn_length", len(cfg.DSN))
-				return err
+				return fmt.Errorf("failed to connect to PostgreSQL store: %w", err)
 			}
-			server.st = ps
+			s.st = ps
 			slog.Info("Connected to PostgreSQL store successfully")
 		} else {
 			// Use SQLite store for file paths
@@ -124,61 +173,67 @@ func Run(waOpts []whatsapp.Option, storeOpts []store.Option, genaiOpts []genai.O
 			ss, err := store.NewSQLiteStore(storeOpts...)
 			if err != nil {
 				slog.Error("Failed to connect to SQLite store", "error", err, "db_path", cfg.DSN)
-				return err
+				return fmt.Errorf("failed to connect to SQLite store: %w", err)
 			}
-			server.st = ss
+			s.st = ss
 			slog.Info("Connected to SQLite store successfully", "db_path", cfg.DSN)
 		}
 	} else {
 		slog.Debug("No store options provided, using in-memory store")
-		server.st = store.NewInMemoryStore()
+		s.st = store.NewInMemoryStore()
 		slog.Info("Using in-memory store - data will not persist across restarts")
 	}
 
-	// After store initialization, forward receipts and responses regardless of store type
+	// Start forwarding routines for receipts and responses
+	s.startForwardingRoutines()
+
+	return nil
+}
+
+// startForwardingRoutines starts background goroutines to forward receipts and responses to store
+func (s *Server) startForwardingRoutines() {
 	go func() {
 		slog.Debug("Starting receipt forwarding routine")
-		for r := range server.msgService.Receipts() {
-			if err := server.st.AddReceipt(r); err != nil {
+		for r := range s.msgService.Receipts() {
+			if err := s.st.AddReceipt(r); err != nil {
 				slog.Error("Error storing receipt", "error", err)
 			}
 		}
 	}()
 	slog.Debug("Receipt forwarding routine started")
+
 	go func() {
 		slog.Debug("Starting response forwarding routine")
-		for resp := range server.msgService.Responses() {
-			if err := server.st.AddResponse(resp); err != nil {
+		for resp := range s.msgService.Responses() {
+			if err := s.st.AddResponse(resp); err != nil {
 				slog.Error("Error storing response", "error", err)
 			}
 		}
 	}()
 	slog.Debug("Response forwarding routine started")
+}
 
-	// Initialize scheduler
-	server.sched = scheduler.NewScheduler()
-	slog.Debug("Scheduler initialized")
-
-	// Configure default schedule
-	server.defaultCron = apiCfg.DefaultCron
-	slog.Debug("Default cron schedule set", "defaultCron", server.defaultCron)
-
-	// Initialize GenAI client if API key provided via options
+// initializeGenAI sets up the GenAI client if options are provided
+func (s *Server) initializeGenAI(genaiOpts []genai.Option) error {
 	if len(genaiOpts) > 0 {
 		slog.Debug("Initializing GenAI client")
 		var err error
-		server.gaClient, err = genai.NewClient(genaiOpts...)
+		s.gaClient, err = genai.NewClient(genaiOpts...)
 		if err != nil {
 			slog.Error("Failed to create GenAI client", "error", err)
-			return err
+			return fmt.Errorf("failed to create GenAI client: %w", err)
 		}
 		// Register GenAI flow generator
-		flow.Register(models.PromptTypeGenAI, &flow.GenAIGenerator{Client: server.gaClient})
+		flow.Register(models.PromptTypeGenAI, &flow.GenAIGenerator{Client: s.gaClient})
 		slog.Debug("GenAI client created and generator registered")
 	} else {
-		server.gaClient = nil
+		s.gaClient = nil
 	}
+	return nil
+}
 
+// startHTTPServer registers handlers and starts the HTTP server
+func startHTTPServer(addr string, server *Server) *http.Server {
 	// Register HTTP handlers
 	slog.Debug("Registering HTTP handlers")
 	http.HandleFunc("/send", server.sendHandler)
@@ -189,6 +244,7 @@ func Run(waOpts []whatsapp.Option, storeOpts []store.Option, genaiOpts []genai.O
 	http.HandleFunc("/responses", server.responsesHandler)
 	http.HandleFunc("/stats", server.statsHandler)
 	slog.Debug("HTTP handlers registered")
+
 	// Start HTTP server with graceful shutdown
 	srv := &http.Server{Addr: addr, Handler: nil}
 	go func() {
@@ -198,39 +254,20 @@ func Run(waOpts []whatsapp.Option, storeOpts []store.Option, genaiOpts []genai.O
 		}
 	}()
 	slog.Debug("HTTP server started in background")
+
+	return srv
+}
+
+// waitForShutdownAndCleanup waits for shutdown signal and handles cleanup
+func waitForShutdownAndCleanup(server *Server, srv *http.Server) error {
 	// Wait for interrupt signal to gracefully shutdown
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
 	<-quit
 	slog.Info("Shutdown signal received, shutting down server")
 
-	ctxShutdown, cancelShutdown := context.WithTimeout(context.Background(), DefaultShutdownTimeout)
-	defer cancelShutdown()
-
-	if err := srv.Shutdown(ctxShutdown); err != nil {
-		slog.Error("Server Shutdown failed", "error", err)
-	}
-	slog.Info("API server shutdown complete")
-
-	// Stop scheduler
-	server.sched.Stop()
-	slog.Debug("Scheduler stopped")
-
-	// Close store to clean up database connections
-	if err := server.st.Close(); err != nil {
-		slog.Error("Store cleanup failed", "error", err)
-	} else {
-		slog.Debug("Store cleanup completed")
-	}
-
-	// Stop messaging service
-	if err := server.msgService.Stop(); err != nil {
-		slog.Error("Messaging service stop failed", "error", err)
-	} else {
-		slog.Debug("Messaging service stopped")
-	}
-
-	return nil
+	// Perform graceful shutdown with proper error handling
+	return server.gracefulShutdown(srv)
 }
 
 func (s *Server) sendHandler(w http.ResponseWriter, r *http.Request) {
@@ -247,14 +284,14 @@ func (s *Server) sendHandler(w http.ResponseWriter, r *http.Request) {
 	var p models.Prompt
 	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
 		slog.Warn("Failed to decode JSON in sendHandler", "error", err)
-		w.WriteHeader(http.StatusBadRequest)
+		http.Error(w, "Invalid JSON format", http.StatusBadRequest)
 		return
 	}
 	slog.Debug("sendHandler parsed prompt", "to", p.To, "type", p.Type)
 	// Validate required field: to
 	if p.To == "" {
 		slog.Warn("sendHandler missing recipient", "prompt", p)
-		w.WriteHeader(http.StatusBadRequest)
+		http.Error(w, "Missing required field: to", http.StatusBadRequest)
 		return
 	}
 	// Default to static type if not specified
@@ -265,21 +302,21 @@ func (s *Server) sendHandler(w http.ResponseWriter, r *http.Request) {
 	msg, err := flow.Generate(context.Background(), p)
 	if err != nil {
 		slog.Error("Flow generation error in sendHandler", "error", err)
-		w.WriteHeader(http.StatusBadRequest)
+		http.Error(w, "Failed to generate message content", http.StatusBadRequest)
 		return
 	}
 
 	err = s.msgService.SendMessage(context.Background(), p.To, msg)
 	if err != nil {
 		slog.Error("Error sending message in sendHandler", "error", err, "to", p.To)
-		w.WriteHeader(http.StatusInternalServerError)
+		http.Error(w, "Failed to send message", http.StatusInternalServerError)
 		return
 	}
 	slog.Info("Message sent successfully", "to", p.To)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	// Respond with empty JSON
-	w.Write([]byte(`{"status":"ok"}`))
+	w.Write([]byte(HTTPResponseOK))
 }
 
 func (s *Server) scheduleHandler(w http.ResponseWriter, r *http.Request) {
@@ -296,13 +333,13 @@ func (s *Server) scheduleHandler(w http.ResponseWriter, r *http.Request) {
 	var p models.Prompt
 	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
 		slog.Warn("Failed to decode JSON in scheduleHandler", "error", err)
-		w.WriteHeader(http.StatusBadRequest)
+		http.Error(w, "Invalid JSON format", http.StatusBadRequest)
 		return
 	}
 	// Validate required fields: to
 	if p.To == "" {
 		slog.Warn("scheduleHandler missing recipient", "prompt", p)
-		w.WriteHeader(http.StatusBadRequest)
+		http.Error(w, "Missing required field: to", http.StatusBadRequest)
 		return
 	}
 	if p.Type == "" {
@@ -313,31 +350,31 @@ func (s *Server) scheduleHandler(w http.ResponseWriter, r *http.Request) {
 	case models.PromptTypeStatic:
 		if p.To == "" || p.Body == "" {
 			slog.Warn("scheduleHandler static prompt missing body", "prompt", p)
-			w.WriteHeader(http.StatusBadRequest)
+			http.Error(w, "Missing required field: body for static prompt", http.StatusBadRequest)
 			return
 		}
 	case models.PromptTypeGenAI:
 		if p.To == "" || s.gaClient == nil || p.SystemPrompt == "" || p.UserPrompt == "" {
 			slog.Warn("scheduleHandler genai prompt invalid or no genai client", "prompt", p)
-			w.WriteHeader(http.StatusBadRequest)
+			http.Error(w, "Invalid GenAI prompt or GenAI client not configured", http.StatusBadRequest)
 			return
 		}
 	case models.PromptTypeBranch:
 		if p.To == "" || len(p.BranchOptions) == 0 {
 			slog.Warn("scheduleHandler branch prompt missing options", "prompt", p)
-			w.WriteHeader(http.StatusBadRequest)
+			http.Error(w, "Missing required field: branch_options for branch prompt", http.StatusBadRequest)
 			return
 		}
 	default:
 		slog.Warn("scheduleHandler unsupported prompt type", "type", p.Type)
-		w.WriteHeader(http.StatusBadRequest)
+		http.Error(w, "Unsupported prompt type", http.StatusBadRequest)
 		return
 	}
 	// Apply default schedule if none provided
 	if p.Cron == "" {
 		if s.defaultCron == "" {
 			slog.Warn("scheduleHandler missing cron schedule and no default set", "prompt", p)
-			w.WriteHeader(http.StatusBadRequest)
+			http.Error(w, "Missing required field: cron schedule", http.StatusBadRequest)
 			return
 		}
 		p.Cron = s.defaultCron
@@ -365,7 +402,7 @@ func (s *Server) scheduleHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}); addErr != nil {
 		slog.Error("Error scheduling job", "error", addErr)
-		w.WriteHeader(http.StatusInternalServerError)
+		http.Error(w, "Failed to schedule job", http.StatusInternalServerError)
 		return
 	}
 	// Job scheduled successfully
@@ -373,7 +410,7 @@ func (s *Server) scheduleHandler(w http.ResponseWriter, r *http.Request) {
 	// Respond with JSON status
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	w.Write([]byte(`{"status":"scheduled"}`))
+	w.Write([]byte(HTTPResponseScheduled))
 }
 
 func (s *Server) receiptsHandler(w http.ResponseWriter, r *http.Request) {
@@ -387,7 +424,7 @@ func (s *Server) receiptsHandler(w http.ResponseWriter, r *http.Request) {
 	receipts, err := s.st.GetReceipts()
 	if err != nil {
 		slog.Error("Error fetching receipts", "error", err)
-		w.WriteHeader(http.StatusInternalServerError)
+		http.Error(w, "Failed to fetch receipts", http.StatusInternalServerError)
 		return
 	}
 	slog.Debug("receipts fetched", "count", len(receipts))
@@ -410,20 +447,20 @@ func (s *Server) responseHandler(w http.ResponseWriter, r *http.Request) {
 	var resp models.Response
 	if err := json.NewDecoder(r.Body).Decode(&resp); err != nil {
 		slog.Warn("Invalid JSON in responseHandler", "error", err)
-		w.WriteHeader(http.StatusBadRequest)
+		http.Error(w, "Invalid JSON format", http.StatusBadRequest)
 		return
 	}
 	slog.Debug("responseHandler parsed response", "from", resp.From)
 	resp.Time = time.Now().Unix()
 	if err := s.st.AddResponse(resp); err != nil {
 		slog.Error("Error adding response", "error", err)
-		w.WriteHeader(http.StatusInternalServerError)
+		http.Error(w, "Failed to store response", http.StatusInternalServerError)
 		return
 	}
 	slog.Info("Response recorded", "from", resp.From)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	w.Write([]byte(`{"status":"recorded"}`))
+	w.Write([]byte(HTTPResponseRecorded))
 }
 
 // responsesHandler returns all collected responses (GET /responses).
@@ -438,7 +475,7 @@ func (s *Server) responsesHandler(w http.ResponseWriter, r *http.Request) {
 	responses, err := s.st.GetResponses()
 	if err != nil {
 		slog.Error("Error fetching responses", "error", err)
-		w.WriteHeader(http.StatusInternalServerError)
+		http.Error(w, "Failed to fetch responses", http.StatusInternalServerError)
 		return
 	}
 	slog.Debug("responses fetched", "count", len(responses))
@@ -461,7 +498,7 @@ func (s *Server) statsHandler(w http.ResponseWriter, r *http.Request) {
 	responses, err := s.st.GetResponses()
 	if err != nil {
 		slog.Error("Error fetching responses in statsHandler", "error", err)
-		w.WriteHeader(http.StatusInternalServerError)
+		http.Error(w, "Failed to fetch responses", http.StatusInternalServerError)
 		return
 	}
 	total := len(responses)
@@ -486,4 +523,58 @@ func (s *Server) statsHandler(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewEncoder(w).Encode(stats); err != nil {
 		slog.Error("Error encoding stats response", "error", err)
 	}
+}
+
+// gracefulShutdown handles the proper shutdown sequence for all services
+func (s *Server) gracefulShutdown(srv *http.Server) error {
+	var shutdownErrors []error
+
+	// Create a timeout context for the shutdown process
+	ctxShutdown, cancelShutdown := context.WithTimeout(context.Background(), DefaultShutdownTimeout)
+	defer cancelShutdown()
+
+	// Shutdown HTTP server
+	slog.Debug("Shutting down HTTP server")
+	if err := srv.Shutdown(ctxShutdown); err != nil {
+		slog.Error("HTTP server shutdown failed", "error", err)
+		shutdownErrors = append(shutdownErrors, fmt.Errorf("HTTP server shutdown: %w", err))
+	} else {
+		slog.Info("HTTP server shutdown complete")
+	}
+
+	// Stop scheduler
+	slog.Debug("Stopping scheduler")
+	s.sched.Stop()
+	slog.Debug("Scheduler stopped")
+
+	// Close store to clean up database connections
+	slog.Debug("Closing store")
+	if err := s.st.Close(); err != nil {
+		slog.Error("Store cleanup failed", "error", err)
+		shutdownErrors = append(shutdownErrors, fmt.Errorf("store cleanup: %w", err))
+	} else {
+		slog.Debug("Store cleanup completed")
+	}
+
+	// Stop messaging service
+	slog.Debug("Stopping messaging service")
+	if err := s.msgService.Stop(); err != nil {
+		slog.Error("Messaging service stop failed", "error", err)
+		shutdownErrors = append(shutdownErrors, fmt.Errorf("messaging service stop: %w", err))
+	} else {
+		slog.Debug("Messaging service stopped")
+	}
+
+	// Return any accumulated errors
+	if len(shutdownErrors) > 0 {
+		slog.Error("Shutdown completed with errors", "error_count", len(shutdownErrors))
+		// Return the first error, but log all of them
+		for i, err := range shutdownErrors {
+			slog.Error("Shutdown error", "index", i, "error", err)
+		}
+		return shutdownErrors[0]
+	}
+
+	slog.Info("Graceful shutdown completed successfully")
+	return nil
 }
