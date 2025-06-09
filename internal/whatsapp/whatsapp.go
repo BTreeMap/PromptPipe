@@ -19,6 +19,16 @@ import (
 	waLog "go.mau.fi/whatsmeow/util/log"
 )
 
+// Constants for WhatsApp client configuration
+const (
+	// DefaultSQLitePath is the default path for SQLite database
+	DefaultSQLitePath = "/var/lib/promptpipe/whatsapp.db"
+	// DefaultPostgresDSN is the default PostgreSQL connection string
+	DefaultPostgresDSN = "postgres://postgres:postgres@localhost:5432/whatsapp?sslmode=disable"
+	// JIDSuffix is the WhatsApp JID suffix for regular users
+	JIDSuffix = "s.whatsapp.net"
+)
+
 // WhatsAppSender is an interface for sending WhatsApp messages (for production and testing)
 type WhatsAppSender interface {
 	SendMessage(ctx context.Context, to string, body string) error
@@ -96,9 +106,9 @@ func NewClient(opts ...Option) (*Client, error) {
 	// Set default DSN if not provided
 	if dbDSN == "" {
 		if dbDriver == "postgres" {
-			dbDSN = "postgres://postgres:postgres@localhost:5432/whatsapp?sslmode=disable"
+			dbDSN = DefaultPostgresDSN
 		} else {
-			dbDSN = "/var/lib/promptpipe/whatsapp.db"
+			dbDSN = DefaultSQLitePath
 		}
 	}
 
@@ -166,7 +176,7 @@ func (c *Client) SendMessage(ctx context.Context, to string, body string) error 
 	if c.waClient == nil || c.waClient.Store == nil {
 		return fmt.Errorf("whatsapp client not initialized")
 	}
-	jid := types.NewJID(to, "s.whatsapp.net")
+	jid := types.NewJID(to, JIDSuffix)
 	msg := &waE2E.Message{Conversation: &body}
 	_, err := c.waClient.SendMessage(ctx, jid, msg)
 	return err

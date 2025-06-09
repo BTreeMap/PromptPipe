@@ -9,6 +9,12 @@ import (
 	"github.com/BTreeMap/PromptPipe/internal/whatsapp"
 )
 
+// Constants for WhatsAppService configuration
+const (
+	// DefaultChannelBufferSize defines the default buffer size for receipt and response channels
+	DefaultChannelBufferSize = 100
+)
+
 // WhatsAppService implements Service using the Whatsmeow-based whatsapp client.
 type WhatsAppService struct {
 	client    whatsapp.WhatsAppSender
@@ -21,8 +27,8 @@ type WhatsAppService struct {
 func NewWhatsAppService(client whatsapp.WhatsAppSender) *WhatsAppService {
 	return &WhatsAppService{
 		client:    client,
-		receipts:  make(chan models.Receipt, 100),
-		responses: make(chan models.Response, 100),
+		receipts:  make(chan models.Receipt, DefaultChannelBufferSize),
+		responses: make(chan models.Response, DefaultChannelBufferSize),
 		done:      make(chan struct{}),
 	}
 }
