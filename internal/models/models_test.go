@@ -126,19 +126,19 @@ func TestPromptValidate_Static(t *testing.T) {
 			name:    "static prompt missing recipient",
 			prompt:  Prompt{Type: PromptTypeStatic, Body: "Hello world"},
 			wantErr: true,
-			errMsg:  ErrMsgEmptyRecipient,
+			errMsg:  "recipient cannot be empty",
 		},
 		{
 			name:    "static prompt missing body",
 			prompt:  Prompt{To: "+123", Type: PromptTypeStatic},
 			wantErr: true,
-			errMsg:  ErrMsgMissingStaticBody,
+			errMsg:  "body is required for static prompts",
 		},
 		{
 			name:    "static prompt body too long",
 			prompt:  Prompt{To: "+123", Type: PromptTypeStatic, Body: string(make([]byte, MaxPromptBodyLength+1))},
 			wantErr: true,
-			errMsg:  ErrMsgPromptBodyTooLong,
+			errMsg:  "prompt body exceeds maximum length",
 		},
 	}
 
@@ -174,13 +174,13 @@ func TestPromptValidate_GenAI(t *testing.T) {
 			name:    "genai prompt missing system prompt",
 			prompt:  Prompt{To: "+123", Type: PromptTypeGenAI, UserPrompt: "User"},
 			wantErr: true,
-			errMsg:  ErrMsgMissingSystemPrompt,
+			errMsg:  "system prompt is required for GenAI prompts",
 		},
 		{
 			name:    "genai prompt missing user prompt",
 			prompt:  Prompt{To: "+123", Type: PromptTypeGenAI, SystemPrompt: "System"},
 			wantErr: true,
-			errMsg:  ErrMsgMissingUserPrompt,
+			errMsg:  "user prompt is required for GenAI prompts",
 		},
 	}
 
@@ -221,25 +221,25 @@ func TestPromptValidate_Branch(t *testing.T) {
 			name:    "branch prompt missing options",
 			prompt:  Prompt{To: "+123", Type: PromptTypeBranch},
 			wantErr: true,
-			errMsg:  ErrMsgMissingBranchOptions,
+			errMsg:  "branch options are required for branch prompts",
 		},
 		{
 			name:    "branch prompt too few options",
 			prompt:  Prompt{To: "+123", Type: PromptTypeBranch, BranchOptions: []BranchOption{{Label: "A", Body: "Body A"}}},
 			wantErr: true,
-			errMsg:  ErrMsgTooFewBranchOptions,
+			errMsg:  "insufficient branch options",
 		},
 		{
 			name:    "branch prompt empty label",
 			prompt:  Prompt{To: "+123", Type: PromptTypeBranch, BranchOptions: []BranchOption{{Label: "", Body: "Body A"}, {Label: "B", Body: "Body B"}}},
 			wantErr: true,
-			errMsg:  ErrMsgEmptyBranchLabel,
+			errMsg:  "branch label cannot be empty",
 		},
 		{
 			name:    "branch prompt empty body",
 			prompt:  Prompt{To: "+123", Type: PromptTypeBranch, BranchOptions: []BranchOption{{Label: "A", Body: ""}, {Label: "B", Body: "Body B"}}},
 			wantErr: true,
-			errMsg:  ErrMsgEmptyBranchBody,
+			errMsg:  "branch body cannot be empty",
 		},
 	}
 

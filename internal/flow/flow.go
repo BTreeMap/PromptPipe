@@ -9,11 +9,6 @@ import (
 	"github.com/BTreeMap/PromptPipe/internal/models"
 )
 
-// Error message constants
-const (
-	ErrMsgNoGeneratorRegistered = "no generator registered for prompt type %s"
-)
-
 // Generator defines how to create a message body from a Prompt.
 type Generator interface {
 	Generate(ctx context.Context, p models.Prompt) (string, error)
@@ -55,7 +50,7 @@ func (r *Registry) Generate(ctx context.Context, p models.Prompt) (string, error
 		return result, err
 	}
 	slog.Error("No generator registered for prompt type", "type", p.Type, "to", p.To)
-	return "", fmt.Errorf(ErrMsgNoGeneratorRegistered, p.Type)
+	return "", fmt.Errorf("no generator registered for prompt type %s", p.Type)
 }
 
 // Default registry instance for backward compatibility

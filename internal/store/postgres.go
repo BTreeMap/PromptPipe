@@ -36,18 +36,18 @@ func NewPostgresStore(opts ...Option) (*PostgresStore, error) {
 		return nil, fmt.Errorf("database DSN not set")
 	}
 
-	slog.Debug("Opening Postgres database connection", "dsn", dsn) // Log the DSN for observability
+	slog.Debug("Opening Postgres database connection")
 	db, err := sql.Open("postgres", dsn)
 	if err != nil {
-		slog.Error("Failed to open Postgres connection", "dsn", dsn, "error", err)
+		slog.Error("Failed to open Postgres connection", "error", err)
 		return nil, err
 	}
-	slog.Debug("Postgres database opened", "dsn", dsn)
+	slog.Debug("Postgres database opened")
 	if err := db.Ping(); err != nil {
-		slog.Error("Postgres ping failed", "dsn", dsn, "error", err)
+		slog.Error("Postgres ping failed", "error", err)
 		return nil, err
 	}
-	slog.Debug("Postgres ping successful", "dsn", dsn)
+	slog.Debug("Postgres ping successful")
 	// Run migrations to ensure receipts table exists
 	slog.Debug("Running Postgres migrations", "dsn", dsn)
 	if _, err := db.Exec(postgresMigrations); err != nil {
@@ -62,7 +62,7 @@ func (s *PostgresStore) AddReceipt(r models.Receipt) error {
 	_, err := s.db.Exec(`INSERT INTO receipts (recipient, status, time) VALUES ($1, $2, $3)`, r.To, r.Status, r.Time)
 	if err != nil {
 		slog.Error("PostgresStore AddReceipt failed", "error", err, "to", r.To)
-		return err
+		return fmt.Errorf("failed to insert receipt for %s: %w", r.To, err)
 	}
 	slog.Debug("PostgresStore AddReceipt succeeded", "to", r.To, "status", r.Status)
 	return nil
@@ -72,7 +72,7 @@ func (s *PostgresStore) GetReceipts() ([]models.Receipt, error) {
 	rows, err := s.db.Query(`SELECT recipient, status, time FROM receipts`)
 	if err != nil {
 		slog.Error("PostgresStore GetReceipts query failed", "error", err)
-		return nil, err
+		return nil, fmt.Errorf("failed to query receipts: %w", err)
 	}
 	defer rows.Close()
 	var receipts []models.Receipt
@@ -80,9 +80,13 @@ func (s *PostgresStore) GetReceipts() ([]models.Receipt, error) {
 		var r models.Receipt
 		if err := rows.Scan(&r.To, &r.Status, &r.Time); err != nil {
 			slog.Error("PostgresStore GetReceipts scan failed", "error", err)
-			return nil, err
+			return nil, fmt.Errorf("failed to scan receipt row: %w", err)
 		}
 		receipts = append(receipts, r)
+	}
+	if err := rows.Err(); err != nil {
+		slog.Error("PostgresStore GetReceipts rows iteration failed", "error", err)
+		return nil, fmt.Errorf("failed to iterate receipt rows: %w", err)
 	}
 	slog.Debug("PostgresStore GetReceipts succeeded", "count", len(receipts))
 	return receipts, nil
@@ -93,7 +97,7 @@ func (s *PostgresStore) AddResponse(r models.Response) error {
 	_, err := s.db.Exec(`INSERT INTO responses (sender, body, time) VALUES ($1, $2, $3)`, r.From, r.Body, r.Time)
 	if err != nil {
 		slog.Error("PostgresStore AddResponse failed", "error", err, "from", r.From)
-		return err
+		return fmt.Errorf("failed to insert response from %s: %w", r.From, err)
 	}
 	slog.Debug("PostgresStore AddResponse succeeded", "from", r.From)
 	return nil
@@ -104,7 +108,7 @@ func (s *PostgresStore) GetResponses() ([]models.Response, error) {
 	rows, err := s.db.Query(`SELECT sender, body, time FROM responses`)
 	if err != nil {
 		slog.Error("PostgresStore GetResponses query failed", "error", err)
-		return nil, err
+		return nil, fmt.Errorf("failed to query responses: %w", err)
 	}
 	defer rows.Close()
 	var responses []models.Response
@@ -112,9 +116,13 @@ func (s *PostgresStore) GetResponses() ([]models.Response, error) {
 		var r models.Response
 		if err := rows.Scan(&r.From, &r.Body, &r.Time); err != nil {
 			slog.Error("PostgresStore GetResponses scan failed", "error", err)
-			return nil, err
+			return nil, fmt.Errorf("failed to scan response row: %w", err)
 		}
 		responses = append(responses, r)
+	}
+	if err := rows.Err(); err != nil {
+		slog.Error("PostgresStore GetResponses rows iteration failed", "error", err)
+		return nil, fmt.Errorf("failed to iterate response rows: %w", err)
 	}
 	slog.Debug("PostgresStore GetResponses succeeded", "count", len(responses))
 	return responses, nil

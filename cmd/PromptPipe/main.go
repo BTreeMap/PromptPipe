@@ -47,7 +47,7 @@ func main() {
 	// Start the service
 	slog.Info("Bootstrapping PromptPipe with configured modules")
 	slog.Debug("Module options counts", "whatsapp", len(waOpts), "store", len(storeOpts), "genai", len(genaiOpts), "api", len(apiOpts))
-	slog.Debug("Final configuration", "state_dir", *flags.stateDir, "db_dsn", *flags.dbDSN, "api_addr", *flags.apiAddr)
+	slog.Debug("Final configuration", "state_dir", *flags.stateDir, "dsn_set", *flags.dbDSN != "", "api_addr", *flags.apiAddr)
 	if err := api.Run(waOpts, storeOpts, genaiOpts, apiOpts); err != nil {
 		slog.Error("PromptPipe failed to run", "error", err)
 		os.Exit(1)
@@ -126,8 +126,8 @@ func loadEnvironmentConfig() Config {
 
 	slog.Debug("environment variables loaded",
 		"WHATSAPP_DB_DRIVER", config.DbDriver,
-		"WHATSAPP_DB_DSN", config.WhatsAppDSN,
-		"DATABASE_URL", config.DatabaseURL,
+		"WHATSAPP_DB_DSN_SET", config.WhatsAppDSN != "",
+		"DATABASE_URL_SET", config.DatabaseURL != "",
 		"PROMPTPIPE_STATE_DIR", config.StateDir,
 		"OPENAI_API_KEY_SET", config.OpenAIKey != "",
 		"API_ADDR", config.APIAddr,
@@ -156,7 +156,7 @@ func parseCommandLineFlags(config Config) Flags {
 		"numeric", *flags.numeric,
 		"stateDir", *flags.stateDir,
 		"dbDriver", *flags.dbDriver,
-		"dbDSN", *flags.dbDSN,
+		"dbDSN_set", *flags.dbDSN != "",
 		"openaiKeySet", *flags.openaiKey != "",
 		"apiAddr", *flags.apiAddr,
 		"defaultCron", *flags.defaultCron)
@@ -164,7 +164,7 @@ func parseCommandLineFlags(config Config) Flags {
 	// Update database DSN if not explicitly set but state directory is provided
 	if *flags.dbDSN == config.WhatsAppDSN && config.WhatsAppDSN == filepath.Join(config.StateDir, DefaultDBFileName) && *flags.stateDir != config.StateDir {
 		*flags.dbDSN = filepath.Join(*flags.stateDir, DefaultDBFileName)
-		slog.Debug("Updated dbDSN based on state directory", "newDBDSN", *flags.dbDSN, "old_state_dir", config.StateDir, "new_state_dir", *flags.stateDir)
+		slog.Debug("Updated dbDSN based on state directory", "dsn_updated", true, "old_state_dir", config.StateDir, "new_state_dir", *flags.stateDir)
 	}
 
 	return flags
@@ -175,7 +175,7 @@ func ensureDirectoriesExist(flags Flags) error {
 	// Ensure state directory exists if we're using a file-based DSN
 	if !strings.Contains(*flags.dbDSN, "postgres://") && !strings.Contains(*flags.dbDSN, "host=") {
 		stateDir := filepath.Dir(*flags.dbDSN)
-		slog.Debug("Creating state directory for file-based database", "state_dir", stateDir, "db_path", *flags.dbDSN)
+		slog.Debug("Creating state directory for file-based database", "state_dir", stateDir)
 		if err := os.MkdirAll(stateDir, 0755); err != nil {
 			slog.Error("Failed to create state directory", "error", err, "state_dir", stateDir)
 			return err

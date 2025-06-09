@@ -21,10 +21,10 @@ const (
 	DefaultMaxTokens = 1000
 )
 
-// Error message constants
-const (
-	ErrMsgAPIKeyNotSet      = "API key not set"
-	ErrMsgNoChoicesReturned = "no choices returned"
+// Error variables for better error handling
+var (
+	ErrAPIKeyNotSet      = fmt.Errorf("API key not set")
+	ErrNoChoicesReturned = fmt.Errorf("no choices returned from OpenAI API")
 )
 
 // ChatService defines minimal interface for chat completions.
@@ -111,7 +111,7 @@ func NewClient(opts ...Option) (*Client, error) {
 	// Determine API key (required)
 	apiKey := cfg.APIKey
 	if apiKey == "" {
-		return nil, fmt.Errorf(ErrMsgAPIKeyNotSet)
+		return nil, ErrAPIKeyNotSet
 	}
 	// Initialize OpenAI client with API key
 	cli := openai.NewClient(option.WithAPIKey(apiKey))
@@ -150,12 +150,12 @@ func (c *Client) GeneratePromptWithContext(ctx context.Context, system, user str
 	resp, err := c.chat.Create(ctx, params)
 	if err != nil {
 		slog.Error("GenAI chat.Create failed", "error", err, "model", c.model)
-		return "", err
+		return "", fmt.Errorf("failed to create chat completion: %w", err)
 	}
 
 	if len(resp.Choices) == 0 {
 		slog.Warn("GeneratePrompt no choices returned", "model", c.model)
-		return "", fmt.Errorf(ErrMsgNoChoicesReturned)
+		return "", ErrNoChoicesReturned
 	}
 
 	content := resp.Choices[0].Message.Content

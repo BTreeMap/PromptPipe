@@ -51,32 +51,32 @@ func NewSQLiteStore(opts ...Option) (*SQLiteStore, error) {
 	// Ensure the directory exists
 	dir := filepath.Dir(dsn)
 	if err := os.MkdirAll(dir, DefaultDirPermissions); err != nil {
-		slog.Error("Failed to create database directory", "error", err, "dir", dir, "dsn", dsn)
+		slog.Error("Failed to create database directory", "error", err, "dir", dir)
 		return nil, fmt.Errorf("failed to create database directory: %w", err)
 	}
-	slog.Debug("SQLite database directory verified/created", "dir", dir, "db_path", dsn)
+	slog.Debug("SQLite database directory verified/created", "dir", dir)
 
-	slog.Debug("Opening SQLite database connection", "path", dsn)
+	slog.Debug("Opening SQLite database connection")
 	db, err := sql.Open("sqlite3", dsn)
 	if err != nil {
-		slog.Error("Failed to open SQLite connection", "error", err, "dsn", dsn)
+		slog.Error("Failed to open SQLite connection", "error", err)
 		return nil, err
 	}
-	slog.Debug("SQLite database opened", "dsn", dsn)
+	slog.Debug("SQLite database opened")
 
 	if err := db.Ping(); err != nil {
-		slog.Error("SQLite ping failed", "error", err, "dsn", dsn)
+		slog.Error("SQLite ping failed", "error", err)
 		return nil, err
 	}
-	slog.Debug("SQLite ping successful", "dsn", dsn)
+	slog.Debug("SQLite ping successful")
 
 	// Run migrations to ensure tables exist
-	slog.Debug("Running SQLite migrations", "dsn", dsn)
+	slog.Debug("Running SQLite migrations")
 	if _, err := db.Exec(sqliteMigrations); err != nil {
-		slog.Error("Failed to run migrations", "error", err, "dsn", dsn)
+		slog.Error("Failed to run migrations", "error", err)
 		return nil, fmt.Errorf("failed to run migrations: %w", err)
 	}
-	slog.Debug("SQLite migrations applied successfully", "dsn", dsn)
+	slog.Debug("SQLite migrations applied successfully")
 
 	return &SQLiteStore{db: db}, nil
 }
@@ -85,7 +85,7 @@ func (s *SQLiteStore) AddReceipt(r models.Receipt) error {
 	_, err := s.db.Exec(`INSERT INTO receipts (recipient, status, time) VALUES (?, ?, ?)`, r.To, r.Status, r.Time)
 	if err != nil {
 		slog.Error("SQLiteStore AddReceipt failed", "error", err, "to", r.To)
-		return err
+		return fmt.Errorf("failed to insert receipt for %s: %w", r.To, err)
 	}
 	slog.Debug("SQLiteStore AddReceipt succeeded", "to", r.To, "status", r.Status)
 	return nil
@@ -95,7 +95,7 @@ func (s *SQLiteStore) GetReceipts() ([]models.Receipt, error) {
 	rows, err := s.db.Query(`SELECT recipient, status, time FROM receipts`)
 	if err != nil {
 		slog.Error("SQLiteStore GetReceipts query failed", "error", err)
-		return nil, err
+		return nil, fmt.Errorf("failed to query receipts: %w", err)
 	}
 	defer rows.Close()
 
@@ -104,9 +104,13 @@ func (s *SQLiteStore) GetReceipts() ([]models.Receipt, error) {
 		var r models.Receipt
 		if err := rows.Scan(&r.To, &r.Status, &r.Time); err != nil {
 			slog.Error("SQLiteStore GetReceipts scan failed", "error", err)
-			return nil, err
+			return nil, fmt.Errorf("failed to scan receipt row: %w", err)
 		}
 		receipts = append(receipts, r)
+	}
+	if err := rows.Err(); err != nil {
+		slog.Error("SQLiteStore GetReceipts rows iteration failed", "error", err)
+		return nil, fmt.Errorf("failed to iterate receipt rows: %w", err)
 	}
 	slog.Debug("SQLiteStore GetReceipts succeeded", "count", len(receipts))
 	return receipts, nil
@@ -116,7 +120,7 @@ func (s *SQLiteStore) AddResponse(r models.Response) error {
 	_, err := s.db.Exec(`INSERT INTO responses (sender, body, time) VALUES (?, ?, ?)`, r.From, r.Body, r.Time)
 	if err != nil {
 		slog.Error("SQLiteStore AddResponse failed", "error", err, "from", r.From)
-		return err
+		return fmt.Errorf("failed to insert response from %s: %w", r.From, err)
 	}
 	slog.Debug("SQLiteStore AddResponse succeeded", "from", r.From)
 	return nil

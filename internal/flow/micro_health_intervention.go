@@ -30,11 +30,6 @@ const (
 	MsgComplete         = "🎉 Congratulations! You've completed the micro health intervention. Thank you for participating!"
 )
 
-// Error message constants
-const (
-	ErrMsgUnsupportedState = "unsupported micro health intervention state '%s'"
-)
-
 // MicroHealthInterventionGenerator implements a custom, stateful micro health intervention flow.
 type MicroHealthInterventionGenerator struct {
 	stateManager StateManager
@@ -91,7 +86,7 @@ func (g *MicroHealthInterventionGenerator) Generate(ctx context.Context, p model
 		return MsgComplete, nil
 	default:
 		slog.Error("MicroHealthIntervention unsupported state", "state", p.State, "to", p.To)
-		return "", fmt.Errorf(ErrMsgUnsupportedState, p.State)
+		return "", fmt.Errorf("unsupported micro health intervention state '%s'", p.State)
 	}
 }
 

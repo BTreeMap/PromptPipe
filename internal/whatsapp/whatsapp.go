@@ -161,25 +161,42 @@ func NewClient(opts ...Option) (*Client, error) {
 				fmt.Println("Login event:", evt.Event)
 			}
 		}
-	}
-	// Connect to WhatsApp server
-	slog.Debug("Connecting to WhatsApp server")
-	if err := waClient.Connect(); err != nil {
-		slog.Error("Failed to connect to WhatsApp server", "error", err)
-		return nil, fmt.Errorf("failed to connect to WhatsApp: %w", err)
+	} else {
+		// Already logged in, just connect
+		slog.Debug("WhatsApp already logged in, connecting to server")
+		if err := waClient.Connect(); err != nil {
+			slog.Error("Failed to connect to WhatsApp server", "error", err)
+			return nil, fmt.Errorf("failed to connect to WhatsApp: %w", err)
+		}
 	}
 	slog.Info("WhatsApp client connected successfully")
 	return &Client{waClient: waClient}, nil
 }
 
 func (c *Client) SendMessage(ctx context.Context, to string, body string) error {
-	if c.waClient == nil || c.waClient.Store == nil {
+	if c.waClient == nil {
 		return fmt.Errorf("whatsapp client not initialized")
 	}
+	if c.waClient.Store == nil {
+		return fmt.Errorf("whatsapp client store not available")
+	}
+	if to == "" {
+		return fmt.Errorf("recipient cannot be empty")
+	}
+	if body == "" {
+		return fmt.Errorf("message body cannot be empty")
+	}
+
+	slog.Debug("Sending WhatsApp message", "to", to, "body_length", len(body))
 	jid := types.NewJID(to, JIDSuffix)
 	msg := &waE2E.Message{Conversation: &body}
 	_, err := c.waClient.SendMessage(ctx, jid, msg)
-	return err
+	if err != nil {
+		slog.Error("Failed to send WhatsApp message", "error", err, "to", to)
+		return fmt.Errorf("failed to send message to %s: %w", to, err)
+	}
+	slog.Debug("WhatsApp message sent successfully", "to", to)
+	return nil
 }
 
 // GetClient returns the underlying whatsmeow client for event handling

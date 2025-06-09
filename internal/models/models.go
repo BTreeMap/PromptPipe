@@ -33,23 +33,6 @@ const (
 	MinBranchOptionsCount = 2
 )
 
-// Validation error constants
-const (
-	ErrMsgEmptyRecipient       = "recipient cannot be empty"
-	ErrMsgInvalidPromptType    = "invalid prompt type"
-	ErrMsgPromptBodyTooLong    = "prompt body exceeds maximum length"
-	ErrMsgBranchLabelTooLong   = "branch label exceeds maximum length"
-	ErrMsgBranchBodyTooLong    = "branch body exceeds maximum length"
-	ErrMsgTooManyBranchOptions = "too many branch options"
-	ErrMsgTooFewBranchOptions  = "insufficient branch options"
-	ErrMsgEmptyBranchLabel     = "branch label cannot be empty"
-	ErrMsgEmptyBranchBody      = "branch body cannot be empty"
-	ErrMsgMissingSystemPrompt  = "system prompt is required for GenAI prompts"
-	ErrMsgMissingUserPrompt    = "user prompt is required for GenAI prompts"
-	ErrMsgMissingStaticBody    = "body is required for static prompts"
-	ErrMsgMissingBranchOptions = "branch options are required for branch prompts"
-)
-
 // IsValidPromptType checks if the given prompt type is supported.
 func IsValidPromptType(pt PromptType) bool {
 	switch pt {
@@ -82,12 +65,12 @@ type Prompt struct {
 func (p *Prompt) Validate() error {
 	// Check recipient
 	if p.To == "" {
-		return fmt.Errorf(ErrMsgEmptyRecipient)
+		return fmt.Errorf("recipient cannot be empty")
 	}
 
 	// Check prompt type
 	if !IsValidPromptType(p.Type) {
-		return fmt.Errorf(ErrMsgInvalidPromptType)
+		return fmt.Errorf("invalid prompt type")
 	}
 
 	// Type-specific validation
@@ -109,10 +92,10 @@ func (p *Prompt) Validate() error {
 // validateStatic validates static prompt requirements.
 func (p *Prompt) validateStatic() error {
 	if p.Body == "" {
-		return fmt.Errorf(ErrMsgMissingStaticBody)
+		return fmt.Errorf("body is required for static prompts")
 	}
 	if len(p.Body) > MaxPromptBodyLength {
-		return fmt.Errorf(ErrMsgPromptBodyTooLong)
+		return fmt.Errorf("prompt body exceeds maximum length")
 	}
 	return nil
 }
@@ -120,10 +103,10 @@ func (p *Prompt) validateStatic() error {
 // validateGenAI validates GenAI prompt requirements.
 func (p *Prompt) validateGenAI() error {
 	if p.SystemPrompt == "" {
-		return fmt.Errorf(ErrMsgMissingSystemPrompt)
+		return fmt.Errorf("system prompt is required for GenAI prompts")
 	}
 	if p.UserPrompt == "" {
-		return fmt.Errorf(ErrMsgMissingUserPrompt)
+		return fmt.Errorf("user prompt is required for GenAI prompts")
 	}
 	return nil
 }
@@ -131,27 +114,27 @@ func (p *Prompt) validateGenAI() error {
 // validateBranch validates branch prompt requirements.
 func (p *Prompt) validateBranch() error {
 	if len(p.BranchOptions) == 0 {
-		return fmt.Errorf(ErrMsgMissingBranchOptions)
+		return fmt.Errorf("branch options are required for branch prompts")
 	}
 	if len(p.BranchOptions) < MinBranchOptionsCount {
-		return fmt.Errorf(ErrMsgTooFewBranchOptions)
+		return fmt.Errorf("insufficient branch options")
 	}
 	if len(p.BranchOptions) > MaxBranchOptionsCount {
-		return fmt.Errorf(ErrMsgTooManyBranchOptions)
+		return fmt.Errorf("too many branch options")
 	}
 
 	for _, option := range p.BranchOptions {
 		if option.Label == "" {
-			return fmt.Errorf(ErrMsgEmptyBranchLabel)
+			return fmt.Errorf("branch label cannot be empty")
 		}
 		if len(option.Label) > MaxBranchLabelLength {
-			return fmt.Errorf(ErrMsgBranchLabelTooLong)
+			return fmt.Errorf("branch label exceeds maximum length")
 		}
 		if option.Body == "" {
-			return fmt.Errorf(ErrMsgEmptyBranchBody)
+			return fmt.Errorf("branch body cannot be empty")
 		}
 		if len(option.Body) > MaxBranchBodyLength {
-			return fmt.Errorf(ErrMsgBranchBodyTooLong)
+			return fmt.Errorf("branch body exceeds maximum length")
 		}
 	}
 

@@ -3,6 +3,7 @@ package genai
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/openai/openai-go"
@@ -38,7 +39,7 @@ func TestGeneratePrompt_Success(t *testing.T) {
 func TestGeneratePrompt_ServiceError(t *testing.T) {
 	client := &Client{chat: &mockChatService{err: errors.New("service failure")}}
 	_, err := client.GeneratePrompt("sys", "usr")
-	if err == nil || err.Error() != "service failure" {
+	if err == nil || !strings.Contains(err.Error(), "service failure") {
 		t.Errorf("expected service failure error, got %v", err)
 	}
 }
@@ -48,7 +49,7 @@ func TestGeneratePrompt_NoChoices(t *testing.T) {
 	mockResp := openai.ChatCompletion{Choices: []openai.ChatCompletionChoice{}}
 	client := &Client{chat: &mockChatService{resp: mockResp}}
 	_, err := client.GeneratePrompt("sys", "usr")
-	if err == nil || err.Error() != "no choices returned" {
+	if err != ErrNoChoicesReturned {
 		t.Errorf("expected no choices returned error, got %v", err)
 	}
 }
