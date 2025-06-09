@@ -27,3 +27,6 @@ go.work.sum
 
 # Build artifacts
 build/
+
+# IDE specific files
+.vscode/
