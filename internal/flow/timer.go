@@ -24,7 +24,7 @@ func NewSimpleTimer() *SimpleTimer {
 }
 
 // ScheduleAfter schedules a function to run after a delay.
-func (t *SimpleTimer) ScheduleAfter(delay time.Duration, fn func()) error {
+func (t *SimpleTimer) ScheduleAfter(delay time.Duration, fn func()) (string, error) {
 	t.mu.Lock()
 	t.nextID++
 	id := fmt.Sprintf("timer_%d", t.nextID)
@@ -46,16 +46,16 @@ func (t *SimpleTimer) ScheduleAfter(delay time.Duration, fn func()) error {
 	t.mu.Unlock()
 
 	slog.Debug("SimpleTimer ScheduleAfter succeeded", "id", id, "delay", delay)
-	return nil
+	return id, nil
 }
 
 // ScheduleAt schedules a function to run at a specific time.
-func (t *SimpleTimer) ScheduleAt(when time.Time, fn func()) error {
+func (t *SimpleTimer) ScheduleAt(when time.Time, fn func()) (string, error) {
 	delay := time.Until(when)
 	if delay < 0 {
 		slog.Warn("SimpleTimer ScheduleAt: time is in the past, executing immediately", "when", when)
 		go fn()
-		return nil
+		return "", nil
 	}
 
 	slog.Debug("SimpleTimer ScheduleAt", "when", when, "delay", delay)

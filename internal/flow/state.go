@@ -29,14 +29,17 @@ type StateManager interface {
 
 // Timer defines the interface for scheduling delayed actions.
 type Timer interface {
-	// ScheduleAfter schedules a function to run after a delay
-	ScheduleAfter(delay time.Duration, fn func()) error
+	// ScheduleAfter schedules a function to run after a delay and returns a timer ID
+	ScheduleAfter(delay time.Duration, fn func()) (string, error)
 
-	// ScheduleAt schedules a function to run at a specific time
-	ScheduleAt(when time.Time, fn func()) error
+	// ScheduleAt schedules a function to run at a specific time and returns a timer ID
+	ScheduleAt(when time.Time, fn func()) (string, error)
 
-	// Cancel cancels a scheduled function (implementation dependent)
+	// Cancel cancels a scheduled function by ID
 	Cancel(id string) error
+
+	// Stop cancels all scheduled timers
+	Stop()
 }
 
 // Dependencies holds all dependencies that can be injected into flow generators.

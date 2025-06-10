@@ -3,7 +3,10 @@
 // It includes types for prompts and delivery/read receipts, which are shared across modules.
 package models
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
 
 // PromptType defines how the prompt content is determined.
 type PromptType string
@@ -31,6 +34,23 @@ const (
 	MaxBranchOptionsCount = 10
 	// MinBranchOptionsCount defines the minimum number of branch options required
 	MinBranchOptionsCount = 2
+)
+
+// Error variables for better error handling and testability
+var (
+	ErrEmptyRecipient            = errors.New("recipient cannot be empty")
+	ErrInvalidPromptType         = errors.New("invalid prompt type")
+	ErrEmptyBody                 = errors.New("body is required for static prompts")
+	ErrPromptBodyTooLong         = errors.New("prompt body exceeds maximum length")
+	ErrMissingSystemPrompt       = errors.New("system prompt is required for GenAI prompts")
+	ErrMissingUserPrompt         = errors.New("user prompt is required for GenAI prompts")
+	ErrMissingBranchOptions      = errors.New("branch options are required for branch prompts")
+	ErrInsufficientBranchOptions = errors.New("insufficient branch options")
+	ErrTooManyBranchOptions      = errors.New("too many branch options")
+	ErrEmptyBranchLabel          = errors.New("branch label cannot be empty")
+	ErrBranchLabelTooLong        = errors.New("branch label exceeds maximum length")
+	ErrEmptyBranchBody           = errors.New("branch body cannot be empty")
+	ErrBranchBodyTooLong         = errors.New("branch body exceeds maximum length")
 )
 
 // IsValidPromptType checks if the given prompt type is supported.
