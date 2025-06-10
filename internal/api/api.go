@@ -322,7 +322,8 @@ func (s *Server) sendHandler(w http.ResponseWriter, r *http.Request) {
 	msg, err := flow.Generate(context.Background(), p)
 	if err != nil {
 		slog.Error("Flow generation error in sendHandler", "error", err)
-		http.Error(w, "Failed to generate message content", http.StatusBadRequest)
+		// Flow generation errors are generally internal server errors, not client errors
+		http.Error(w, "Failed to generate message content", http.StatusInternalServerError)
 		return
 	}
 
