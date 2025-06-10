@@ -31,8 +31,7 @@ func writeJSONResponse(w http.ResponseWriter, statusCode int, response interface
 	w.WriteHeader(statusCode)
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		slog.Error("Failed to encode JSON response", "error", err)
-		// Fallback to a simple error message using proper structure
-		w.WriteHeader(http.StatusInternalServerError)
+		// Cannot change status code again, just write fallback JSON
 		fallbackResponse := models.NewAPIResponse(models.APIStatusError)
 		if fallbackErr := json.NewEncoder(w).Encode(fallbackResponse); fallbackErr != nil {
 			// Last resort: write minimal JSON

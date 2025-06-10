@@ -29,6 +29,14 @@ func NewRegistry() *Registry {
 // Register associates a PromptType with a Generator implementation.
 func (r *Registry) Register(pt models.PromptType, gen Generator) {
 	r.generators[pt] = gen
+	slog.Debug("Flow generator registered", "type", pt)
+}
+
+// RegisterWithDependencies registers a stateful generator with its dependencies.
+func (r *Registry) RegisterWithDependencies(pt models.PromptType, gen StatefulGenerator, deps Dependencies) {
+	gen.SetDependencies(deps)
+	r.generators[pt] = gen
+	slog.Debug("Flow stateful generator registered with dependencies", "type", pt)
 }
 
 // Get retrieves the Generator for a given PromptType.
@@ -59,6 +67,11 @@ var defaultRegistry = NewRegistry()
 // Register associates a PromptType with a Generator implementation in the default registry.
 func Register(pt models.PromptType, gen Generator) {
 	defaultRegistry.Register(pt, gen)
+}
+
+// RegisterWithDependencies registers a stateful generator with dependencies in the default registry.
+func RegisterWithDependencies(pt models.PromptType, gen StatefulGenerator, deps Dependencies) {
+	defaultRegistry.RegisterWithDependencies(pt, gen, deps)
 }
 
 // Get retrieves the Generator for a given PromptType from the default registry.

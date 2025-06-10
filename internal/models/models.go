@@ -5,7 +5,6 @@ package models
 
 import (
 	"errors"
-	"fmt"
 )
 
 // PromptType defines how the prompt content is determined.
@@ -85,12 +84,12 @@ type Prompt struct {
 func (p *Prompt) Validate() error {
 	// Check recipient
 	if p.To == "" {
-		return fmt.Errorf("recipient cannot be empty")
+		return ErrEmptyRecipient
 	}
 
 	// Check prompt type
 	if !IsValidPromptType(p.Type) {
-		return fmt.Errorf("invalid prompt type")
+		return ErrInvalidPromptType
 	}
 
 	// Type-specific validation
@@ -112,10 +111,10 @@ func (p *Prompt) Validate() error {
 // validateStatic validates static prompt requirements.
 func (p *Prompt) validateStatic() error {
 	if p.Body == "" {
-		return fmt.Errorf("body is required for static prompts")
+		return ErrEmptyBody
 	}
 	if len(p.Body) > MaxPromptBodyLength {
-		return fmt.Errorf("prompt body exceeds maximum length")
+		return ErrPromptBodyTooLong
 	}
 	return nil
 }
@@ -123,10 +122,10 @@ func (p *Prompt) validateStatic() error {
 // validateGenAI validates GenAI prompt requirements.
 func (p *Prompt) validateGenAI() error {
 	if p.SystemPrompt == "" {
-		return fmt.Errorf("system prompt is required for GenAI prompts")
+		return ErrMissingSystemPrompt
 	}
 	if p.UserPrompt == "" {
-		return fmt.Errorf("user prompt is required for GenAI prompts")
+		return ErrMissingUserPrompt
 	}
 	return nil
 }
@@ -134,27 +133,27 @@ func (p *Prompt) validateGenAI() error {
 // validateBranch validates branch prompt requirements.
 func (p *Prompt) validateBranch() error {
 	if len(p.BranchOptions) == 0 {
-		return fmt.Errorf("branch options are required for branch prompts")
+		return ErrMissingBranchOptions
 	}
 	if len(p.BranchOptions) < MinBranchOptionsCount {
-		return fmt.Errorf("insufficient branch options")
+		return ErrInsufficientBranchOptions
 	}
 	if len(p.BranchOptions) > MaxBranchOptionsCount {
-		return fmt.Errorf("too many branch options")
+		return ErrTooManyBranchOptions
 	}
 
 	for _, option := range p.BranchOptions {
 		if option.Label == "" {
-			return fmt.Errorf("branch label cannot be empty")
+			return ErrEmptyBranchLabel
 		}
 		if len(option.Label) > MaxBranchLabelLength {
-			return fmt.Errorf("branch label exceeds maximum length")
+			return ErrBranchLabelTooLong
 		}
 		if option.Body == "" {
-			return fmt.Errorf("branch body cannot be empty")
+			return ErrEmptyBranchBody
 		}
 		if len(option.Body) > MaxBranchBodyLength {
-			return fmt.Errorf("branch body exceeds maximum length")
+			return ErrBranchBodyTooLong
 		}
 	}
 

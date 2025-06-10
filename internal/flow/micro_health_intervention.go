@@ -55,6 +55,9 @@ func (g *MicroHealthInterventionGenerator) SetDependencies(deps Dependencies) {
 // Generate selects the next message based on the current state in p.State.
 func (g *MicroHealthInterventionGenerator) Generate(ctx context.Context, p models.Prompt) (string, error) {
 	slog.Debug("MicroHealthIntervention Generate invoked", "state", p.State, "to", p.To)
+	
+	// For simple message generation, dependencies are not required
+	// Dependencies are only needed for stateful operations like state transitions and timers
 	switch p.State {
 	case "", StateOrientation:
 		slog.Debug("MicroHealthIntervention state orientation", "to", p.To)
@@ -90,6 +93,20 @@ func (g *MicroHealthInterventionGenerator) Generate(ctx context.Context, p model
 	}
 }
 
-func init() {
-	Register(models.PromptTypeCustom, &MicroHealthInterventionGenerator{})
+// ProcessResponse handles participant responses and manages state transitions.
+// This method requires dependencies to be properly initialized.
+func (g *MicroHealthInterventionGenerator) ProcessResponse(ctx context.Context, participantID, response string) error {
+	// Validate dependencies for stateful operations
+	if g.stateManager == nil || g.timer == nil {
+		slog.Error("MicroHealthIntervention dependencies not initialized for state operations")
+		return fmt.Errorf("generator dependencies not properly initialized for state operations")
+	}
+
+	// Implementation would handle response processing and state transitions
+	// This is placeholder for future implementation
+	slog.Debug("MicroHealthIntervention ProcessResponse", "participantID", participantID, "response", response)
+	return nil
 }
+
+// Note: Removed unsafe global registration - custom generators should be registered
+// manually with proper dependency injection in the application startup code.
