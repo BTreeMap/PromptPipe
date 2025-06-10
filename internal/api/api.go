@@ -25,18 +25,36 @@ import (
 	"github.com/BTreeMap/PromptPipe/internal/whatsapp"
 )
 
+// Pre-marshaled fallback responses to avoid runtime JSON encoding failures
+var (
+	fallbackErrorResponse []byte
+)
+
+// init validates that our fallback responses can be marshaled
+func init() {
+	var err error
+	fallbackErrorResponse, err = json.Marshal(models.NewAPIResponse(models.APIStatusError))
+	if err != nil {
+		panic(fmt.Sprintf("Failed to marshal fallback error response at startup: %v", err))
+	}
+}
+
 // writeJSONResponse writes a JSON response to the http.ResponseWriter with the given status code.
 func writeJSONResponse(w http.ResponseWriter, statusCode int, response interface{}) {
+	// Marshal the response to JSON first to catch encoding errors before writing headers
+	jsonData, err := json.Marshal(response)
+	if err != nil {
+		slog.Error("Failed to marshal JSON response", "error", err)
+		// Use pre-marshaled fallback response - if this fails, we have bigger problems
+		jsonData = fallbackErrorResponse
+		statusCode = http.StatusInternalServerError
+	}
+
+	// Write headers and response only after successful JSON marshaling
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		slog.Error("Failed to encode JSON response", "error", err)
-		// Cannot change status code again, just write fallback JSON
-		fallbackResponse := models.NewAPIResponse(models.APIStatusError)
-		if fallbackErr := json.NewEncoder(w).Encode(fallbackResponse); fallbackErr != nil {
-			// Last resort: write minimal JSON
-			w.Write([]byte(`{"status":"error"}`))
-		}
+	if _, writeErr := w.Write(jsonData); writeErr != nil {
+		slog.Error("Failed to write JSON response", "error", writeErr)
 	}
 }
 

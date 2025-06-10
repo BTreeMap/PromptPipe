@@ -55,7 +55,7 @@ func (g *MicroHealthInterventionGenerator) SetDependencies(deps Dependencies) {
 // Generate selects the next message based on the current state in p.State.
 func (g *MicroHealthInterventionGenerator) Generate(ctx context.Context, p models.Prompt) (string, error) {
 	slog.Debug("MicroHealthIntervention Generate invoked", "state", p.State, "to", p.To)
-	
+
 	// For simple message generation, dependencies are not required
 	// Dependencies are only needed for stateful operations like state transitions and timers
 	switch p.State {
