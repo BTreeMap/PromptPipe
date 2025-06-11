@@ -5,13 +5,25 @@ package store
 
 import (
 	"database/sql"
-	_ "embed"
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"time"
+
+	_ "embed"
 
 	"github.com/BTreeMap/PromptPipe/internal/models"
 	_ "github.com/lib/pq"
+)
+
+// Database connection pool configuration constants
+const (
+	// DefaultMaxOpenConns is the default maximum number of open connections to the database
+	DefaultMaxOpenConns = 25
+	// DefaultMaxIdleConns is the default maximum number of idle connections in the pool
+	DefaultMaxIdleConns = 25
+	// DefaultConnMaxLifetime is the default maximum amount of time a connection may be reused
+	DefaultConnMaxLifetime = 5 * time.Minute
 )
 
 //go:embed migrations_postgres.sql
@@ -43,6 +55,12 @@ func NewPostgresStore(opts ...Option) (*PostgresStore, error) {
 		return nil, err
 	}
 	slog.Debug("Postgres database opened")
+
+	// Configure connection pool for better performance
+	db.SetMaxOpenConns(DefaultMaxOpenConns)
+	db.SetMaxIdleConns(DefaultMaxIdleConns)
+	db.SetConnMaxLifetime(DefaultConnMaxLifetime)
+
 	if err := db.Ping(); err != nil {
 		slog.Error("Postgres ping failed", "error", err)
 		return nil, err
@@ -176,7 +194,7 @@ func (s *PostgresStore) SaveFlowState(state models.FlowState) error {
 	// Convert state_data map to JSON bytes
 	var stateDataJSON []byte
 	var err error
-	if state.StateData != nil && len(state.StateData) > 0 {
+	if len(state.StateData) > 0 {
 		stateDataJSON, err = json.Marshal(state.StateData)
 		if err != nil {
 			slog.Error("PostgresStore SaveFlowState JSON marshal failed", "error", err, "participantID", state.ParticipantID)

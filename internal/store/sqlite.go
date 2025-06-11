@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"time"
 
 	_ "embed"
 
@@ -21,6 +22,12 @@ import (
 const (
 	// DefaultDirPermissions defines the default permissions for database directories
 	DefaultDirPermissions = 0755
+	// SQLiteMaxOpenConns is the maximum number of open connections for SQLite (should be 1 for WAL mode safety)
+	SQLiteMaxOpenConns = 1
+	// SQLiteMaxIdleConns is the maximum number of idle connections for SQLite
+	SQLiteMaxIdleConns = 1
+	// SQLiteConnMaxLifetime is the maximum amount of time a SQLite connection may be reused
+	SQLiteConnMaxLifetime = 30 * time.Minute
 )
 
 //go:embed migrations_sqlite.sql
@@ -63,6 +70,12 @@ func NewSQLiteStore(opts ...Option) (*SQLiteStore, error) {
 		return nil, err
 	}
 	slog.Debug("SQLite database opened")
+
+	// Configure connection pool for SQLite
+	// Note: SQLite should use minimal connections to avoid database lock issues
+	db.SetMaxOpenConns(SQLiteMaxOpenConns)
+	db.SetMaxIdleConns(SQLiteMaxIdleConns)
+	db.SetConnMaxLifetime(SQLiteConnMaxLifetime)
 
 	if err := db.Ping(); err != nil {
 		slog.Error("SQLite ping failed", "error", err)
@@ -189,7 +202,7 @@ func (s *SQLiteStore) SaveFlowState(state models.FlowState) error {
 
 	// Convert state_data map to JSON string for SQLite
 	var stateDataJSON string
-	if state.StateData != nil && len(state.StateData) > 0 {
+	if len(state.StateData) > 0 {
 		jsonBytes, err := json.Marshal(state.StateData)
 		if err != nil {
 			slog.Error("SQLiteStore SaveFlowState JSON marshal failed", "error", err, "participantID", state.ParticipantID)
