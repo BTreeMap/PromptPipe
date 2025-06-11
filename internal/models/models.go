@@ -205,38 +205,113 @@ type Response struct {
 
 // API Response types for consistent JSON responses
 
-// APIResponse represents a standard API response with a status.
+// APIResponse represents a standard API response with a status and optional data.
 type APIResponse struct {
-	Status  string `json:"status"`            // status of the API response
-	Message string `json:"message,omitempty"` // optional message for error responses or additional info
+	Status  string      `json:"status"`            // status of the API response
+	Message string      `json:"message,omitempty"` // optional message for error responses or additional info
+	Result  interface{} `json:"result,omitempty"`  // optional result data for successful responses
 }
 
+// APIResponseFactory provides a centralized factory for creating consistent API responses.
+type APIResponseFactory struct{}
+
+// NewFactory creates a new APIResponseFactory instance.
+func NewFactory() *APIResponseFactory {
+	return &APIResponseFactory{}
+}
+
+// Success creates a successful API response with optional result data.
+func (f *APIResponseFactory) Success(result interface{}) APIResponse {
+	return APIResponse{
+		Status: string(APIStatusOK),
+		Result: result,
+	}
+}
+
+// SuccessWithMessage creates a successful API response with a message and optional result data.
+func (f *APIResponseFactory) SuccessWithMessage(message string, result interface{}) APIResponse {
+	return APIResponse{
+		Status:  string(APIStatusOK),
+		Message: message,
+		Result:  result,
+	}
+}
+
+// Error creates an error API response with a message.
+func (f *APIResponseFactory) Error(message string) APIResponse {
+	return APIResponse{
+		Status:  string(APIStatusError),
+		Message: message,
+	}
+}
+
+// Scheduled creates a scheduled API response.
+func (f *APIResponseFactory) Scheduled() APIResponse {
+	return APIResponse{
+		Status: string(APIStatusScheduled),
+	}
+}
+
+// ScheduledWithMessage creates a scheduled API response with a message.
+func (f *APIResponseFactory) ScheduledWithMessage(message string) APIResponse {
+	return APIResponse{
+		Status:  string(APIStatusScheduled),
+		Message: message,
+	}
+}
+
+// Recorded creates a recorded API response.
+func (f *APIResponseFactory) Recorded() APIResponse {
+	return APIResponse{
+		Status: string(APIStatusRecorded),
+	}
+}
+
+// RecordedWithMessage creates a recorded API response with a message.
+func (f *APIResponseFactory) RecordedWithMessage(message string) APIResponse {
+	return APIResponse{
+		Status:  string(APIStatusRecorded),
+		Message: message,
+	}
+}
+
+// Global factory instance for convenience
+var Factory = NewFactory()
+
+// Backward compatibility functions (deprecated, use Factory instead)
+
 // NewAPIResponse creates a standard API response with the given status.
+// Deprecated: Use Factory.Success() or Factory.Error() instead.
 func NewAPIResponse(status APIStatus) APIResponse {
 	return APIResponse{Status: string(status)}
 }
 
 // NewAPIResponseWithMessage creates a standard API response with status and message.
+// Deprecated: Use Factory methods instead.
 func NewAPIResponseWithMessage(status APIStatus, message string) APIResponse {
 	return APIResponse{Status: string(status), Message: message}
 }
 
 // NewOKResponse creates a standard "ok" API response.
+// Deprecated: Use Factory.Success() instead.
 func NewOKResponse() APIResponse {
-	return NewAPIResponse(APIStatusOK)
+	return Factory.Success(nil)
 }
 
 // NewScheduledResponse creates a standard "scheduled" API response.
+// Deprecated: Use Factory.Scheduled() instead.
 func NewScheduledResponse() APIResponse {
-	return NewAPIResponse(APIStatusScheduled)
+	return Factory.Scheduled()
 }
 
 // NewRecordedResponse creates a standard "recorded" API response.
+// Deprecated: Use Factory.Recorded() instead.
 func NewRecordedResponse() APIResponse {
-	return NewAPIResponse(APIStatusRecorded)
+	return Factory.Recorded()
 }
 
 // NewErrorResponse creates a standard "error" API response with a message.
+// Deprecated: Use Factory.Error() instead.
 func NewErrorResponse(message string) APIResponse {
-	return NewAPIResponseWithMessage(APIStatusError, message)
+	return Factory.Error(message)
 }

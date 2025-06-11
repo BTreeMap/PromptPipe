@@ -124,9 +124,18 @@ func TestReceiptsHandler_Success(t *testing.T) {
 
 	assertHTTPStatus(t, http.StatusOK, rr.Code, "receipts handler success")
 
-	var receipts []models.Receipt
-	if err := json.NewDecoder(rr.Body).Decode(&receipts); err != nil {
-		t.Errorf("failed to decode receipts: %v", err)
+	var response models.APIResponse
+	if err := json.NewDecoder(rr.Body).Decode(&response); err != nil {
+		t.Errorf("failed to decode response: %v", err)
+	}
+
+	if response.Status != "ok" {
+		t.Errorf("expected status 'ok', got '%s'", response.Status)
+	}
+
+	// Verify result is an array (receipts array)
+	if _, ok := response.Result.([]interface{}); !ok {
+		t.Errorf("expected result to be array, got %T", response.Result)
 	}
 }
 
@@ -188,13 +197,23 @@ func TestResponsesHandler_Success(t *testing.T) {
 
 	assertHTTPStatus(t, http.StatusOK, rr.Code, "responses handler success")
 
-	var responses []models.Response
-	if err := json.NewDecoder(rr.Body).Decode(&responses); err != nil {
-		t.Errorf("failed to decode responses: %v", err)
+	var response models.APIResponse
+	if err := json.NewDecoder(rr.Body).Decode(&response); err != nil {
+		t.Errorf("failed to decode response: %v", err)
 	}
 
-	if len(responses) != 1 {
-		t.Errorf("expected 1 response, got %d", len(responses))
+	if response.Status != "ok" {
+		t.Errorf("expected status 'ok', got '%s'", response.Status)
+	}
+
+	// Extract responses from result field
+	responsesData, ok := response.Result.([]interface{})
+	if !ok {
+		t.Errorf("expected result to be array, got %T", response.Result)
+	}
+
+	if len(responsesData) != 1 {
+		t.Errorf("expected 1 response, got %d", len(responsesData))
 	}
 }
 
@@ -222,9 +241,19 @@ func TestStatsHandler_Success(t *testing.T) {
 
 	assertHTTPStatus(t, http.StatusOK, rr.Code, "stats handler success")
 
-	var stats map[string]interface{}
-	if err := json.NewDecoder(rr.Body).Decode(&stats); err != nil {
-		t.Errorf("invalid stats JSON: %v", err)
+	var response models.APIResponse
+	if err := json.NewDecoder(rr.Body).Decode(&response); err != nil {
+		t.Errorf("failed to decode response: %v", err)
+	}
+
+	if response.Status != "ok" {
+		t.Errorf("expected status 'ok', got '%s'", response.Status)
+	}
+
+	// Extract stats from result field
+	stats, ok := response.Result.(map[string]interface{})
+	if !ok {
+		t.Errorf("expected result to be map, got %T", response.Result)
 	}
 
 	if stats["total_responses"].(float64) != 3 {
