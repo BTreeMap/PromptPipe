@@ -13,8 +13,6 @@ import (
 // Pre-marshaled fallback responses to avoid runtime JSON encoding failures
 var (
 	fallbackErrorResponse []byte
-	// fallbackMinimalResponse is kept as an absolute last resort if even pre-marshaled responses fail
-	fallbackMinimalResponse = []byte(`{"status":"error"}`)
 )
 
 // init validates that our fallback responses can be marshaled
