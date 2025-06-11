@@ -196,9 +196,12 @@ func (s *Server) initializeStore(storeOpts []store.Option) error {
 func (s *Server) startForwardingRoutines() {
 	go func() {
 		slog.Debug("Starting receipt forwarding routine")
+		defer slog.Debug("Receipt forwarding routine stopped")
 		for r := range s.msgService.Receipts() {
 			if err := s.st.AddReceipt(r); err != nil {
-				slog.Error("Error storing receipt", "error", err)
+				slog.Error("Error storing receipt", "error", err, "to", r.To, "status", r.Status)
+			} else {
+				slog.Debug("Receipt stored successfully", "to", r.To, "status", r.Status)
 			}
 		}
 	}()
@@ -206,9 +209,12 @@ func (s *Server) startForwardingRoutines() {
 
 	go func() {
 		slog.Debug("Starting response forwarding routine")
+		defer slog.Debug("Response forwarding routine stopped")
 		for resp := range s.msgService.Responses() {
 			if err := s.st.AddResponse(resp); err != nil {
-				slog.Error("Error storing response", "error", err)
+				slog.Error("Error storing response", "error", err, "from", resp.From)
+			} else {
+				slog.Debug("Response stored successfully", "from", resp.From)
 			}
 		}
 	}()

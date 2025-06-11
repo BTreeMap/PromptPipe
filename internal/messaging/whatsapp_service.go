@@ -2,12 +2,15 @@ package messaging
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/BTreeMap/PromptPipe/internal/models"
 	"github.com/BTreeMap/PromptPipe/internal/whatsapp"
+	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 )
 
@@ -19,6 +22,11 @@ const (
 	DefaultChannelTimeout = 1 * time.Second
 )
 
+// Error variables for better error handling
+var (
+	ErrServiceStopped = errors.New("messaging service has been stopped")
+)
+
 // WhatsAppService implements Service using the Whatsmeow-based whatsapp client.
 type WhatsAppService struct {
 	client    whatsapp.WhatsAppSender
@@ -26,6 +34,8 @@ type WhatsAppService struct {
 	receipts  chan models.Receipt
 	responses chan models.Response
 	done      chan struct{}
+	mu        sync.RWMutex
+	stopped   bool
 }
 
 // NewWhatsAppService creates a new WhatsAppService wrapping the given WhatsAppSender.
@@ -66,31 +76,92 @@ func (s *WhatsAppService) Start(ctx context.Context) error {
 
 // Stop stops background processing.
 func (s *WhatsAppService) Stop() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.stopped {
+		slog.Debug("WhatsAppService already stopped")
+		return nil
+	}
+
 	slog.Info("WhatsAppService Stop invoked")
+	s.stopped = true
 	close(s.done)
-	close(s.receipts)
-	close(s.responses)
-	slog.Info("WhatsAppService stopped and channels closed")
+
+	// Close channels after a brief delay to allow goroutines to finish
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		close(s.receipts)
+		close(s.responses)
+		slog.Info("WhatsAppService stopped and channels closed")
+	}()
+
 	return nil
 }
 
 // SendMessage sends a message and emits a sent receipt.
 func (s *WhatsAppService) SendMessage(ctx context.Context, to string, body string) error {
+	s.mu.RLock()
+	if s.stopped {
+		s.mu.RUnlock()
+		return ErrServiceStopped
+	}
+	s.mu.RUnlock()
+
 	slog.Debug("WhatsAppService SendMessage invoked", "to", to, "body_length", len(body))
 	err := s.client.SendMessage(ctx, to, body)
 	if err != nil {
 		slog.Error("WhatsAppService SendMessage error", "error", err, "to", to)
 		return err
 	}
-	// Emit sent receipt
-	s.receipts <- models.Receipt{To: to, Status: models.MessageStatusSent, Time: time.Now().Unix()}
+
+	// Emit sent receipt (with safety check)
+	s.safeEmitReceipt(models.Receipt{To: to, Status: models.MessageStatusSent, Time: time.Now().Unix()})
 	slog.Info("WhatsAppService message sent and receipt emitted", "to", to)
 	return nil
+}
+
+// safeEmitReceipt safely emits a receipt to the receipts channel, handling the case where the service is stopped
+func (s *WhatsAppService) safeEmitReceipt(receipt models.Receipt) {
+	s.mu.RLock()
+	stopped := s.stopped
+	s.mu.RUnlock()
+
+	if stopped {
+		slog.Debug("WhatsAppService receipt dropped, service stopped", "to", receipt.To, "status", receipt.Status)
+		return
+	}
+
+	select {
+	case s.receipts <- receipt:
+		// Receipt sent successfully
+	case <-time.After(DefaultChannelTimeout):
+		slog.Warn("WhatsAppService receipts channel blocked, dropping receipt", "to", receipt.To, "timeout", DefaultChannelTimeout)
+	}
 }
 
 // Receipts returns a channel of receipt events.
 func (s *WhatsAppService) Receipts() <-chan models.Receipt {
 	return s.receipts
+}
+
+// safeEmitResponse safely emits a response to the responses channel, handling the case where the service is stopped
+func (s *WhatsAppService) safeEmitResponse(response models.Response) {
+	s.mu.RLock()
+	stopped := s.stopped
+	s.mu.RUnlock()
+
+	if stopped {
+		slog.Debug("WhatsAppService response dropped, service stopped", "from", response.From)
+		return
+	}
+
+	select {
+	case s.responses <- response:
+		slog.Info("WhatsAppService incoming message forwarded", "from", response.From)
+	case <-time.After(DefaultChannelTimeout):
+		slog.Warn("WhatsAppService responses channel blocked, dropping message", "from", response.From, "timeout", DefaultChannelTimeout)
+	}
 }
 
 // Responses returns a channel of incoming response events.
@@ -160,12 +231,7 @@ func (s *WhatsAppService) handleIncomingMessage(evt *events.Message) {
 	slog.Debug("WhatsAppService processing incoming message", "from", response.From, "body_length", len(response.Body))
 
 	// Send to responses channel (non-blocking)
-	select {
-	case s.responses <- response:
-		slog.Info("WhatsAppService incoming message forwarded", "from", response.From)
-	case <-time.After(DefaultChannelTimeout):
-		slog.Warn("WhatsAppService responses channel blocked, dropping message", "from", response.From, "timeout", DefaultChannelTimeout)
-	}
+	s.safeEmitResponse(response)
 }
 
 // handleMessageReceipt processes delivery and read receipts
@@ -178,11 +244,11 @@ func (s *WhatsAppService) handleMessageReceipt(evt *events.Receipt) {
 
 	var status models.MessageStatus
 	switch evt.Type {
-	case events.ReceiptTypeDelivered:
+	case types.ReceiptTypeDelivered:
 		status = models.MessageStatusDelivered
-	case events.ReceiptTypeRead:
+	case types.ReceiptTypeRead:
 		status = models.MessageStatusRead
-	case events.ReceiptTypeReadSelf:
+	case types.ReceiptTypeReadSelf:
 		// Skip self-read receipts
 		return
 	default:
@@ -199,12 +265,7 @@ func (s *WhatsAppService) handleMessageReceipt(evt *events.Receipt) {
 	slog.Debug("WhatsAppService processing receipt", "to", receipt.To, "status", receipt.Status)
 
 	// Send to receipts channel (non-blocking)
-	select {
-	case s.receipts <- receipt:
-		slog.Info("WhatsAppService receipt forwarded", "to", receipt.To, "status", receipt.Status)
-	case <-time.After(DefaultChannelTimeout):
-		slog.Warn("WhatsAppService receipts channel blocked, dropping receipt", "to", receipt.To, "timeout", DefaultChannelTimeout)
-	}
+	s.safeEmitReceipt(receipt)
 }
 
 // getEventType returns a string representation of the event type for logging
