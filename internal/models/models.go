@@ -212,106 +212,94 @@ type APIResponse struct {
 	Result  interface{} `json:"result,omitempty"`  // optional result data for successful responses
 }
 
-// APIResponseFactory provides a centralized factory for creating consistent API responses.
-type APIResponseFactory struct{}
-
-// NewFactory creates a new APIResponseFactory instance.
-func NewFactory() *APIResponseFactory {
-	return &APIResponseFactory{}
+// APIResponseBuilder provides a fluent interface for building API responses.
+type APIResponseBuilder struct {
+	response APIResponse
 }
 
-// Success creates a successful API response with optional result data.
-func (f *APIResponseFactory) Success(result interface{}) APIResponse {
-	return APIResponse{
-		Status: string(APIStatusOK),
-		Result: result,
+// NewAPIResponseBuilder creates a new APIResponseBuilder instance.
+func NewAPIResponseBuilder() *APIResponseBuilder {
+	return &APIResponseBuilder{
+		response: APIResponse{},
 	}
+}
+
+// WithStatus sets the status of the API response.
+func (b *APIResponseBuilder) WithStatus(status APIStatus) *APIResponseBuilder {
+	b.response.Status = string(status)
+	return b
+}
+
+// WithMessage sets the message of the API response.
+func (b *APIResponseBuilder) WithMessage(message string) *APIResponseBuilder {
+	b.response.Message = message
+	return b
+}
+
+// WithResult sets the result data of the API response.
+func (b *APIResponseBuilder) WithResult(result interface{}) *APIResponseBuilder {
+	b.response.Result = result
+	return b
+}
+
+// Build constructs and returns the final APIResponse.
+func (b *APIResponseBuilder) Build() APIResponse {
+	return b.response
+}
+
+// Convenience functions for common response patterns
+
+// Success creates a successful API response with optional result data.
+func Success(result interface{}) APIResponse {
+	return NewAPIResponseBuilder().
+		WithStatus(APIStatusOK).
+		WithResult(result).
+		Build()
 }
 
 // SuccessWithMessage creates a successful API response with a message and optional result data.
-func (f *APIResponseFactory) SuccessWithMessage(message string, result interface{}) APIResponse {
-	return APIResponse{
-		Status:  string(APIStatusOK),
-		Message: message,
-		Result:  result,
-	}
+func SuccessWithMessage(message string, result interface{}) APIResponse {
+	return NewAPIResponseBuilder().
+		WithStatus(APIStatusOK).
+		WithMessage(message).
+		WithResult(result).
+		Build()
 }
 
 // Error creates an error API response with a message.
-func (f *APIResponseFactory) Error(message string) APIResponse {
-	return APIResponse{
-		Status:  string(APIStatusError),
-		Message: message,
-	}
+func Error(message string) APIResponse {
+	return NewAPIResponseBuilder().
+		WithStatus(APIStatusError).
+		WithMessage(message).
+		Build()
 }
 
 // Scheduled creates a scheduled API response.
-func (f *APIResponseFactory) Scheduled() APIResponse {
-	return APIResponse{
-		Status: string(APIStatusScheduled),
-	}
+func Scheduled() APIResponse {
+	return NewAPIResponseBuilder().
+		WithStatus(APIStatusScheduled).
+		Build()
 }
 
 // ScheduledWithMessage creates a scheduled API response with a message.
-func (f *APIResponseFactory) ScheduledWithMessage(message string) APIResponse {
-	return APIResponse{
-		Status:  string(APIStatusScheduled),
-		Message: message,
-	}
+func ScheduledWithMessage(message string) APIResponse {
+	return NewAPIResponseBuilder().
+		WithStatus(APIStatusScheduled).
+		WithMessage(message).
+		Build()
 }
 
 // Recorded creates a recorded API response.
-func (f *APIResponseFactory) Recorded() APIResponse {
-	return APIResponse{
-		Status: string(APIStatusRecorded),
-	}
+func Recorded() APIResponse {
+	return NewAPIResponseBuilder().
+		WithStatus(APIStatusRecorded).
+		Build()
 }
 
 // RecordedWithMessage creates a recorded API response with a message.
-func (f *APIResponseFactory) RecordedWithMessage(message string) APIResponse {
-	return APIResponse{
-		Status:  string(APIStatusRecorded),
-		Message: message,
-	}
-}
-
-// Global factory instance for convenience
-var Factory = NewFactory()
-
-// Backward compatibility functions (deprecated, use Factory instead)
-
-// NewAPIResponse creates a standard API response with the given status.
-// Deprecated: Use Factory.Success() or Factory.Error() instead.
-func NewAPIResponse(status APIStatus) APIResponse {
-	return APIResponse{Status: string(status)}
-}
-
-// NewAPIResponseWithMessage creates a standard API response with status and message.
-// Deprecated: Use Factory methods instead.
-func NewAPIResponseWithMessage(status APIStatus, message string) APIResponse {
-	return APIResponse{Status: string(status), Message: message}
-}
-
-// NewOKResponse creates a standard "ok" API response.
-// Deprecated: Use Factory.Success() instead.
-func NewOKResponse() APIResponse {
-	return Factory.Success(nil)
-}
-
-// NewScheduledResponse creates a standard "scheduled" API response.
-// Deprecated: Use Factory.Scheduled() instead.
-func NewScheduledResponse() APIResponse {
-	return Factory.Scheduled()
-}
-
-// NewRecordedResponse creates a standard "recorded" API response.
-// Deprecated: Use Factory.Recorded() instead.
-func NewRecordedResponse() APIResponse {
-	return Factory.Recorded()
-}
-
-// NewErrorResponse creates a standard "error" API response with a message.
-// Deprecated: Use Factory.Error() instead.
-func NewErrorResponse(message string) APIResponse {
-	return Factory.Error(message)
+func RecordedWithMessage(message string) APIResponse {
+	return NewAPIResponseBuilder().
+		WithStatus(APIStatusRecorded).
+		WithMessage(message).
+		Build()
 }

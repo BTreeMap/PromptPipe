@@ -26,7 +26,7 @@ func (s *Server) sendHandler(w http.ResponseWriter, r *http.Request) {
 	var p models.Prompt
 	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
 		slog.Warn("Failed to decode JSON in sendHandler", "error", err)
-		writeJSONResponse(w, http.StatusBadRequest, models.Factory.Error("Invalid JSON format"))
+		writeJSONResponse(w, http.StatusBadRequest, models.Error("Invalid JSON format"))
 		return
 	}
 	slog.Debug("sendHandler parsed prompt", "to", p.To, "type", p.Type)
@@ -39,7 +39,7 @@ func (s *Server) sendHandler(w http.ResponseWriter, r *http.Request) {
 	// Validate prompt using the models validation
 	if err := p.Validate(); err != nil {
 		slog.Warn("sendHandler validation failed", "error", err, "prompt", p)
-		writeJSONResponse(w, http.StatusBadRequest, models.Factory.Error(err.Error()))
+		writeJSONResponse(w, http.StatusBadRequest, models.Error(err.Error()))
 		return
 	}
 	// Generate message body via pluggable flow
@@ -47,18 +47,18 @@ func (s *Server) sendHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		slog.Error("Flow generation error in sendHandler", "error", err)
 		// Flow generation errors are generally internal server errors, not client errors
-		writeJSONResponse(w, http.StatusInternalServerError, models.Factory.Error("Failed to generate message content"))
+		writeJSONResponse(w, http.StatusInternalServerError, models.Error("Failed to generate message content"))
 		return
 	}
 
 	err = s.msgService.SendMessage(context.Background(), p.To, msg)
 	if err != nil {
 		slog.Error("Error sending message in sendHandler", "error", err, "to", p.To)
-		writeJSONResponse(w, http.StatusInternalServerError, models.Factory.Error("Failed to send message"))
+		writeJSONResponse(w, http.StatusInternalServerError, models.Error("Failed to send message"))
 		return
 	}
 	slog.Info("Message sent successfully", "to", p.To)
-	writeJSONResponse(w, http.StatusOK, models.Factory.Success(nil))
+	writeJSONResponse(w, http.StatusOK, models.Success(nil))
 }
 
 func (s *Server) scheduleHandler(w http.ResponseWriter, r *http.Request) {
@@ -75,7 +75,7 @@ func (s *Server) scheduleHandler(w http.ResponseWriter, r *http.Request) {
 	var p models.Prompt
 	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
 		slog.Warn("Failed to decode JSON in scheduleHandler", "error", err)
-		writeJSONResponse(w, http.StatusBadRequest, models.Factory.Error("Invalid JSON format"))
+		writeJSONResponse(w, http.StatusBadRequest, models.Error("Invalid JSON format"))
 		return
 	}
 
@@ -87,21 +87,21 @@ func (s *Server) scheduleHandler(w http.ResponseWriter, r *http.Request) {
 	// Validate prompt using the models validation
 	if err := p.Validate(); err != nil {
 		slog.Warn("scheduleHandler validation failed", "error", err, "prompt", p)
-		writeJSONResponse(w, http.StatusBadRequest, models.Factory.Error(err.Error()))
+		writeJSONResponse(w, http.StatusBadRequest, models.Error(err.Error()))
 		return
 	}
 
 	// Additional validation for GenAI client availability
 	if p.Type == models.PromptTypeGenAI && s.gaClient == nil {
 		slog.Warn("scheduleHandler genai client not configured", "prompt", p)
-		writeJSONResponse(w, http.StatusBadRequest, models.Factory.Error("GenAI client not configured"))
+		writeJSONResponse(w, http.StatusBadRequest, models.Error("GenAI client not configured"))
 		return
 	}
 	// Apply default schedule if none provided
 	if p.Cron == "" {
 		if s.defaultCron == "" {
 			slog.Warn("scheduleHandler missing cron schedule and no default set", "prompt", p)
-			writeJSONResponse(w, http.StatusBadRequest, models.Factory.Error("Missing required field: cron schedule"))
+			writeJSONResponse(w, http.StatusBadRequest, models.Error("Missing required field: cron schedule"))
 			return
 		}
 		p.Cron = s.defaultCron
@@ -133,12 +133,12 @@ func (s *Server) scheduleHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}); addErr != nil {
 		slog.Error("Error scheduling job", "error", addErr)
-		writeJSONResponse(w, http.StatusInternalServerError, models.Factory.Error("Failed to schedule job"))
+		writeJSONResponse(w, http.StatusInternalServerError, models.Error("Failed to schedule job"))
 		return
 	}
 	// Job scheduled successfully
 	slog.Info("Job scheduled successfully", "to", p.To, "cron", p.Cron)
-	writeJSONResponse(w, http.StatusCreated, models.Factory.Scheduled())
+	writeJSONResponse(w, http.StatusCreated, models.Scheduled())
 }
 
 func (s *Server) receiptsHandler(w http.ResponseWriter, r *http.Request) {
@@ -152,11 +152,11 @@ func (s *Server) receiptsHandler(w http.ResponseWriter, r *http.Request) {
 	receipts, err := s.st.GetReceipts()
 	if err != nil {
 		slog.Error("Error fetching receipts", "error", err)
-		writeJSONResponse(w, http.StatusInternalServerError, models.Factory.Error("Failed to fetch receipts"))
+		writeJSONResponse(w, http.StatusInternalServerError, models.Error("Failed to fetch receipts"))
 		return
 	}
 	slog.Debug("receipts fetched", "count", len(receipts))
-	writeJSONResponse(w, http.StatusOK, models.Factory.Success(receipts))
+	writeJSONResponse(w, http.StatusOK, models.Success(receipts))
 }
 
 // responseHandler handles incoming participant responses (POST /response).
@@ -171,18 +171,18 @@ func (s *Server) responseHandler(w http.ResponseWriter, r *http.Request) {
 	var resp models.Response
 	if err := json.NewDecoder(r.Body).Decode(&resp); err != nil {
 		slog.Warn("Invalid JSON in responseHandler", "error", err)
-		writeJSONResponse(w, http.StatusBadRequest, models.Factory.Error("Invalid JSON format"))
+		writeJSONResponse(w, http.StatusBadRequest, models.Error("Invalid JSON format"))
 		return
 	}
 	slog.Debug("responseHandler parsed response", "from", resp.From)
 	resp.Time = time.Now().Unix()
 	if err := s.st.AddResponse(resp); err != nil {
 		slog.Error("Error adding response", "error", err)
-		writeJSONResponse(w, http.StatusInternalServerError, models.Factory.Error("Failed to store response"))
+		writeJSONResponse(w, http.StatusInternalServerError, models.Error("Failed to store response"))
 		return
 	}
 	slog.Info("Response recorded", "from", resp.From)
-	writeJSONResponse(w, http.StatusCreated, models.Factory.Recorded())
+	writeJSONResponse(w, http.StatusCreated, models.Recorded())
 }
 
 // responsesHandler returns all collected responses (GET /responses).
@@ -197,11 +197,11 @@ func (s *Server) responsesHandler(w http.ResponseWriter, r *http.Request) {
 	responses, err := s.st.GetResponses()
 	if err != nil {
 		slog.Error("Error fetching responses", "error", err)
-		writeJSONResponse(w, http.StatusInternalServerError, models.Factory.Error("Failed to fetch responses"))
+		writeJSONResponse(w, http.StatusInternalServerError, models.Error("Failed to fetch responses"))
 		return
 	}
 	slog.Debug("responses fetched", "count", len(responses))
-	writeJSONResponse(w, http.StatusOK, models.Factory.Success(responses))
+	writeJSONResponse(w, http.StatusOK, models.Success(responses))
 }
 
 // statsHandler returns statistics about collected responses (GET /stats).
@@ -216,7 +216,7 @@ func (s *Server) statsHandler(w http.ResponseWriter, r *http.Request) {
 	responses, err := s.st.GetResponses()
 	if err != nil {
 		slog.Error("Error fetching responses in statsHandler", "error", err)
-		writeJSONResponse(w, http.StatusInternalServerError, models.Factory.Error("Failed to fetch responses"))
+		writeJSONResponse(w, http.StatusInternalServerError, models.Error("Failed to fetch responses"))
 		return
 	}
 	total := len(responses)
@@ -236,5 +236,5 @@ func (s *Server) statsHandler(w http.ResponseWriter, r *http.Request) {
 		"avg_response_length":  avgLen,
 	}
 	slog.Debug("stats computed", "total_responses", total, "avg_response_length", avgLen)
-	writeJSONResponse(w, http.StatusOK, models.Factory.Success(stats))
+	writeJSONResponse(w, http.StatusOK, models.Success(stats))
 }
