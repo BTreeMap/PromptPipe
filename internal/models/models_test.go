@@ -39,7 +39,7 @@ func TestPromptJSONTags(t *testing.T) {
 }
 
 func TestReceiptJSONTags(t *testing.T) {
-	r := Receipt{To: "+123", Status: StatusTypeSent, Time: 123456}
+	r := Receipt{To: "+123", Status: MessageStatusSent, Time: 123456}
 	expectedJSON := `{"to":"+123","status":"sent","time":123456}`
 
 	jsonData, err := json.Marshal(r)

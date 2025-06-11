@@ -68,7 +68,7 @@ func TestDetectDSNType(t *testing.T) {
 
 func TestInMemoryStore(t *testing.T) {
 	s := NewInMemoryStore()
-	r1 := models.Receipt{To: "+123", Status: models.StatusTypeSent, Time: 1}
+	r1 := models.Receipt{To: "+123", Status: models.MessageStatusSent, Time: 1}
 	if err := s.AddReceipt(r1); err != nil {
 		t.Fatalf("AddReceipt failed: %v", err)
 	}
@@ -132,7 +132,7 @@ func TestPostgresStore(t *testing.T) {
 		// t.Logf("ClearResponses (pre-test) failed, possibly due to no table: %v", err)
 	}
 
-	r1 := models.Receipt{To: "pg_test_1", Status: models.StatusTypeDelivered, Time: 100}
+	r1 := models.Receipt{To: "pg_test_1", Status: models.MessageStatusDelivered, Time: 100}
 	if err := s.AddReceipt(r1); err != nil {
 		t.Fatalf("AddReceipt failed: %v", err)
 	}
@@ -203,7 +203,7 @@ func TestSQLiteStore(t *testing.T) {
 	}
 	defer s.Close() // Ensure SQLiteStore has a Close method
 
-	r1 := models.Receipt{To: "sqlite_test_1", Status: models.StatusTypeRead, Time: 200}
+	r1 := models.Receipt{To: "sqlite_test_1", Status: models.MessageStatusRead, Time: 200}
 	if err := s.AddReceipt(r1); err != nil {
 		t.Fatalf("AddReceipt failed: %v", err)
 	}

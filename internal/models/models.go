@@ -160,29 +160,40 @@ func (p *Prompt) validateBranch() error {
 	return nil
 }
 
-type StatusType string
+// MessageStatus represents the delivery status of a message.
+type MessageStatus string
 
 const (
-	// StatusTypeSent indicates the message was sent.
-	StatusTypeSent StatusType = "sent"
-	// StatusTypeDelivered indicates the message was delivered.
-	StatusTypeDelivered StatusType = "delivered"
-	// StatusTypeRead indicates the message was read.
-	StatusTypeRead StatusType = "read"
-	// StatusTypeFailed indicates the message failed to send.
-	StatusTypeFailed StatusType = "failed"
-	// StatusTypeError indicates an error occurred while processing the message.
-	StatusTypeError StatusType = "error"
-	// StatusTypeScheduled indicates the message is scheduled for future delivery.
-	StatusTypeScheduled StatusType = "scheduled"
-	// StatusTypeCancelled indicates the message was cancelled.
-	StatusTypeCancelled StatusType = "cancelled"
+	// MessageStatusSent indicates the message was sent.
+	MessageStatusSent MessageStatus = "sent"
+	// MessageStatusDelivered indicates the message was delivered.
+	MessageStatusDelivered MessageStatus = "delivered"
+	// MessageStatusRead indicates the message was read.
+	MessageStatusRead MessageStatus = "read"
+	// MessageStatusFailed indicates the message failed to send.
+	MessageStatusFailed MessageStatus = "failed"
+	// MessageStatusCancelled indicates the message was cancelled.
+	MessageStatusCancelled MessageStatus = "cancelled"
+)
+
+// APIStatus represents the status of an API response.
+type APIStatus string
+
+const (
+	// APIStatusOK indicates an API request completed successfully.
+	APIStatusOK APIStatus = "ok"
+	// APIStatusError indicates an API request failed with an error.
+	APIStatusError APIStatus = "error"
+	// APIStatusScheduled indicates an API request resulted in scheduled content.
+	APIStatusScheduled APIStatus = "scheduled"
+	// APIStatusRecorded indicates data was successfully recorded via API.
+	APIStatusRecorded APIStatus = "recorded"
 )
 
 type Receipt struct {
-	To     string     `json:"to"`
-	Status StatusType `json:"status"`
-	Time   int64      `json:"time"`
+	To     string        `json:"to"`
+	Status MessageStatus `json:"status"`
+	Time   int64         `json:"time"`
 }
 
 // Response represents an incoming message response from a participant.
@@ -196,26 +207,18 @@ type Response struct {
 
 // APIResponse represents a standard API response with a status.
 type APIResponse struct {
-	Status string `json:"status"`
+	Status  string `json:"status"`            // status of the API response
+	Message string `json:"message,omitempty"` // optional message for error responses or additional info
 }
 
-// APIResponseStatus defines standard API response status values.
-type APIResponseStatus string
-
-const (
-	// APIStatusOK indicates a successful operation
-	APIStatusOK APIResponseStatus = "ok"
-	// APIStatusScheduled indicates a job was successfully scheduled
-	APIStatusScheduled APIResponseStatus = "scheduled"
-	// APIStatusRecorded indicates data was successfully recorded
-	APIStatusRecorded APIResponseStatus = "recorded"
-	// APIStatusError indicates an error occurred
-	APIStatusError APIResponseStatus = "error"
-)
-
 // NewAPIResponse creates a standard API response with the given status.
-func NewAPIResponse(status APIResponseStatus) APIResponse {
+func NewAPIResponse(status APIStatus) APIResponse {
 	return APIResponse{Status: string(status)}
+}
+
+// NewAPIResponseWithMessage creates a standard API response with status and message.
+func NewAPIResponseWithMessage(status APIStatus, message string) APIResponse {
+	return APIResponse{Status: string(status), Message: message}
 }
 
 // NewOKResponse creates a standard "ok" API response.
@@ -231,4 +234,9 @@ func NewScheduledResponse() APIResponse {
 // NewRecordedResponse creates a standard "recorded" API response.
 func NewRecordedResponse() APIResponse {
 	return NewAPIResponse(APIStatusRecorded)
+}
+
+// NewErrorResponse creates a standard "error" API response with a message.
+func NewErrorResponse(message string) APIResponse {
+	return NewAPIResponseWithMessage(APIStatusError, message)
 }

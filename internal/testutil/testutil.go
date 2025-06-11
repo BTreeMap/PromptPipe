@@ -112,8 +112,8 @@ func SeedTestData(t TestingT, store store.Store) {
 
 	// Add test receipts
 	testReceipts := []models.Receipt{
-		{To: "+123", Status: models.StatusTypeSent, Time: 1},
-		{To: "+456", Status: models.StatusTypeDelivered, Time: 2},
+		{To: "+123", Status: models.MessageStatusSent, Time: 1},
+		{To: "+456", Status: models.MessageStatusDelivered, Time: 2},
 	}
 
 	for _, receipt := range testReceipts {

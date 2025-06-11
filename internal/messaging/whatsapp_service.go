@@ -83,7 +83,7 @@ func (s *WhatsAppService) SendMessage(ctx context.Context, to string, body strin
 		return err
 	}
 	// Emit sent receipt
-	s.receipts <- models.Receipt{To: to, Status: models.StatusTypeSent, Time: time.Now().Unix()}
+	s.receipts <- models.Receipt{To: to, Status: models.MessageStatusSent, Time: time.Now().Unix()}
 	slog.Info("WhatsAppService message sent and receipt emitted", "to", to)
 	return nil
 }
@@ -176,12 +176,12 @@ func (s *WhatsAppService) handleMessageReceipt(evt *events.Receipt) {
 		toNumber = "+" + toNumber
 	}
 
-	var status models.StatusType
+	var status models.MessageStatus
 	switch evt.Type {
 	case events.ReceiptTypeDelivered:
-		status = models.StatusTypeDelivered
+		status = models.MessageStatusDelivered
 	case events.ReceiptTypeRead:
-		status = models.StatusTypeRead
+		status = models.MessageStatusRead
 	case events.ReceiptTypeReadSelf:
 		// Skip self-read receipts
 		return

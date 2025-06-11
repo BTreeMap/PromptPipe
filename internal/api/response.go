@@ -18,7 +18,7 @@ var (
 // init validates that our fallback responses can be marshaled
 func init() {
 	var err error
-	fallbackErrorResponse, err = json.Marshal(models.NewAPIResponse(models.APIStatusError))
+	fallbackErrorResponse, err = json.Marshal(models.NewErrorResponse("Internal server error"))
 	if err != nil {
 		panic(fmt.Sprintf("Failed to marshal fallback error response at startup: %v", err))
 	}

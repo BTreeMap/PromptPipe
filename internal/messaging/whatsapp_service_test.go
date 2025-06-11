@@ -27,8 +27,8 @@ func TestWhatsAppService_SendMessage_Receipt(t *testing.T) {
 		if receipt.To != to {
 			t.Errorf("expected receipt.To %s, got %s", to, receipt.To)
 		}
-		if receipt.Status != models.StatusTypeSent {
-			t.Errorf("expected receipt.Status %s, got %s", models.StatusTypeSent, receipt.Status)
+		if receipt.Status != models.MessageStatusSent {
+			t.Errorf("expected receipt.Status %s, got %s", models.MessageStatusSent, receipt.Status)
 		}
 	default:
 		t.Fatal("expected receipt, got none")
