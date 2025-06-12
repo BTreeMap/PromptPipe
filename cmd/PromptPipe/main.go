@@ -184,7 +184,7 @@ func ensureDirectoriesExist(flags Flags) error {
 				slog.Error("Failed to create temporary state directory", "error", terr)
 				return err
 			}
-			slog.Info("Falling back to temporary state directory", "state_dir", tempDir)
+			slog.Warn("Falling back to temporary state directory", "state_dir", tempDir)
 			*flags.stateDir = tempDir
 			*flags.dbDSN = filepath.Join(tempDir, DefaultDBFileName)
 		} else {
