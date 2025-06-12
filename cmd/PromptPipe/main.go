@@ -178,9 +178,18 @@ func ensureDirectoriesExist(flags Flags) error {
 		slog.Debug("Creating state directory for file-based database", "state_dir", stateDir)
 		if err := os.MkdirAll(stateDir, 0755); err != nil {
 			slog.Error("Failed to create state directory", "error", err, "state_dir", stateDir)
-			return err
+			// fallback to temporary directory if creation fails
+			tempDir, terr := os.MkdirTemp("", "promptpipe_state_")
+			if terr != nil {
+				slog.Error("Failed to create temporary state directory", "error", terr)
+				return err
+			}
+			slog.Info("Falling back to temporary state directory", "state_dir", tempDir)
+			*flags.stateDir = tempDir
+			*flags.dbDSN = filepath.Join(tempDir, DefaultDBFileName)
+		} else {
+			slog.Debug("State directory created successfully", "state_dir", stateDir)
 		}
-		slog.Debug("State directory created successfully", "state_dir", stateDir)
 	}
 	return nil
 }
