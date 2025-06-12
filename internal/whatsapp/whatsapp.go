@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"strings"
 
 	"github.com/BTreeMap/PromptPipe/internal/store"
 	"github.com/mdp/qrterminal/v3"
@@ -110,6 +111,17 @@ func NewClient(opts ...Option) (*Client, error) {
 		} else {
 			dbDSN = DefaultSQLitePath
 		}
+	}
+
+	// Enable foreign key support for SQLite
+	if dbDriver == "sqlite3" {
+		// Use SQLite URI format to enable foreign keys
+		if !strings.HasPrefix(dbDSN, "file:") {
+			dbDSN = fmt.Sprintf("file:%s?_foreign_keys=1", dbDSN)
+		} else if !strings.Contains(dbDSN, "_foreign_keys") {
+			dbDSN = dbDSN + "?_foreign_keys=on"
+		}
+		slog.Debug("Enabled SQLite foreign key support", "DSN", dbDSN)
 	}
 
 	slog.Debug("WhatsApp NewClient initializing DB store", "driver", dbDriver, "dsn_set", dbDSN != "")
