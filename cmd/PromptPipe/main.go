@@ -20,9 +20,9 @@ const (
 	// DefaultStateDir is the default directory for PromptPipe state data
 	DefaultStateDir = "/var/lib/promptpipe"
 	// DefaultAppDBFileName is the default SQLite database filename for application data
-	DefaultAppDBFileName = "app.db"
+	DefaultAppDBFileName = "state.db"
 	// DefaultWhatsAppDBFileName is the default SQLite database filename for WhatsApp/whatsmeow data
-	DefaultWhatsAppDBFileName = "whatsapp.db"
+	DefaultWhatsAppDBFileName = "whatsmeow.db"
 )
 
 func main() {
