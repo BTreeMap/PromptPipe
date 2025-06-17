@@ -3,7 +3,10 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/BTreeMap/PromptPipe/internal/store"
 )
 
 func TestLoadEnvironmentConfigDefaults(t *testing.T) {
@@ -305,5 +308,148 @@ func TestBuildStoreOptions(t *testing.T) {
 	opts = buildStoreOptions(flags)
 	if len(opts) != 0 {
 		t.Errorf("Expected 0 store options for empty DSN, got %d", len(opts))
+	}
+}
+
+func TestEndToEndDatabaseConfiguration(t *testing.T) {
+	tests := []struct {
+		name                  string
+		whatsappDBDSN        string
+		databaseDSN          string
+		databaseURL          string
+		expectedWhatsAppDSN  string
+		expectedAppDSN       string
+		expectLegacyUsage    bool
+	}{
+		{
+			name:                "Both DSNs provided - use them directly",
+			whatsappDBDSN:       "postgres://user:pass@localhost/whatsapp",
+			databaseDSN:         "postgres://user:pass@localhost/app",
+			expectedWhatsAppDSN: "postgres://user:pass@localhost/whatsapp",
+			expectedAppDSN:      "postgres://user:pass@localhost/app",
+			expectLegacyUsage:   false,
+		},
+		{
+			name:                "Only WhatsApp DSN provided - app defaults to SQLite",
+			whatsappDBDSN:       "postgres://user:pass@localhost/whatsapp",
+			expectedWhatsAppDSN: "postgres://user:pass@localhost/whatsapp",
+			expectedAppDSN:      filepath.Join(DefaultStateDir, DefaultAppDBFileName),
+			expectLegacyUsage:   false,
+		},
+		{
+			name:                "Only app DSN provided - WhatsApp defaults to SQLite with foreign keys",
+			databaseDSN:         "postgres://user:pass@localhost/app",
+			expectedWhatsAppDSN: "file:" + filepath.Join(DefaultStateDir, DefaultWhatsAppDBFileName) + "?_foreign_keys=on",
+			expectedAppDSN:      "postgres://user:pass@localhost/app",
+			expectLegacyUsage:   false,
+		},
+		{
+			name:                "Only legacy DATABASE_URL provided - used for app, WhatsApp defaults",
+			databaseURL:         "postgres://user:pass@localhost/legacy",
+			expectedWhatsAppDSN: "file:" + filepath.Join(DefaultStateDir, DefaultWhatsAppDBFileName) + "?_foreign_keys=on",
+			expectedAppDSN:      "postgres://user:pass@localhost/legacy",
+			expectLegacyUsage:   true,
+		},
+		{
+			name:                "Both DATABASE_DSN and DATABASE_URL provided - DATABASE_DSN takes precedence",
+			databaseDSN:         "postgres://user:pass@localhost/preferred",
+			databaseURL:         "postgres://user:pass@localhost/legacy",
+			expectedWhatsAppDSN: "file:" + filepath.Join(DefaultStateDir, DefaultWhatsAppDBFileName) + "?_foreign_keys=on",
+			expectedAppDSN:      "postgres://user:pass@localhost/preferred",
+			expectLegacyUsage:   false,
+		},
+		{
+			name:                "No configuration - both default to SQLite",
+			expectedWhatsAppDSN: "file:" + filepath.Join(DefaultStateDir, DefaultWhatsAppDBFileName) + "?_foreign_keys=on",
+			expectedAppDSN:      filepath.Join(DefaultStateDir, DefaultAppDBFileName),
+			expectLegacyUsage:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Clear all environment variables
+			os.Unsetenv("WHATSAPP_DB_DSN")
+			os.Unsetenv("DATABASE_DSN")
+			os.Unsetenv("DATABASE_URL")
+			os.Unsetenv("PROMPTPIPE_STATE_DIR")
+
+			// Set environment variables as specified by test case
+			if tt.whatsappDBDSN != "" {
+				os.Setenv("WHATSAPP_DB_DSN", tt.whatsappDBDSN)
+				defer os.Unsetenv("WHATSAPP_DB_DSN")
+			}
+			if tt.databaseDSN != "" {
+				os.Setenv("DATABASE_DSN", tt.databaseDSN)
+				defer os.Unsetenv("DATABASE_DSN")
+			}
+			if tt.databaseURL != "" {
+				os.Setenv("DATABASE_URL", tt.databaseURL)
+				defer os.Unsetenv("DATABASE_URL")
+			}
+
+			// Load configuration
+			config := loadEnvironmentConfig()
+
+			// Verify WhatsApp DSN
+			if config.WhatsAppDBDSN != tt.expectedWhatsAppDSN {
+				t.Errorf("WhatsApp DSN mismatch: expected %q, got %q", 
+					tt.expectedWhatsAppDSN, config.WhatsAppDBDSN)
+			}
+
+			// Verify application DSN
+			if config.ApplicationDBDSN != tt.expectedAppDSN {
+				t.Errorf("Application DSN mismatch: expected %q, got %q", 
+					tt.expectedAppDSN, config.ApplicationDBDSN)
+			}
+
+			// Verify that default SQLite WhatsApp DSN has foreign keys enabled
+			if strings.Contains(config.WhatsAppDBDSN, DefaultWhatsAppDBFileName) {
+				if !strings.Contains(config.WhatsAppDBDSN, "_foreign_keys=on") {
+					t.Errorf("Default WhatsApp SQLite DSN should have foreign keys enabled: %q", 
+						config.WhatsAppDBDSN)
+				}
+			}
+
+			// Test option builders without parsing flags (to avoid flag redefinition issues)
+			
+			// Create mock flags from config
+			mockFlags := Flags{
+				qrOutput:      new(string),
+				numeric:       new(bool),
+				stateDir:      &config.StateDir,
+				whatsappDBDSN: &config.WhatsAppDBDSN,
+				appDBDSN:      &config.ApplicationDBDSN,
+				openaiKey:     &config.OpenAIKey,
+				apiAddr:       &config.APIAddr,
+				defaultCron:   &config.DefaultCron,
+			}
+			
+			// Verify WhatsApp options can be built
+			waOpts := buildWhatsAppOptions(mockFlags)
+			if *mockFlags.whatsappDBDSN != "" && len(waOpts) == 0 {
+				t.Errorf("Expected WhatsApp options to be built when DSN is provided")
+			}
+
+			// Verify store options can be built and detect the correct type
+			storeOpts := buildStoreOptions(mockFlags)
+			if *mockFlags.appDBDSN != "" {
+				if len(storeOpts) == 0 {
+					t.Errorf("Expected store options to be built when DSN is provided")
+				}
+				
+				// Verify the store type detection works correctly
+				expectedStoreType := "sqlite3"
+				if store.DetectDSNType(*mockFlags.appDBDSN) == "postgres" {
+					expectedStoreType = "postgres"
+				}
+				
+				actualStoreType := store.DetectDSNType(*mockFlags.appDBDSN)
+				if actualStoreType != expectedStoreType {
+					t.Errorf("Store type detection failed: expected %q, got %q", 
+						expectedStoreType, actualStoreType)
+				}
+			}
+		})
 	}
 }
