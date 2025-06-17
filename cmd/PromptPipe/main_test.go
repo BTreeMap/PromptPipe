@@ -273,7 +273,7 @@ func TestEnsureDirectoriesExistFileURI(t *testing.T) {
 	// Test with file URI for WhatsApp database
 	whatsappDBPath := filepath.Join(tempDir, "subdir", "whatsapp.db")
 	whatsappFileURI := "file:" + whatsappDBPath + "?_foreign_keys=on"
-	
+
 	appDBPath := filepath.Join(tempDir, "app.db")
 
 	flags := Flags{
@@ -329,9 +329,45 @@ func TestEnsureDirectoriesExistPostgreSQLSkip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to read temp dir: %v", err)
 	}
-	
+
 	if len(entries) > 0 {
 		t.Errorf("Expected no directories to be created for PostgreSQL DSNs, but found: %v", entries)
+	}
+}
+
+func TestFileURIHandling(t *testing.T) {
+	// Test that we properly handle file URIs with foreign keys for both databases
+	tempDir := t.TempDir()
+
+	whatsappDSN := "file:" + filepath.Join(tempDir, "whatsapp.db") + "?_foreign_keys=on"
+	appDSN := "file:" + filepath.Join(tempDir, "app.db") + "?_foreign_keys=on"
+
+	flags := Flags{
+		stateDir:      &tempDir,
+		whatsappDBDSN: &whatsappDSN,
+		appDBDSN:      &appDSN,
+		qrOutput:      new(string),
+		numeric:       new(bool),
+		openaiKey:     new(string),
+		apiAddr:       new(string),
+		defaultCron:   new(string),
+	}
+
+	// This should not create a directory named "file:"
+	err := ensureDirectoriesExist(flags)
+	if err != nil {
+		t.Fatalf("ensureDirectoriesExist failed: %v", err)
+	}
+
+	// Check that the correct directory was created (tempDir)
+	if _, err := os.Stat(tempDir); os.IsNotExist(err) {
+		t.Errorf("Expected directory %s to exist", tempDir)
+	}
+
+	// Check that no "file:" directory was created
+	fileColonDir := filepath.Join(tempDir, "file:")
+	if _, err := os.Stat(fileColonDir); !os.IsNotExist(err) {
+		t.Errorf("Unexpected directory 'file:' was created at %s", fileColonDir)
 	}
 }
 

@@ -212,43 +212,24 @@ func ensureDirectoriesExist(flags Flags) error {
 	// Ensure directories exist for both database files if they're file-based
 	dirsToCreate := make(map[string]bool)
 
-	// Check WhatsApp database directory - handle file:// URIs properly
-	if !strings.Contains(*flags.whatsappDBDSN, "postgres://") && !strings.Contains(*flags.whatsappDBDSN, "host=") {
-		dbPath := *flags.whatsappDBDSN
+	// Collect DSNs
+	dbDSNs := []string{*flags.whatsappDBDSN, *flags.appDBDSN}
 
-		// Handle file:// URI scheme
-		if strings.HasPrefix(dbPath, "file:") {
-			parsedURL, err := url.Parse(dbPath)
-			if err != nil {
-				slog.Warn("Failed to parse WhatsApp database file URI, using as-is", "dsn", dbPath, "error", err)
-			} else {
-				dbPath = parsedURL.Path
+	for _, dsn := range dbDSNs {
+		if store.DetectDSNType(dsn) == "sqlite3" {
+			// Extract file path from DSN, handling file:// URI scheme
+			dbPath := dsn
+			if strings.HasPrefix(dbPath, "file:") {
+				if parsedURL, err := url.Parse(dbPath); err == nil {
+					dbPath = parsedURL.Path
+				}
+				// If parsing fails, continue with original path
 			}
-		}
 
-		dir := filepath.Dir(dbPath)
-		if dir != "" && dir != "." {
-			dirsToCreate[dir] = true
-		}
-	}
-
-	// Check application database directory - handle file:// URIs properly
-	if !strings.Contains(*flags.appDBDSN, "postgres://") && !strings.Contains(*flags.appDBDSN, "host=") {
-		dbPath := *flags.appDBDSN
-
-		// Handle file:// URI scheme
-		if strings.HasPrefix(dbPath, "file:") {
-			parsedURL, err := url.Parse(dbPath)
-			if err != nil {
-				slog.Warn("Failed to parse application database file URI, using as-is", "dsn", dbPath, "error", err)
-			} else {
-				dbPath = parsedURL.Path
+			// Add directory to creation list if it's not current directory
+			if dir := filepath.Dir(dbPath); dir != "" && dir != "." {
+				dirsToCreate[dir] = true
 			}
-		}
-
-		dir := filepath.Dir(dbPath)
-		if dir != "" && dir != "." {
-			dirsToCreate[dir] = true
 		}
 	}
 
