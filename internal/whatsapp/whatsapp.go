@@ -22,10 +22,8 @@ import (
 
 // Constants for WhatsApp client configuration
 const (
-	// DefaultSQLitePath is the default path for SQLite database
+	// DefaultSQLitePath is the default path for WhatsApp/whatsmeow SQLite database
 	DefaultSQLitePath = "/var/lib/promptpipe/whatsapp.db"
-	// DefaultPostgresDSN is the default PostgreSQL connection string
-	DefaultPostgresDSN = "postgres://postgres:postgres@localhost:5432/whatsapp?sslmode=disable"
 	// JIDSuffix is the WhatsApp JID suffix for regular users
 	JIDSuffix = "s.whatsapp.net"
 )
@@ -35,11 +33,10 @@ type WhatsAppSender interface {
 	SendMessage(ctx context.Context, to string, body string) error
 }
 
-// Opts holds configuration options for the WhatsApp client, including database and login settings.
-// Database driver and DSN can be overridden via command-line options or environment variables.
+// Opts holds configuration options for the WhatsApp client.
+// This focuses solely on WhatsApp/whatsmeow database configuration and login settings.
 type Opts struct {
-	DBDriver    string // overrides WHATSAPP_DB_DRIVER
-	DBDSN       string // overrides WHATSAPP_DB_DSN
+	DBDSN       string // WhatsApp/whatsmeow database connection string
 	QRPath      string // path to write login QR code
 	NumericCode bool   // use numeric login code instead of QR code
 }
@@ -47,14 +44,7 @@ type Opts struct {
 // Option defines a configuration option for the WhatsApp client.
 type Option func(*Opts)
 
-// WithDBDriver overrides the database driver used by the WhatsApp client.
-func WithDBDriver(driver string) Option {
-	return func(o *Opts) {
-		o.DBDriver = driver
-	}
-}
-
-// WithDBDSN overrides the DSN used by the WhatsApp client.
+// WithDBDSN sets the WhatsApp/whatsmeow database connection string.
 func WithDBDSN(dsn string) Option {
 	return func(o *Opts) {
 		o.DBDSN = dsn
@@ -81,47 +71,38 @@ type Client struct {
 }
 
 // NewClient creates a new WhatsApp client, applying any provided options for customization.
+// This handles WhatsApp/whatsmeow database configuration with proper validation and warnings.
 func NewClient(opts ...Option) (*Client, error) {
 	// Apply options
 	var cfg Opts
 	for _, opt := range opts {
 		opt(&cfg)
 	}
-	slog.Debug("WhatsApp NewClient options set", "DBDriver", cfg.DBDriver, "DBDSN_set", cfg.DBDSN != "", "QRPath_set", cfg.QRPath != "", "NumericCode", cfg.NumericCode)
+	slog.Debug("WhatsApp NewClient options set", "DBDSN_set", cfg.DBDSN != "", "QRPath_set", cfg.QRPath != "", "NumericCode", cfg.NumericCode)
 
-	// Determine database driver and DSN based on options or defaults
-	dbDriver := cfg.DBDriver
+	// Determine database DSN
 	dbDSN := cfg.DBDSN
-
-	// Auto-detect driver based on DSN if driver not explicitly set
-	if dbDriver == "" {
-		if dbDSN != "" && store.DetectDSNType(dbDSN) == "postgres" {
-			dbDriver = "postgres"
-			slog.Debug("WhatsApp client auto-detected PostgreSQL driver", "dsn_type", "postgresql")
-		} else {
-			dbDriver = "sqlite3"
-			slog.Debug("WhatsApp client auto-detected SQLite driver", "dsn_type", "sqlite")
-		}
-	}
-
-	// Set default DSN if not provided
 	if dbDSN == "" {
-		if dbDriver == "postgres" {
-			dbDSN = DefaultPostgresDSN
-		} else {
-			dbDSN = DefaultSQLitePath
-		}
+		dbDSN = DefaultSQLitePath
+		slog.Debug("No WhatsApp database DSN provided, using default SQLite path", "default_path", dbDSN)
 	}
 
-	// Enable foreign key support for SQLite
-	if dbDriver == "sqlite3" {
-		// Use SQLite URI format to enable foreign keys
-		if !strings.HasPrefix(dbDSN, "file:") {
-			dbDSN = fmt.Sprintf("file:%s?_foreign_keys=1", dbDSN)
-		} else if !strings.Contains(dbDSN, "_foreign_keys") {
-			dbDSN = dbDSN + "?_foreign_keys=on"
+	// Auto-detect database driver based on DSN
+	var dbDriver string
+	if store.DetectDSNType(dbDSN) == "postgres" {
+		dbDriver = "postgres"
+		slog.Debug("WhatsApp client auto-detected PostgreSQL driver", "dsn_type", "postgresql")
+	} else {
+		dbDriver = "sqlite3"
+		slog.Debug("WhatsApp client auto-detected SQLite driver", "dsn_type", "sqlite")
+
+		// Check if SQLite DSN has foreign keys enabled (whatsmeow recommends this)
+		if !strings.Contains(dbDSN, "_foreign_keys") && !strings.Contains(dbDSN, "foreign_keys") {
+			slog.Warn("SQLite database for WhatsApp does not appear to have foreign keys enabled. "+
+				"The whatsmeow library strongly recommends enabling foreign keys for data integrity. "+
+				"Consider adding '?_foreign_keys=on' to your connection string.",
+				"dsn_example", "file:"+dbDSN+"?_foreign_keys=on")
 		}
-		slog.Debug("Enabled SQLite foreign key support", "DSN", dbDSN)
 	}
 
 	slog.Debug("WhatsApp NewClient initializing DB store", "driver", dbDriver, "dsn_set", dbDSN != "")
@@ -130,24 +111,27 @@ func NewClient(opts ...Option) (*Client, error) {
 	container, err := sqlstore.New(ctx, dbDriver, dbDSN, logger)
 	if err != nil {
 		slog.Error("Failed to initialize WhatsApp DB store", "error", err)
-		return nil, err
+		return nil, fmt.Errorf("failed to initialize WhatsApp database store: %w", err)
 	}
 	slog.Debug("WhatsApp DB store initialized")
+
 	deviceStore, err := container.GetFirstDevice(ctx)
 	if err != nil {
 		slog.Error("Failed to get first device from store", "error", err)
-		return nil, err
+		return nil, fmt.Errorf("failed to get device from WhatsApp store: %w", err)
 	}
 	slog.Debug("WhatsApp device store retrieved")
+
 	clientLog := waLog.Stdout("Client", "INFO", true)
 	waClient := whatsmeow.NewClient(deviceStore, clientLog)
+
 	if waClient.Store.ID == nil {
 		slog.Info("WhatsApp login required; starting QR code flow")
 		qrChan, _ := waClient.GetQRChannel(context.Background())
 		err = waClient.Connect()
 		if err != nil {
 			slog.Error("Failed to connect to WhatsApp during login", "error", err)
-			return nil, fmt.Errorf("failed to connect to WhatsApp: %w", err)
+			return nil, fmt.Errorf("failed to connect to WhatsApp during login: %w", err)
 		}
 		// Determine output writer for QR or code
 		writer := io.Writer(os.Stdout)
@@ -178,13 +162,15 @@ func NewClient(opts ...Option) (*Client, error) {
 		slog.Debug("WhatsApp already logged in, connecting to server")
 		if err := waClient.Connect(); err != nil {
 			slog.Error("Failed to connect to WhatsApp server", "error", err)
-			return nil, fmt.Errorf("failed to connect to WhatsApp: %w", err)
+			return nil, fmt.Errorf("failed to connect to WhatsApp server: %w", err)
 		}
 	}
 	slog.Info("WhatsApp client connected successfully")
 	return &Client{waClient: waClient}, nil
 }
 
+// SendMessage sends a WhatsApp message to the specified recipient.
+// It performs comprehensive validation and provides detailed error information.
 func (c *Client) SendMessage(ctx context.Context, to string, body string) error {
 	if c.waClient == nil {
 		return fmt.Errorf("whatsapp client not initialized")
@@ -202,11 +188,13 @@ func (c *Client) SendMessage(ctx context.Context, to string, body string) error 
 	slog.Debug("Sending WhatsApp message", "to", to, "body_length", len(body))
 	jid := types.NewJID(to, JIDSuffix)
 	msg := &waE2E.Message{Conversation: &body}
+
 	_, err := c.waClient.SendMessage(ctx, jid, msg)
 	if err != nil {
 		slog.Error("Failed to send WhatsApp message", "error", err, "to", to)
 		return fmt.Errorf("failed to send message to %s: %w", to, err)
 	}
+
 	slog.Debug("WhatsApp message sent successfully", "to", to)
 	return nil
 }

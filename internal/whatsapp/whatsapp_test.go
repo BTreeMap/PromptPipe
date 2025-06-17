@@ -56,22 +56,6 @@ func TestDSNDetection(t *testing.T) {
 	}
 }
 
-func TestWithDBDriverOption(t *testing.T) {
-	opts := &Opts{}
-
-	// Test setting PostgreSQL driver
-	WithDBDriver("postgres")(opts)
-	if opts.DBDriver != "postgres" {
-		t.Errorf("Expected DBDriver to be 'postgres', got %q", opts.DBDriver)
-	}
-
-	// Test setting SQLite driver
-	WithDBDriver("sqlite3")(opts)
-	if opts.DBDriver != "sqlite3" {
-		t.Errorf("Expected DBDriver to be 'sqlite3', got %q", opts.DBDriver)
-	}
-}
-
 func TestWithDBDSNOption(t *testing.T) {
 	opts := &Opts{}
 
@@ -83,22 +67,37 @@ func TestWithDBDSNOption(t *testing.T) {
 	}
 }
 
+func TestWithQRCodeOutputOption(t *testing.T) {
+	opts := &Opts{}
+
+	testPath := "/tmp/qr.txt"
+	WithQRCodeOutput(testPath)(opts)
+
+	if opts.QRPath != testPath {
+		t.Errorf("Expected QRPath to be %q, got %q", testPath, opts.QRPath)
+	}
+}
+
+func TestWithNumericCodeOption(t *testing.T) {
+	opts := &Opts{}
+
+	WithNumericCode()(opts)
+
+	if !opts.NumericCode {
+		t.Errorf("Expected NumericCode to be true, got false")
+	}
+}
+
 func TestNewClientOptionsApplied(t *testing.T) {
 	// Test that options are properly applied when creating a new client
 	// We don't actually create the client to avoid database connections
 
 	testDSN := "/tmp/test.db"
-	testDriver := "sqlite3"
 
 	opts := &Opts{}
 	WithDBDSN(testDSN)(opts)
-	WithDBDriver(testDriver)(opts)
 
 	if opts.DBDSN != testDSN {
 		t.Errorf("Expected DBDSN to be %q, got %q", testDSN, opts.DBDSN)
-	}
-
-	if opts.DBDriver != testDriver {
-		t.Errorf("Expected DBDriver to be %q, got %q", testDriver, opts.DBDriver)
 	}
 }
