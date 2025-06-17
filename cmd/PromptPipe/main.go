@@ -5,11 +5,14 @@ import (
 	"log/slog"
 	"net/url"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"github.com/BTreeMap/PromptPipe/internal/api"
 	"github.com/BTreeMap/PromptPipe/internal/genai"
+	"github.com/BTreeMap/PromptPipe/internal/lockfile"
 	"github.com/BTreeMap/PromptPipe/internal/store"
 	"github.com/BTreeMap/PromptPipe/internal/whatsapp"
 	"github.com/joho/godotenv"
@@ -40,6 +43,42 @@ func main() {
 		slog.Error("Failed to create required directories", "error", err)
 		os.Exit(1)
 	}
+
+	// Acquire lock on state directory to prevent multiple instances
+	lock, err := lockfile.AcquireLock(*flags.stateDir)
+	if err != nil {
+		if lockErr, ok := err.(*lockfile.LockError); ok {
+			// Print user-friendly error message
+			slog.Error("Cannot start PromptPipe", "reason", "state directory already in use")
+			slog.Error(lockErr.Error())
+		} else {
+			slog.Error("Failed to acquire state directory lock", "error", err)
+		}
+		os.Exit(1)
+	}
+
+	// Set up signal handling for graceful shutdown with lock cleanup
+	signalChan := make(chan os.Signal, 1)
+	signal.Notify(signalChan, os.Interrupt, syscall.SIGTERM)
+
+	// Set up a cleanup function that releases the lock
+	cleanup := func() {
+		slog.Info("Releasing state directory lock")
+		if err := lock.Release(); err != nil {
+			slog.Error("Failed to release lock during cleanup", "error", err)
+		}
+	}
+
+	// Ensure lock is released on exit
+	defer cleanup()
+
+	// Handle signals in a goroutine
+	go func() {
+		sig := <-signalChan
+		slog.Info("Received shutdown signal", "signal", sig)
+		cleanup()
+		os.Exit(0)
+	}()
 
 	// Build module options
 	waOpts := buildWhatsAppOptions(flags)
@@ -207,12 +246,13 @@ func parseCommandLineFlags(config Config) Flags {
 }
 
 // ensureDirectoriesExist creates necessary directories for file-based storage.
-// This handles both WhatsApp and application database directory creation.
+// This handles state directory creation (required for lockfile) and database directory creation.
 func ensureDirectoriesExist(flags Flags) error {
-	// Ensure directories exist for both database files if they're file-based
+	// Always ensure state directory exists (required for lockfile)
 	dirsToCreate := make(map[string]bool)
+	dirsToCreate[*flags.stateDir] = true
 
-	// Collect DSNs
+	// Collect DSNs and add their directories if they're file-based
 	dbDSNs := []string{*flags.whatsappDBDSN, *flags.appDBDSN}
 
 	for _, dsn := range dbDSNs {
