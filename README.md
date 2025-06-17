@@ -74,7 +74,7 @@ go build -o PromptPipe cmd/PromptPipe/main.go
 
 PromptPipe uses two separate databases to clearly separate concerns:
 
-1. **WhatsApp Database**: Used by the whatsmeow library (we don't control this schema)
+1. **WhatsApp Database**: Used by the whatsmeow library for WhatsApp session data (we don't control this schema)
 2. **Application Database**: Used for receipts, responses, and flow state (controlled by PromptPipe)
 
 ### Environment Variables
@@ -98,15 +98,36 @@ API_ADDR=":8080"                              # API server address
 OPENAI_API_KEY="your_openai_api_key"          # OpenAI API key for GenAI operations
 ```
 
-### Database Defaults
+### Database Configuration Examples
 
-If no database configuration is provided:
-- WhatsApp database: `{STATE_DIR}/whatsapp.db` (SQLite with foreign keys enabled)
-- Application database: `{STATE_DIR}/app.db` (SQLite)
+#### Default Configuration (No Environment Variables)
+If no database configuration is provided, both databases will use SQLite files:
+- WhatsApp database: `{STATE_DIR}/whatsapp.db` (with foreign keys enabled)
+- Application database: `{STATE_DIR}/app.db`
+
+#### PostgreSQL for Both Databases
+```bash
+WHATSAPP_DB_DSN="postgres://user:pass@host:port/whatsapp_db?sslmode=disable"
+DATABASE_DSN="postgres://user:pass@host:port/app_db?sslmode=disable"
+```
+
+#### Mixed Configuration (PostgreSQL for App, SQLite for WhatsApp)
+```bash
+DATABASE_DSN="postgres://user:pass@host:port/app_db?sslmode=disable"
+# WHATSAPP_DB_DSN not set - will default to SQLite with foreign keys
+```
+
+#### Mixed Configuration (PostgreSQL for WhatsApp, SQLite for App)
+```bash
+WHATSAPP_DB_DSN="postgres://user:pass@host:port/whatsapp_db?sslmode=disable"
+# DATABASE_DSN not set - will default to SQLite
+```
 
 ### SQLite Foreign Keys
 
-**Important**: The whatsmeow library strongly recommends enabling foreign keys for SQLite databases to ensure data integrity. If you provide a SQLite DSN for the WhatsApp database without foreign keys enabled, PromptPipe will log a warning message.
+**Important**: The whatsmeow library strongly recommends enabling foreign keys for SQLite databases to ensure data integrity. PromptPipe will automatically enable foreign keys in default SQLite configurations for the WhatsApp database.
+
+If you provide a custom SQLite DSN for the WhatsApp database without foreign keys enabled, PromptPipe will log a warning message recommending you add `?_foreign_keys=on` to your connection string.
 
 Example SQLite DSN with foreign keys: `file:/path/to/database.db?_foreign_keys=on`
 

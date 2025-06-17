@@ -58,22 +58,33 @@ func main() {
 }
 
 // Config holds environment configuration for database connections and other settings.
-// This separates WhatsApp/whatsmeow database concerns from application database concerns.
+// This enforces clear separation between WhatsApp/whatsmeow database and application database.
 type Config struct {
-	// WhatsApp database configuration (managed by whatsmeow library)
-	WhatsAppDBDSN string // WHATSAPP_DB_DSN - connection string for WhatsApp/whatsmeow data storage
+	// WhatsAppDBDSN is the connection string for the WhatsApp/whatsmeow database.
+	// This database is managed by the whatsmeow library and stores WhatsApp session data.
+	// Environment variable: WHATSAPP_DB_DSN
+	WhatsAppDBDSN string
 
-	// Application database configuration (managed by our application)
-	AppDBDSN string // DATABASE_DSN - connection string for application data (receipts, responses, flow state)
+	// ApplicationDBDSN is the connection string for the application database.
+	// This database stores receipts, responses, flow state, and other application data.
+	// Environment variables: DATABASE_DSN (preferred) or DATABASE_URL (legacy support)
+	ApplicationDBDSN string
 
-	// Legacy support - DATABASE_URL will be used for AppDBDSN if DATABASE_DSN is not set
-	DatabaseURL string // DATABASE_URL - legacy environment variable for backward compatibility
+	// StateDir is the directory for file-based storage (used for default SQLite paths).
+	// Environment variable: PROMPTPIPE_STATE_DIR
+	StateDir string
 
-	// Other configuration
-	StateDir    string // PROMPTPIPE_STATE_DIR - directory for file-based storage
-	OpenAIKey   string // OPENAI_API_KEY - OpenAI API key for GenAI operations
-	APIAddr     string // API_ADDR - HTTP server address
-	DefaultCron string // DEFAULT_SCHEDULE - default cron schedule for prompts
+	// OpenAIKey is the API key for OpenAI GenAI operations.
+	// Environment variable: OPENAI_API_KEY
+	OpenAIKey string
+
+	// APIAddr is the HTTP server address for the REST API.
+	// Environment variable: API_ADDR
+	APIAddr string
+
+	// DefaultCron is the default cron schedule for prompts.
+	// Environment variable: DEFAULT_SCHEDULE
+	DefaultCron string
 }
 
 // Flags holds command line flag values for database and other configuration.
@@ -105,13 +116,12 @@ func loadEnvironmentConfig() Config {
 	}
 
 	config := Config{
-		WhatsAppDBDSN: os.Getenv("WHATSAPP_DB_DSN"),
-		AppDBDSN:      os.Getenv("DATABASE_DSN"),
-		DatabaseURL:   os.Getenv("DATABASE_URL"), // Legacy support
-		StateDir:      os.Getenv("PROMPTPIPE_STATE_DIR"),
-		OpenAIKey:     os.Getenv("OPENAI_API_KEY"),
-		APIAddr:       os.Getenv("API_ADDR"),
-		DefaultCron:   os.Getenv("DEFAULT_SCHEDULE"),
+		WhatsAppDBDSN:    os.Getenv("WHATSAPP_DB_DSN"),
+		ApplicationDBDSN: os.Getenv("DATABASE_DSN"),
+		StateDir:         os.Getenv("PROMPTPIPE_STATE_DIR"),
+		OpenAIKey:        os.Getenv("OPENAI_API_KEY"),
+		APIAddr:          os.Getenv("API_ADDR"),
+		DefaultCron:      os.Getenv("DEFAULT_SCHEDULE"),
 	}
 
 	// Set default state directory if not specified
@@ -122,27 +132,31 @@ func loadEnvironmentConfig() Config {
 		slog.Debug("PROMPTPIPE_STATE_DIR found in environment", "state_dir", config.StateDir)
 	}
 
-	// Handle legacy DATABASE_URL - use it for AppDBDSN if DATABASE_DSN is not set
-	if config.AppDBDSN == "" && config.DatabaseURL != "" {
-		config.AppDBDSN = config.DatabaseURL
-		slog.Debug("Using DATABASE_URL as application database DSN", "dsn_set", true)
+	// Handle legacy DATABASE_URL - use it for ApplicationDBDSN if DATABASE_DSN is not set
+	if config.ApplicationDBDSN == "" {
+		if legacyDBURL := os.Getenv("DATABASE_URL"); legacyDBURL != "" {
+			config.ApplicationDBDSN = legacyDBURL
+			slog.Debug("Using DATABASE_URL as application database DSN (legacy support)", "dsn_set", true)
+		}
 	}
 
 	// Set default database DSNs if not provided
 	if config.WhatsAppDBDSN == "" {
-		config.WhatsAppDBDSN = filepath.Join(config.StateDir, DefaultWhatsAppDBFileName)
-		slog.Debug("No WhatsApp database DSN provided, defaulting to SQLite", "sqlite_path", config.WhatsAppDBDSN)
+		// Default SQLite with foreign keys enabled (recommended by whatsmeow)
+		config.WhatsAppDBDSN = "file:" + filepath.Join(config.StateDir, DefaultWhatsAppDBFileName) + "?_foreign_keys=on"
+		slog.Debug("No WhatsApp database DSN provided, defaulting to SQLite with foreign keys", "sqlite_path", config.WhatsAppDBDSN)
 	}
 
-	if config.AppDBDSN == "" {
-		config.AppDBDSN = filepath.Join(config.StateDir, DefaultAppDBFileName)
-		slog.Debug("No application database DSN provided, defaulting to SQLite", "sqlite_path", config.AppDBDSN)
+	if config.ApplicationDBDSN == "" {
+		// Default SQLite for application data (no special parameters needed)
+		config.ApplicationDBDSN = filepath.Join(config.StateDir, DefaultAppDBFileName)
+		slog.Debug("No application database DSN provided, defaulting to SQLite", "sqlite_path", config.ApplicationDBDSN)
 	}
 
 	slog.Debug("environment variables loaded",
 		"WHATSAPP_DB_DSN_SET", config.WhatsAppDBDSN != "",
-		"DATABASE_DSN_SET", config.AppDBDSN != "",
-		"DATABASE_URL_SET", config.DatabaseURL != "",
+		"APPLICATION_DB_DSN_SET", config.ApplicationDBDSN != "",
+		"DATABASE_URL_LEGACY_SET", os.Getenv("DATABASE_URL") != "",
 		"PROMPTPIPE_STATE_DIR", config.StateDir,
 		"OPENAI_API_KEY_SET", config.OpenAIKey != "",
 		"API_ADDR", config.APIAddr,
@@ -159,7 +173,7 @@ func parseCommandLineFlags(config Config) Flags {
 		numeric:       flag.Bool("numeric-code", false, "use numeric login code instead of QR code"),
 		stateDir:      flag.String("state-dir", config.StateDir, "state directory for PromptPipe data (overrides $PROMPTPIPE_STATE_DIR)"),
 		whatsappDBDSN: flag.String("whatsapp-db-dsn", config.WhatsAppDBDSN, "WhatsApp/whatsmeow database connection string (overrides $WHATSAPP_DB_DSN)"),
-		appDBDSN:      flag.String("app-db-dsn", config.AppDBDSN, "application database connection string for receipts/responses/flow state (overrides $DATABASE_DSN or $DATABASE_URL)"),
+		appDBDSN:      flag.String("app-db-dsn", config.ApplicationDBDSN, "application database connection string for receipts/responses/flow state (overrides $DATABASE_DSN or $DATABASE_URL)"),
 		openaiKey:     flag.String("openai-api-key", config.OpenAIKey, "OpenAI API key (overrides $OPENAI_API_KEY)"),
 		apiAddr:       flag.String("api-addr", config.APIAddr, "API server address (overrides $API_ADDR)"),
 		defaultCron:   flag.String("default-cron", config.DefaultCron, "default cron schedule for prompts (overrides $DEFAULT_SCHEDULE)"),
@@ -178,12 +192,12 @@ func parseCommandLineFlags(config Config) Flags {
 		"defaultCron", *flags.defaultCron)
 
 	// Update database DSNs if not explicitly set but state directory has changed
-	if *flags.whatsappDBDSN == config.WhatsAppDBDSN && config.WhatsAppDBDSN == filepath.Join(config.StateDir, DefaultWhatsAppDBFileName) && *flags.stateDir != config.StateDir {
-		*flags.whatsappDBDSN = filepath.Join(*flags.stateDir, DefaultWhatsAppDBFileName)
+	if *flags.whatsappDBDSN == config.WhatsAppDBDSN && config.WhatsAppDBDSN == "file:"+filepath.Join(config.StateDir, DefaultWhatsAppDBFileName)+"?_foreign_keys=on" && *flags.stateDir != config.StateDir {
+		*flags.whatsappDBDSN = "file:" + filepath.Join(*flags.stateDir, DefaultWhatsAppDBFileName) + "?_foreign_keys=on"
 		slog.Debug("Updated WhatsApp database DSN based on state directory", "old_state_dir", config.StateDir, "new_state_dir", *flags.stateDir)
 	}
 
-	if *flags.appDBDSN == config.AppDBDSN && config.AppDBDSN == filepath.Join(config.StateDir, DefaultAppDBFileName) && *flags.stateDir != config.StateDir {
+	if *flags.appDBDSN == config.ApplicationDBDSN && config.ApplicationDBDSN == filepath.Join(config.StateDir, DefaultAppDBFileName) && *flags.stateDir != config.StateDir {
 		*flags.appDBDSN = filepath.Join(*flags.stateDir, DefaultAppDBFileName)
 		slog.Debug("Updated application database DSN based on state directory", "old_state_dir", config.StateDir, "new_state_dir", *flags.stateDir)
 	}
@@ -222,7 +236,7 @@ func ensureDirectoriesExist(flags Flags) error {
 			}
 			slog.Warn("Falling back to temporary directory", "temp_dir", tempDir)
 			*flags.stateDir = tempDir
-			*flags.whatsappDBDSN = filepath.Join(tempDir, DefaultWhatsAppDBFileName)
+			*flags.whatsappDBDSN = "file:" + filepath.Join(tempDir, DefaultWhatsAppDBFileName) + "?_foreign_keys=on"
 			*flags.appDBDSN = filepath.Join(tempDir, DefaultAppDBFileName)
 		} else {
 			slog.Debug("Directory created successfully", "dir", dir)
