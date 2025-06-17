@@ -51,7 +51,10 @@ func WithSQLiteDSN(dsn string) Option {
 // DetectDSNType analyzes a DSN and returns the appropriate database driver.
 // Returns "postgres" for PostgreSQL DSNs, "sqlite3" for SQLite file paths.
 func DetectDSNType(dsn string) string {
-	if strings.Contains(dsn, "postgres://") || strings.Contains(dsn, "host=") || strings.Count(dsn, "=") > 0 {
+	if strings.HasPrefix(dsn, "file:") || strings.Contains(dsn, ".db") || strings.Contains(dsn, ".sqlite") || strings.Contains(dsn, ".sqlite3") {
+		return "sqlite3"
+	}
+	if strings.HasPrefix(dsn, "postgres://") || strings.Contains(dsn, "host=") || strings.Count(dsn, "=") > 0 {
 		return "postgres"
 	}
 	return "sqlite3"
