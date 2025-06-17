@@ -30,7 +30,7 @@ func TestLoadEnvironmentConfigDefaults(t *testing.T) {
 	}
 
 	// Test default application database DSN
-	expectedAppDSN := filepath.Join(DefaultStateDir, DefaultAppDBFileName)
+	expectedAppDSN := "file:" + filepath.Join(DefaultStateDir, DefaultAppDBFileName) + "?_foreign_keys=on"
 	if config.ApplicationDBDSN != expectedAppDSN {
 		t.Errorf("Expected default app DSN %q, got %q", expectedAppDSN, config.ApplicationDBDSN)
 	}
@@ -112,7 +112,7 @@ func TestLoadEnvironmentConfigCustomStateDir(t *testing.T) {
 		t.Errorf("Expected WhatsApp DSN with custom state dir %q, got %q", expectedWhatsAppDSN, config.WhatsAppDBDSN)
 	}
 
-	expectedAppDSN := filepath.Join(customStateDir, DefaultAppDBFileName)
+	expectedAppDSN := "file:" + filepath.Join(customStateDir, DefaultAppDBFileName) + "?_foreign_keys=on"
 	if config.ApplicationDBDSN != expectedAppDSN {
 		t.Errorf("Expected app DSN with custom state dir %q, got %q", expectedAppDSN, config.ApplicationDBDSN)
 	}
@@ -159,8 +159,8 @@ func TestLoadEnvironmentConfigOnlyWhatsAppDSNProvided(t *testing.T) {
 		t.Errorf("Expected WhatsApp DSN %q, got %q", whatsappDSN, config.WhatsAppDBDSN)
 	}
 
-	// Application DSN should default to SQLite
-	expectedAppDSN := filepath.Join(DefaultStateDir, DefaultAppDBFileName)
+	// Application DSN should default to SQLite with foreign keys
+	expectedAppDSN := "file:" + filepath.Join(DefaultStateDir, DefaultAppDBFileName) + "?_foreign_keys=on"
 	if config.ApplicationDBDSN != expectedAppDSN {
 		t.Errorf("Expected default app DSN %q, got %q", expectedAppDSN, config.ApplicationDBDSN)
 	}
@@ -196,7 +196,7 @@ func TestParseCommandLineFlagsStateDirUpdate(t *testing.T) {
 	config := Config{
 		StateDir:         DefaultStateDir,
 		WhatsAppDBDSN:    "file:" + filepath.Join(DefaultStateDir, DefaultWhatsAppDBFileName) + "?_foreign_keys=on",
-		ApplicationDBDSN: filepath.Join(DefaultStateDir, DefaultAppDBFileName),
+		ApplicationDBDSN: "file:" + filepath.Join(DefaultStateDir, DefaultAppDBFileName) + "?_foreign_keys=on",
 		OpenAIKey:        "",
 		APIAddr:          "",
 		DefaultCron:      "",
@@ -221,7 +221,7 @@ func TestParseCommandLineFlagsStateDirUpdate(t *testing.T) {
 	}
 
 	if *flags.appDBDSN == config.ApplicationDBDSN && *flags.stateDir != config.StateDir {
-		*flags.appDBDSN = filepath.Join(*flags.stateDir, DefaultAppDBFileName)
+		*flags.appDBDSN = "file:" + filepath.Join(*flags.stateDir, DefaultAppDBFileName) + "?_foreign_keys=on"
 	}
 
 	// Verify that database DSNs were updated to use new state directory
@@ -230,7 +230,7 @@ func TestParseCommandLineFlagsStateDirUpdate(t *testing.T) {
 		t.Errorf("Expected updated WhatsApp DSN %q, got %q", expectedWhatsAppDSN, *flags.whatsappDBDSN)
 	}
 
-	expectedAppDSN := filepath.Join(newStateDir, DefaultAppDBFileName)
+	expectedAppDSN := "file:" + filepath.Join(newStateDir, DefaultAppDBFileName) + "?_foreign_keys=on"
 	if *flags.appDBDSN != expectedAppDSN {
 		t.Errorf("Expected updated app DSN %q, got %q", expectedAppDSN, *flags.appDBDSN)
 	}
@@ -404,10 +404,10 @@ func TestEndToEndDatabaseConfiguration(t *testing.T) {
 			expectLegacyUsage:   false,
 		},
 		{
-			name:                "Only WhatsApp DSN provided - app defaults to SQLite",
+			name:                "Only WhatsApp DSN provided - app defaults to SQLite with foreign keys",
 			whatsappDBDSN:       "postgres://user:pass@localhost/whatsapp",
 			expectedWhatsAppDSN: "postgres://user:pass@localhost/whatsapp",
-			expectedAppDSN:      filepath.Join(DefaultStateDir, DefaultAppDBFileName),
+			expectedAppDSN:      "file:" + filepath.Join(DefaultStateDir, DefaultAppDBFileName) + "?_foreign_keys=on",
 			expectLegacyUsage:   false,
 		},
 		{
@@ -433,9 +433,9 @@ func TestEndToEndDatabaseConfiguration(t *testing.T) {
 			expectLegacyUsage:   false,
 		},
 		{
-			name:                "No configuration - both default to SQLite",
+			name:                "No configuration - both default to SQLite with foreign keys",
 			expectedWhatsAppDSN: "file:" + filepath.Join(DefaultStateDir, DefaultWhatsAppDBFileName) + "?_foreign_keys=on",
-			expectedAppDSN:      filepath.Join(DefaultStateDir, DefaultAppDBFileName),
+			expectedAppDSN:      "file:" + filepath.Join(DefaultStateDir, DefaultAppDBFileName) + "?_foreign_keys=on",
 			expectLegacyUsage:   false,
 		},
 	}

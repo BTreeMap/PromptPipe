@@ -149,9 +149,9 @@ func loadEnvironmentConfig() Config {
 	}
 
 	if config.ApplicationDBDSN == "" {
-		// Default SQLite for application data (no special parameters needed)
-		config.ApplicationDBDSN = "file:" + filepath.Join(config.StateDir, DefaultAppDBFileName)
-		slog.Debug("No application database DSN provided, defaulting to SQLite", "sqlite_path", config.ApplicationDBDSN)
+		// Default SQLite for application data with foreign keys enabled
+		config.ApplicationDBDSN = "file:" + filepath.Join(config.StateDir, DefaultAppDBFileName) + "?_foreign_keys=on"
+		slog.Debug("No application database DSN provided, defaulting to SQLite with foreign keys", "sqlite_path", config.ApplicationDBDSN)
 	}
 
 	slog.Debug("environment variables loaded",
@@ -198,8 +198,8 @@ func parseCommandLineFlags(config Config) Flags {
 		slog.Debug("Updated WhatsApp database DSN based on state directory", "old_state_dir", config.StateDir, "new_state_dir", *flags.stateDir)
 	}
 
-	if *flags.appDBDSN == config.ApplicationDBDSN && config.ApplicationDBDSN == filepath.Join(config.StateDir, DefaultAppDBFileName) && *flags.stateDir != config.StateDir {
-		*flags.appDBDSN = filepath.Join(*flags.stateDir, DefaultAppDBFileName)
+	if *flags.appDBDSN == config.ApplicationDBDSN && config.ApplicationDBDSN == "file:"+filepath.Join(config.StateDir, DefaultAppDBFileName)+"?_foreign_keys=on" && *flags.stateDir != config.StateDir {
+		*flags.appDBDSN = "file:" + filepath.Join(*flags.stateDir, DefaultAppDBFileName) + "?_foreign_keys=on"
 		slog.Debug("Updated application database DSN based on state directory", "old_state_dir", config.StateDir, "new_state_dir", *flags.stateDir)
 	}
 
@@ -232,9 +232,21 @@ func ensureDirectoriesExist(flags Flags) error {
 		}
 	}
 
-	// Check application database directory - simpler since it's always a plain path
+	// Check application database directory - handle file:// URIs properly
 	if !strings.Contains(*flags.appDBDSN, "postgres://") && !strings.Contains(*flags.appDBDSN, "host=") {
-		dir := filepath.Dir(*flags.appDBDSN)
+		dbPath := *flags.appDBDSN
+
+		// Handle file:// URI scheme
+		if strings.HasPrefix(dbPath, "file:") {
+			parsedURL, err := url.Parse(dbPath)
+			if err != nil {
+				slog.Warn("Failed to parse application database file URI, using as-is", "dsn", dbPath, "error", err)
+			} else {
+				dbPath = parsedURL.Path
+			}
+		}
+
+		dir := filepath.Dir(dbPath)
 		if dir != "" && dir != "." {
 			dirsToCreate[dir] = true
 		}
@@ -254,7 +266,7 @@ func ensureDirectoriesExist(flags Flags) error {
 			slog.Warn("Falling back to temporary directory", "temp_dir", tempDir)
 			*flags.stateDir = tempDir
 			*flags.whatsappDBDSN = "file:" + filepath.Join(tempDir, DefaultWhatsAppDBFileName) + "?_foreign_keys=on"
-			*flags.appDBDSN = filepath.Join(tempDir, DefaultAppDBFileName)
+			*flags.appDBDSN = "file:" + filepath.Join(tempDir, DefaultAppDBFileName) + "?_foreign_keys=on"
 		} else {
 			slog.Debug("Directory created successfully", "dir", dir)
 		}
