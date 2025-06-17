@@ -101,23 +101,28 @@ OPENAI_API_KEY="your_openai_api_key"          # OpenAI API key for GenAI operati
 ### Database Configuration Examples
 
 #### Default Configuration (No Environment Variables)
+
 If no database configuration is provided, both databases will use SQLite files:
+
 - WhatsApp database: `{STATE_DIR}/whatsapp.db` (with foreign keys enabled)
 - Application database: `{STATE_DIR}/app.db`
 
 #### PostgreSQL for Both Databases
+
 ```bash
 WHATSAPP_DB_DSN="postgres://user:pass@host:port/whatsapp_db?sslmode=disable"
 DATABASE_DSN="postgres://user:pass@host:port/app_db?sslmode=disable"
 ```
 
 #### Mixed Configuration (PostgreSQL for App, SQLite for WhatsApp)
+
 ```bash
 DATABASE_DSN="postgres://user:pass@host:port/app_db?sslmode=disable"
 # WHATSAPP_DB_DSN not set - will default to SQLite with foreign keys
 ```
 
 #### Mixed Configuration (PostgreSQL for WhatsApp, SQLite for App)
+
 ```bash
 WHATSAPP_DB_DSN="postgres://user:pass@host:port/whatsapp_db?sslmode=disable"
 # DATABASE_DSN not set - will default to SQLite

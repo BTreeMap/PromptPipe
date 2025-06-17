@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"log/slog"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -149,7 +150,7 @@ func loadEnvironmentConfig() Config {
 
 	if config.ApplicationDBDSN == "" {
 		// Default SQLite for application data (no special parameters needed)
-		config.ApplicationDBDSN = filepath.Join(config.StateDir, DefaultAppDBFileName)
+		config.ApplicationDBDSN = "file:" + filepath.Join(config.StateDir, DefaultAppDBFileName)
 		slog.Debug("No application database DSN provided, defaulting to SQLite", "sqlite_path", config.ApplicationDBDSN)
 	}
 
@@ -211,16 +212,32 @@ func ensureDirectoriesExist(flags Flags) error {
 	// Ensure directories exist for both database files if they're file-based
 	dirsToCreate := make(map[string]bool)
 
-	// Check WhatsApp database directory
+	// Check WhatsApp database directory - handle file:// URIs properly
 	if !strings.Contains(*flags.whatsappDBDSN, "postgres://") && !strings.Contains(*flags.whatsappDBDSN, "host=") {
-		dir := filepath.Dir(*flags.whatsappDBDSN)
-		dirsToCreate[dir] = true
+		dbPath := *flags.whatsappDBDSN
+
+		// Handle file:// URI scheme
+		if strings.HasPrefix(dbPath, "file:") {
+			parsedURL, err := url.Parse(dbPath)
+			if err != nil {
+				slog.Warn("Failed to parse WhatsApp database file URI, using as-is", "dsn", dbPath, "error", err)
+			} else {
+				dbPath = parsedURL.Path
+			}
+		}
+
+		dir := filepath.Dir(dbPath)
+		if dir != "" && dir != "." {
+			dirsToCreate[dir] = true
+		}
 	}
 
-	// Check application database directory
+	// Check application database directory - simpler since it's always a plain path
 	if !strings.Contains(*flags.appDBDSN, "postgres://") && !strings.Contains(*flags.appDBDSN, "host=") {
 		dir := filepath.Dir(*flags.appDBDSN)
-		dirsToCreate[dir] = true
+		if dir != "" && dir != "." {
+			dirsToCreate[dir] = true
+		}
 	}
 
 	// Create directories

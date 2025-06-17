@@ -261,6 +261,80 @@ func TestEnsureDirectoriesExist(t *testing.T) {
 	}
 }
 
+// TestEnsureDirectoriesExistFileURI tests that file URIs are properly parsed when creating directories
+func TestEnsureDirectoriesExistFileURI(t *testing.T) {
+	// Create a temporary directory for testing
+	tempDir, err := os.MkdirTemp("", "test_promptpipe_")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// Test with file URI for WhatsApp database
+	whatsappDBPath := filepath.Join(tempDir, "subdir", "whatsapp.db")
+	whatsappFileURI := "file:" + whatsappDBPath + "?_foreign_keys=on"
+	
+	appDBPath := filepath.Join(tempDir, "app.db")
+
+	flags := Flags{
+		stateDir:      &tempDir,
+		whatsappDBDSN: &whatsappFileURI,
+		appDBDSN:      &appDBPath,
+	}
+
+	// Ensure directories exist
+	err = ensureDirectoriesExist(flags)
+	if err != nil {
+		t.Fatalf("ensureDirectoriesExist failed: %v", err)
+	}
+
+	// Check that the correct directory was created (not file:/tempdir/subdir)
+	expectedDir := filepath.Join(tempDir, "subdir")
+	if _, err := os.Stat(expectedDir); os.IsNotExist(err) {
+		t.Errorf("Expected directory %q was not created", expectedDir)
+	}
+
+	// Verify that no "file:" prefixed directory was incorrectly created
+	badDir := filepath.Join(tempDir, "file:"+tempDir, "subdir")
+	if _, err := os.Stat(badDir); err == nil {
+		t.Errorf("Incorrectly created directory with 'file:' prefix: %q", badDir)
+	}
+}
+
+// TestEnsureDirectoriesExistPostgreSQLSkip tests that PostgreSQL DSNs don't trigger directory creation
+func TestEnsureDirectoriesExistPostgreSQLSkip(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "test_promptpipe_")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	postgresWhatsAppDSN := "postgres://user:pass@localhost/whatsapp"
+	postgresAppDSN := "postgres://user:pass@localhost/app"
+
+	flags := Flags{
+		stateDir:      &tempDir,
+		whatsappDBDSN: &postgresWhatsAppDSN,
+		appDBDSN:      &postgresAppDSN,
+	}
+
+	// Ensure directories exist - should not try to create any directories for postgres DSNs
+	err = ensureDirectoriesExist(flags)
+	if err != nil {
+		t.Fatalf("ensureDirectoriesExist failed: %v", err)
+	}
+
+	// No subdirectories should have been created since both are postgres
+	entries, err := os.ReadDir(tempDir)
+	if err != nil {
+		t.Fatalf("Failed to read temp dir: %v", err)
+	}
+	
+	if len(entries) > 0 {
+		t.Errorf("Expected no directories to be created for PostgreSQL DSNs, but found: %v", entries)
+	}
+}
+
 func TestBuildWhatsAppOptions(t *testing.T) {
 	qrPath := "/tmp/qr.txt"
 	dsn := "postgres://test/whatsapp"
@@ -313,13 +387,13 @@ func TestBuildStoreOptions(t *testing.T) {
 
 func TestEndToEndDatabaseConfiguration(t *testing.T) {
 	tests := []struct {
-		name                  string
-		whatsappDBDSN        string
-		databaseDSN          string
-		databaseURL          string
-		expectedWhatsAppDSN  string
-		expectedAppDSN       string
-		expectLegacyUsage    bool
+		name                string
+		whatsappDBDSN       string
+		databaseDSN         string
+		databaseURL         string
+		expectedWhatsAppDSN string
+		expectedAppDSN      string
+		expectLegacyUsage   bool
 	}{
 		{
 			name:                "Both DSNs provided - use them directly",
@@ -393,26 +467,26 @@ func TestEndToEndDatabaseConfiguration(t *testing.T) {
 
 			// Verify WhatsApp DSN
 			if config.WhatsAppDBDSN != tt.expectedWhatsAppDSN {
-				t.Errorf("WhatsApp DSN mismatch: expected %q, got %q", 
+				t.Errorf("WhatsApp DSN mismatch: expected %q, got %q",
 					tt.expectedWhatsAppDSN, config.WhatsAppDBDSN)
 			}
 
 			// Verify application DSN
 			if config.ApplicationDBDSN != tt.expectedAppDSN {
-				t.Errorf("Application DSN mismatch: expected %q, got %q", 
+				t.Errorf("Application DSN mismatch: expected %q, got %q",
 					tt.expectedAppDSN, config.ApplicationDBDSN)
 			}
 
 			// Verify that default SQLite WhatsApp DSN has foreign keys enabled
 			if strings.Contains(config.WhatsAppDBDSN, DefaultWhatsAppDBFileName) {
 				if !strings.Contains(config.WhatsAppDBDSN, "_foreign_keys=on") {
-					t.Errorf("Default WhatsApp SQLite DSN should have foreign keys enabled: %q", 
+					t.Errorf("Default WhatsApp SQLite DSN should have foreign keys enabled: %q",
 						config.WhatsAppDBDSN)
 				}
 			}
 
 			// Test option builders without parsing flags (to avoid flag redefinition issues)
-			
+
 			// Create mock flags from config
 			mockFlags := Flags{
 				qrOutput:      new(string),
@@ -424,7 +498,7 @@ func TestEndToEndDatabaseConfiguration(t *testing.T) {
 				apiAddr:       &config.APIAddr,
 				defaultCron:   &config.DefaultCron,
 			}
-			
+
 			// Verify WhatsApp options can be built
 			waOpts := buildWhatsAppOptions(mockFlags)
 			if *mockFlags.whatsappDBDSN != "" && len(waOpts) == 0 {
@@ -437,16 +511,16 @@ func TestEndToEndDatabaseConfiguration(t *testing.T) {
 				if len(storeOpts) == 0 {
 					t.Errorf("Expected store options to be built when DSN is provided")
 				}
-				
+
 				// Verify the store type detection works correctly
 				expectedStoreType := "sqlite3"
 				if store.DetectDSNType(*mockFlags.appDBDSN) == "postgres" {
 					expectedStoreType = "postgres"
 				}
-				
+
 				actualStoreType := store.DetectDSNType(*mockFlags.appDBDSN)
 				if actualStoreType != expectedStoreType {
-					t.Errorf("Store type detection failed: expected %q, got %q", 
+					t.Errorf("Store type detection failed: expected %q, got %q",
 						expectedStoreType, actualStoreType)
 				}
 			}
