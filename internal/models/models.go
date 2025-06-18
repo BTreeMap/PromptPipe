@@ -5,6 +5,7 @@ package models
 
 import (
 	"errors"
+	"time"
 )
 
 // PromptType defines how the prompt content is determined.
@@ -302,4 +303,106 @@ func RecordedWithMessage(message string) APIResponse {
 		WithStatus(APIStatusRecorded).
 		WithMessage(message).
 		Build()
+}
+
+// InterventionParticipantStatus represents the enrollment status of a participant.
+type InterventionParticipantStatus string
+
+const (
+	// ParticipantStatusActive indicates the participant is actively enrolled.
+	ParticipantStatusActive InterventionParticipantStatus = "active"
+	// ParticipantStatusPaused indicates the participant is temporarily paused.
+	ParticipantStatusPaused InterventionParticipantStatus = "paused"
+	// ParticipantStatusCompleted indicates the participant has completed the intervention.
+	ParticipantStatusCompleted InterventionParticipantStatus = "completed"
+	// ParticipantStatusWithdrawn indicates the participant has withdrawn.
+	ParticipantStatusWithdrawn InterventionParticipantStatus = "withdrawn"
+)
+
+// InterventionParticipant represents a participant in the micro health intervention study.
+type InterventionParticipant struct {
+	ID              string                        `json:"id"`
+	PhoneNumber     string                        `json:"phone_number"`
+	Name            string                        `json:"name,omitempty"`
+	Timezone        string                        `json:"timezone,omitempty"`     // e.g., "America/New_York"
+	Status          InterventionParticipantStatus `json:"status"`
+	EnrolledAt      time.Time                     `json:"enrolled_at"`
+	DailyPromptTime string                        `json:"daily_prompt_time"`      // e.g., "10:00"
+	WeeklyReset     time.Time                     `json:"weekly_reset,omitempty"` // When to send weekly summary
+	CreatedAt       time.Time                     `json:"created_at"`
+	UpdatedAt       time.Time                     `json:"updated_at"`
+}
+
+// InterventionResponse represents a participant's response in the intervention flow.
+type InterventionResponse struct {
+	ID            string    `json:"id"`
+	ParticipantID string    `json:"participant_id"`
+	State         string    `json:"state"`           // Which state they were in when responding
+	ResponseText  string    `json:"response_text"`   // The actual response
+	ResponseType  string    `json:"response_type"`   // e.g., "commitment", "feeling", "completion"
+	Timestamp     time.Time `json:"timestamp"`
+}
+
+// InterventionEnrollmentRequest represents the payload for enrolling a participant.
+type InterventionEnrollmentRequest struct {
+	PhoneNumber     string `json:"phone_number" validate:"required"`
+	Name            string `json:"name,omitempty"`
+	Timezone        string `json:"timezone,omitempty"`
+	DailyPromptTime string `json:"daily_prompt_time,omitempty"` // defaults to "10:00"
+}
+
+// InterventionResponseRequest represents the payload for processing a participant response.
+type InterventionResponseRequest struct {
+	ResponseText string `json:"response_text" validate:"required"`
+	Context      string `json:"context,omitempty"` // Optional context about how the response was received
+}
+
+// InterventionStateAdvanceRequest represents the payload for manually advancing participant state.
+type InterventionStateAdvanceRequest struct {
+	ToState string `json:"to_state" validate:"required"`
+	Reason  string `json:"reason,omitempty"` // Optional reason for manual advancement
+}
+
+// InterventionStats represents statistics about the intervention.
+type InterventionStats struct {
+	TotalParticipants      int                                   `json:"total_participants"`
+	ParticipantsByStatus   map[InterventionParticipantStatus]int `json:"participants_by_status"`
+	ParticipantsByState    map[string]int                        `json:"participants_by_state"`
+	TotalResponses         int                                   `json:"total_responses"`
+	ResponsesByType        map[string]int                        `json:"responses_by_type"`
+	CompletionRate         float64                               `json:"completion_rate"`
+	AverageResponseTime    float64                               `json:"average_response_time_minutes"`
+}
+
+// Validate validates an InterventionEnrollmentRequest.
+func (r *InterventionEnrollmentRequest) Validate() error {
+	if r.PhoneNumber == "" {
+		return errors.New("phone_number is required")
+	}
+
+	// Validate timezone if provided
+	if r.Timezone != "" {
+		if _, err := time.LoadLocation(r.Timezone); err != nil {
+			return errors.New("invalid timezone")
+		}
+	}
+
+	// Validate daily prompt time format if provided
+	if r.DailyPromptTime != "" {
+		if _, err := time.Parse("15:04", r.DailyPromptTime); err != nil {
+			return errors.New("daily_prompt_time must be in HH:MM format")
+		}
+	}
+
+	return nil
+}
+
+// IsValidParticipantStatus checks if the given participant status is valid.
+func IsValidParticipantStatus(status InterventionParticipantStatus) bool {
+	switch status {
+	case ParticipantStatusActive, ParticipantStatusPaused, ParticipantStatusCompleted, ParticipantStatusWithdrawn:
+		return true
+	default:
+		return false
+	}
 }

@@ -25,3 +25,36 @@ CREATE TABLE IF NOT EXISTS flow_states (
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(participant_id, flow_type)
 );
+
+-- SQL migration for intervention participants
+CREATE TABLE IF NOT EXISTS intervention_participants (
+    id TEXT PRIMARY KEY,
+    phone_number TEXT NOT NULL UNIQUE,
+    name TEXT,
+    timezone TEXT,
+    status TEXT NOT NULL,
+    enrolled_at DATETIME NOT NULL,
+    daily_prompt_time TEXT NOT NULL,
+    weekly_reset DATETIME,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Index for phone number lookups
+CREATE INDEX IF NOT EXISTS idx_intervention_participants_phone ON intervention_participants(phone_number);
+CREATE INDEX IF NOT EXISTS idx_intervention_participants_status ON intervention_participants(status);
+
+-- SQL migration for intervention responses
+CREATE TABLE IF NOT EXISTS intervention_responses (
+    id TEXT PRIMARY KEY,
+    participant_id TEXT NOT NULL,
+    state TEXT NOT NULL,
+    response_text TEXT NOT NULL,
+    response_type TEXT NOT NULL,
+    timestamp DATETIME NOT NULL,
+    FOREIGN KEY (participant_id) REFERENCES intervention_participants(id) ON DELETE CASCADE
+);
+
+-- Index for participant response lookups
+CREATE INDEX IF NOT EXISTS idx_intervention_responses_participant ON intervention_responses(participant_id);
+CREATE INDEX IF NOT EXISTS idx_intervention_responses_timestamp ON intervention_responses(timestamp);

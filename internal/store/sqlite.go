@@ -273,3 +273,216 @@ func (s *SQLiteStore) DeleteFlowState(participantID, flowType string) error {
 	slog.Debug("SQLiteStore DeleteFlowState succeeded", "participantID", participantID, "flowType", flowType)
 	return nil
 }
+
+// Intervention participant management methods - SQLite implementation
+
+// SaveInterventionParticipant stores or updates an intervention participant.
+func (s *SQLiteStore) SaveInterventionParticipant(participant models.InterventionParticipant) error {
+	query := `
+		INSERT OR REPLACE INTO intervention_participants (id, phone_number, name, timezone, status, enrolled_at, daily_prompt_time, weekly_reset, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+
+	_, err := s.db.Exec(query, participant.ID, participant.PhoneNumber, participant.Name, participant.Timezone,
+		string(participant.Status), participant.EnrolledAt, participant.DailyPromptTime, participant.WeeklyReset,
+		participant.CreatedAt, participant.UpdatedAt)
+	if err != nil {
+		slog.Error("SQLiteStore SaveInterventionParticipant failed", "error", err, "id", participant.ID)
+		return err
+	}
+	slog.Debug("SQLiteStore SaveInterventionParticipant succeeded", "id", participant.ID, "phone", participant.PhoneNumber)
+	return nil
+}
+
+// GetInterventionParticipant retrieves an intervention participant by ID.
+func (s *SQLiteStore) GetInterventionParticipant(id string) (*models.InterventionParticipant, error) {
+	query := `SELECT id, phone_number, name, timezone, status, enrolled_at, daily_prompt_time, weekly_reset, created_at, updated_at 
+			  FROM intervention_participants WHERE id = ?`
+
+	var participant models.InterventionParticipant
+	var status string
+
+	err := s.db.QueryRow(query, id).Scan(
+		&participant.ID, &participant.PhoneNumber, &participant.Name, &participant.Timezone,
+		&status, &participant.EnrolledAt, &participant.DailyPromptTime, &participant.WeeklyReset,
+		&participant.CreatedAt, &participant.UpdatedAt)
+
+	if err == sql.ErrNoRows {
+		slog.Debug("SQLiteStore GetInterventionParticipant not found", "id", id)
+		return nil, nil
+	}
+	if err != nil {
+		slog.Error("SQLiteStore GetInterventionParticipant failed", "error", err, "id", id)
+		return nil, err
+	}
+
+	participant.Status = models.InterventionParticipantStatus(status)
+	slog.Debug("SQLiteStore GetInterventionParticipant found", "id", id)
+	return &participant, nil
+}
+
+// GetInterventionParticipantByPhone retrieves an intervention participant by phone number.
+func (s *SQLiteStore) GetInterventionParticipantByPhone(phoneNumber string) (*models.InterventionParticipant, error) {
+	query := `SELECT id, phone_number, name, timezone, status, enrolled_at, daily_prompt_time, weekly_reset, created_at, updated_at 
+			  FROM intervention_participants WHERE phone_number = ?`
+
+	var participant models.InterventionParticipant
+	var status string
+
+	err := s.db.QueryRow(query, phoneNumber).Scan(
+		&participant.ID, &participant.PhoneNumber, &participant.Name, &participant.Timezone,
+		&status, &participant.EnrolledAt, &participant.DailyPromptTime, &participant.WeeklyReset,
+		&participant.CreatedAt, &participant.UpdatedAt)
+
+	if err == sql.ErrNoRows {
+		slog.Debug("SQLiteStore GetInterventionParticipantByPhone not found", "phone", phoneNumber)
+		return nil, nil
+	}
+	if err != nil {
+		slog.Error("SQLiteStore GetInterventionParticipantByPhone failed", "error", err, "phone", phoneNumber)
+		return nil, err
+	}
+
+	participant.Status = models.InterventionParticipantStatus(status)
+	slog.Debug("SQLiteStore GetInterventionParticipantByPhone found", "phone", phoneNumber, "id", participant.ID)
+	return &participant, nil
+}
+
+// ListInterventionParticipants retrieves all intervention participants.
+func (s *SQLiteStore) ListInterventionParticipants() ([]models.InterventionParticipant, error) {
+	query := `SELECT id, phone_number, name, timezone, status, enrolled_at, daily_prompt_time, weekly_reset, created_at, updated_at 
+			  FROM intervention_participants ORDER BY created_at DESC`
+
+	rows, err := s.db.Query(query)
+	if err != nil {
+		slog.Error("SQLiteStore ListInterventionParticipants failed", "error", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	var participants []models.InterventionParticipant
+	for rows.Next() {
+		var participant models.InterventionParticipant
+		var status string
+
+		err := rows.Scan(
+			&participant.ID, &participant.PhoneNumber, &participant.Name, &participant.Timezone,
+			&status, &participant.EnrolledAt, &participant.DailyPromptTime, &participant.WeeklyReset,
+			&participant.CreatedAt, &participant.UpdatedAt)
+		if err != nil {
+			slog.Error("SQLiteStore ListInterventionParticipants scan failed", "error", err)
+			return nil, err
+		}
+
+		participant.Status = models.InterventionParticipantStatus(status)
+		participants = append(participants, participant)
+	}
+
+	if err := rows.Err(); err != nil {
+		slog.Error("SQLiteStore ListInterventionParticipants rows error", "error", err)
+		return nil, err
+	}
+
+	slog.Debug("SQLiteStore ListInterventionParticipants succeeded", "count", len(participants))
+	return participants, nil
+}
+
+// DeleteInterventionParticipant removes an intervention participant.
+func (s *SQLiteStore) DeleteInterventionParticipant(id string) error {
+	query := `DELETE FROM intervention_participants WHERE id = ?`
+
+	_, err := s.db.Exec(query, id)
+	if err != nil {
+		slog.Error("SQLiteStore DeleteInterventionParticipant failed", "error", err, "id", id)
+		return err
+	}
+	slog.Debug("SQLiteStore DeleteInterventionParticipant succeeded", "id", id)
+	return nil
+}
+
+// SaveInterventionResponse stores an intervention response.
+func (s *SQLiteStore) SaveInterventionResponse(response models.InterventionResponse) error {
+	query := `
+		INSERT INTO intervention_responses (id, participant_id, state, response_text, response_type, timestamp)
+		VALUES (?, ?, ?, ?, ?, ?)`
+
+	_, err := s.db.Exec(query, response.ID, response.ParticipantID, response.State,
+		response.ResponseText, response.ResponseType, response.Timestamp)
+	if err != nil {
+		slog.Error("SQLiteStore SaveInterventionResponse failed", "error", err, "id", response.ID)
+		return err
+	}
+	slog.Debug("SQLiteStore SaveInterventionResponse succeeded", "id", response.ID, "participantID", response.ParticipantID)
+	return nil
+}
+
+// GetInterventionResponses retrieves all responses for a participant.
+func (s *SQLiteStore) GetInterventionResponses(participantID string) ([]models.InterventionResponse, error) {
+	query := `SELECT id, participant_id, state, response_text, response_type, timestamp 
+			  FROM intervention_responses WHERE participant_id = ? ORDER BY timestamp DESC`
+
+	rows, err := s.db.Query(query, participantID)
+	if err != nil {
+		slog.Error("SQLiteStore GetInterventionResponses failed", "error", err, "participantID", participantID)
+		return nil, err
+	}
+	defer rows.Close()
+
+	var responses []models.InterventionResponse
+	for rows.Next() {
+		var response models.InterventionResponse
+
+		err := rows.Scan(
+			&response.ID, &response.ParticipantID, &response.State,
+			&response.ResponseText, &response.ResponseType, &response.Timestamp)
+		if err != nil {
+			slog.Error("SQLiteStore GetInterventionResponses scan failed", "error", err)
+			return nil, err
+		}
+
+		responses = append(responses, response)
+	}
+
+	if err := rows.Err(); err != nil {
+		slog.Error("SQLiteStore GetInterventionResponses rows error", "error", err)
+		return nil, err
+	}
+
+	slog.Debug("SQLiteStore GetInterventionResponses succeeded", "participantID", participantID, "count", len(responses))
+	return responses, nil
+}
+
+// ListAllInterventionResponses retrieves all intervention responses.
+func (s *SQLiteStore) ListAllInterventionResponses() ([]models.InterventionResponse, error) {
+	query := `SELECT id, participant_id, state, response_text, response_type, timestamp 
+			  FROM intervention_responses ORDER BY timestamp DESC`
+
+	rows, err := s.db.Query(query)
+	if err != nil {
+		slog.Error("SQLiteStore ListAllInterventionResponses failed", "error", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	var responses []models.InterventionResponse
+	for rows.Next() {
+		var response models.InterventionResponse
+
+		err := rows.Scan(
+			&response.ID, &response.ParticipantID, &response.State,
+			&response.ResponseText, &response.ResponseType, &response.Timestamp)
+		if err != nil {
+			slog.Error("SQLiteStore ListAllInterventionResponses scan failed", "error", err)
+			return nil, err
+		}
+
+		responses = append(responses, response)
+	}
+
+	if err := rows.Err(); err != nil {
+		slog.Error("SQLiteStore ListAllInterventionResponses rows error", "error", err)
+		return nil, err
+	}
+
+	slog.Debug("SQLiteStore ListAllInterventionResponses succeeded", "count", len(responses))
+	return responses, nil
+}
