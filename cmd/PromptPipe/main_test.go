@@ -241,7 +241,7 @@ func TestEnsureDirectoriesExist(t *testing.T) {
 	tempDir := t.TempDir()
 
 	whatsappDBPath := filepath.Join(tempDir, "subdir", "whatsmeow.db")
-	appDBPath := filepath.Join(tempDir, "subdir", "app.db")
+	appDBPath := filepath.Join(tempDir, "subdir", "state.db")
 
 	flags := Flags{
 		whatsappDBDSN: &whatsappDBPath,
@@ -274,7 +274,7 @@ func TestEnsureDirectoriesExistFileURI(t *testing.T) {
 	whatsappDBPath := filepath.Join(tempDir, "subdir", "whatsmeow.db")
 	whatsappFileURI := "file:" + whatsappDBPath + "?_foreign_keys=on"
 
-	appDBPath := filepath.Join(tempDir, "app.db")
+	appDBPath := filepath.Join(tempDir, "state.db")
 
 	flags := Flags{
 		stateDir:      &tempDir,
@@ -340,7 +340,7 @@ func TestFileURIHandling(t *testing.T) {
 	tempDir := t.TempDir()
 
 	whatsappDSN := "file:" + filepath.Join(tempDir, "whatsmeow.db") + "?_foreign_keys=on"
-	appDSN := "file:" + filepath.Join(tempDir, "app.db") + "?_foreign_keys=on"
+	appDSN := "file:" + filepath.Join(tempDir, "state.db") + "?_foreign_keys=on"
 
 	flags := Flags{
 		stateDir:      &tempDir,
@@ -403,7 +403,7 @@ func TestBuildStoreOptions(t *testing.T) {
 	}
 
 	// Test SQLite DSN
-	sqliteDSN := "/tmp/app.db"
+	sqliteDSN := "/tmp/state.db"
 	flags.appDBDSN = &sqliteDSN
 
 	opts = buildStoreOptions(flags)

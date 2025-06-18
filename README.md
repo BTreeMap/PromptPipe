@@ -105,7 +105,7 @@ OPENAI_API_KEY="your_openai_api_key"          # OpenAI API key for GenAI operati
 If no database configuration is provided, both databases will use SQLite files:
 
 - WhatsApp database: `{STATE_DIR}/whatsmeow.db` (with foreign keys enabled)
-- Application database: `{STATE_DIR}/app.db`
+- Application database: `{STATE_DIR}/state.db`
 
 #### PostgreSQL for Both Databases
 
