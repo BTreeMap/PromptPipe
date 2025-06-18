@@ -73,7 +73,7 @@ func (s *WhatsAppService) ValidateAndCanonicalizeRecipient(recipient string) (st
 	// Canonicalize by removing all non-numeric characters
 	canonical := phoneNumberRegex.ReplaceAllString(recipient, "")
 	wasModified := recipient != canonical
-	
+
 	// Validate canonicalized phone number
 	if canonical == "" {
 		return "", fmt.Errorf("invalid phone number: no digits found in recipient %q", recipient)

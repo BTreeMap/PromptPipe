@@ -64,11 +64,11 @@ func TestWhatsAppService_ValidateAndCanonicalizeRecipient(t *testing.T) {
 	svc := NewWhatsAppService(mockClient)
 
 	tests := []struct {
-		name         string
-		input        string
-		expected     string
-		expectError  bool
-		errorSubstr  string
+		name        string
+		input       string
+		expected    string
+		expectError bool
+		errorSubstr string
 	}{
 		{
 			name:        "Valid phone number",
@@ -135,7 +135,7 @@ func TestWhatsAppService_ValidateAndCanonicalizeRecipient(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result, err := svc.ValidateAndCanonicalizeRecipient(tt.input)
-			
+
 			if tt.expectError {
 				if err == nil {
 					t.Errorf("Expected error for input %q, but got nil", tt.input)

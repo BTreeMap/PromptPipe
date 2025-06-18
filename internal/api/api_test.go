@@ -103,7 +103,7 @@ func TestSendHandler_InvalidPhoneNumber(t *testing.T) {
 			expectError: "no digits found",
 		},
 		{
-			name:        "empty phone number", 
+			name:        "empty phone number",
 			phoneNumber: "",
 			expectError: "recipient cannot be empty",
 		},
@@ -171,7 +171,7 @@ func TestScheduleHandler_InvalidPhoneNumber(t *testing.T) {
 			expectError: "no digits found",
 		},
 		{
-			name:        "empty phone number", 
+			name:        "empty phone number",
 			phoneNumber: "",
 			expectError: "recipient cannot be empty",
 		},
