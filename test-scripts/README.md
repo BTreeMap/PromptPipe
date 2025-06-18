@@ -42,10 +42,13 @@ chmod +x test-scripts/*.sh
 ### Individual Test Suites
 
 ```bash
-# Test sending messages
+# Test basic message sending
 ./test-scripts/test-send.sh
 
-# Test scheduling
+# Test advanced GenAI prompt engineering
+./test-scripts/test-genai.sh
+
+# Test message scheduling
 ./test-scripts/test-schedule.sh
 
 # Test response handling

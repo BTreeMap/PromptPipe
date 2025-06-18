@@ -35,17 +35,47 @@ test_endpoint "POST" "/schedule" '{
     "cron": "0 18 * * 1-5"
 }' "201" "Schedule branch message (6 PM weekdays)"
 
-# Test 3: Schedule GenAI message
+# Test 3: Schedule GenAI message - Advanced Daily Coaching
 test_endpoint "POST" "/schedule" '{
     "to": "'$TEST_PHONE'",
     "type": "genai",
-    "body": "Daily motivation",
-    "system_prompt": "You are a motivational coach",
-    "user_prompt": "Generate a daily motivation quote",
+    "body": "Daily personalized coaching",
+    "system_prompt": "You are a professional life coach who provides personalized daily guidance. Your messages are always encouraging, actionable, and tailored to help someone build better habits and mindset.",
+    "user_prompt": "Create a unique daily coaching message that includes: 1) A thought-provoking question for self-reflection, 2) One small habit suggestion for personal growth, 3) A mindfulness moment or gratitude prompt, 4) An encouraging closing thought. Make each message feel fresh and personal, never repetitive.",
     "cron": "0 8 * * *"
-}' "201" "Schedule GenAI message (8 AM daily)"
+}' "201" "Schedule GenAI daily coaching (8 AM daily)"
 
-# Test 4: Schedule with custom state
+# Test 4: Schedule GenAI message - Weekly Professional Development
+test_endpoint "POST" "/schedule" '{
+    "to": "'$TEST_PHONE'",
+    "type": "genai",
+    "body": "Weekly professional development insight",
+    "system_prompt": "You are a career development expert and executive coach. You provide valuable insights about professional growth, leadership, and career advancement that are practical and immediately applicable.",
+    "user_prompt": "Create a weekly professional development message with: 1) One key insight about career growth or leadership, 2) A specific skill or behavior to focus on this week, 3) A reflection question about professional goals, 4) A practical action step they can take immediately. Make it relevant for people at any career stage.",
+    "cron": "0 9 * * 1"
+}' "201" "Schedule GenAI weekly professional development (9 AM Mondays)"
+
+# Test 5: Schedule GenAI message - Weekend Reflection and Planning
+test_endpoint "POST" "/schedule" '{
+    "to": "'$TEST_PHONE'",
+    "type": "genai",
+    "body": "Weekend reflection and weekly planning",
+    "system_prompt": "You are a productivity coach and mindfulness expert who helps people reflect on their week and plan mindfully for the next one. You balance achievement with well-being.",
+    "user_prompt": "Create a weekend reflection message that includes: 1) A gentle prompt to reflect on the week'\''s wins and lessons, 2) A question about what brought them joy or fulfillment, 3) One suggestion for how to recharge over the weekend, 4) A simple planning prompt for the upcoming week that focuses on priorities rather than just tasks.",
+    "cron": "0 10 * * 6"
+}' "201" "Schedule GenAI weekend reflection (10 AM Saturdays)"
+
+# Test 6: Schedule GenAI message - Monthly Growth Check-in
+test_endpoint "POST" "/schedule" '{
+    "to": "'$TEST_PHONE'",
+    "type": "genai",
+    "body": "Monthly personal growth check-in",
+    "system_prompt": "You are a wise mentor who helps people take a step back and assess their personal growth journey. You ask profound questions that lead to meaningful insights and help people stay aligned with their values and goals.",
+    "user_prompt": "Create a monthly check-in message with: 1) A powerful question about personal growth over the past month, 2) A prompt to identify one thing they'\''ve learned about themselves, 3) An invitation to consider what they want to focus on next month, 4) A reminder about their strengths and potential. Make it feel like a conversation with a trusted mentor.",
+    "cron": "0 9 1 * *"
+}' "201" "Schedule GenAI monthly growth check-in (9 AM 1st of month)"
+
+# Test 7: Schedule with custom state
 test_endpoint "POST" "/schedule" '{
     "to": "'$TEST_PHONE'",
     "type": "custom",

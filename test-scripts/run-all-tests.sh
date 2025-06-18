@@ -25,6 +25,7 @@ export TESTS_FAILED=0
 # Run all test suites
 test_suites=(
     "test-send.sh"
+    "test-genai.sh"
     "test-schedule.sh" 
     "test-responses.sh"
     "test-receipts.sh"
