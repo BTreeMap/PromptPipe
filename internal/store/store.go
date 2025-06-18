@@ -6,10 +6,10 @@ package store
 import (
 	"fmt"
 	"log/slog"
-	"strings"
-	"sync"
 	"net/url"
 	"path/filepath"
+	"strings"
+	"sync"
 
 	"github.com/BTreeMap/PromptPipe/internal/models"
 )
@@ -95,7 +95,7 @@ func ExtractDirFromSQLiteDSN(dsn string) (string, error) {
 
 	// Get directory path
 	dir := filepath.Dir(dbPath)
-	
+
 	// Return empty string for current directory to avoid unnecessary creation
 	if dir == "" || dir == "." {
 		return "", nil
