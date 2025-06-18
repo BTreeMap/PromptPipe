@@ -152,7 +152,7 @@ func TestCreateHTTPRequest(t *testing.T) {
 			name:   "PUT request with struct body",
 			method: "PUT",
 			url:    "/test",
-			body:   models.Prompt{To: "+123", Body: "test"},
+			body:   models.Prompt{To: "+1234567890", Body: "test"},
 		},
 	}
 
@@ -196,7 +196,7 @@ func TestCreateJSONRequest(t *testing.T) {
 			name:     "PUT request with complex JSON",
 			method:   "PUT",
 			url:      "/test",
-			jsonBody: `{"to":"+123","body":"test message","type":"static"}`,
+			jsonBody: `{"to":"+1234567890","body":"test message","type":"static"}`,
 		},
 	}
 
@@ -228,7 +228,7 @@ func TestAssertResponseCount(t *testing.T) {
 	}
 
 	// Add a response and test count
-	testResponse := models.Response{From: "+123", Body: "test", Time: 123}
+	testResponse := models.Response{From: "+1234567890", Body: "test", Time: 123}
 	if err := st.AddResponse(testResponse); err != nil {
 		t.Fatalf("Failed to add test response: %v", err)
 	}
@@ -273,7 +273,7 @@ func TestSeedTestData(t *testing.T) {
 
 func TestAssertPromptEquals(t *testing.T) {
 	prompt1 := models.Prompt{
-		To:   "+123",
+		To:   "+1234567890",
 		Type: models.PromptTypeStatic,
 		Body: "test message",
 		BranchOptions: []models.BranchOption{

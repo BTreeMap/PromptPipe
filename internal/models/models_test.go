@@ -7,7 +7,7 @@ import (
 
 func TestPromptJSONTags(t *testing.T) {
 	p := Prompt{
-		To:            "+123",
+		To:            "+1234567890",
 		Cron:          "* * * * *",
 		Type:          PromptTypeStatic,
 		State:         "initial",
@@ -16,7 +16,7 @@ func TestPromptJSONTags(t *testing.T) {
 		UserPrompt:    "user",
 		BranchOptions: []BranchOption{{Label: "Option 1", Body: "Branch Body 1"}},
 	}
-	expectedJSON := `{"to":"+123","cron":"* * * * *","type":"static","state":"initial","body":"hi","system_prompt":"system","user_prompt":"user","branch_options":[{"label":"Option 1","body":"Branch Body 1"}]}`
+	expectedJSON := `{"to":"+1234567890","cron":"* * * * *","type":"static","state":"initial","body":"hi","system_prompt":"system","user_prompt":"user","branch_options":[{"label":"Option 1","body":"Branch Body 1"}]}`
 
 	jsonData, err := json.Marshal(p)
 	if err != nil {
@@ -39,8 +39,8 @@ func TestPromptJSONTags(t *testing.T) {
 }
 
 func TestReceiptJSONTags(t *testing.T) {
-	r := Receipt{To: "+123", Status: MessageStatusSent, Time: 123456}
-	expectedJSON := `{"to":"+123","status":"sent","time":123456}`
+	r := Receipt{To: "+1234567890", Status: MessageStatusSent, Time: 123456}
+	expectedJSON := `{"to":"+1234567890","status":"sent","time":123456}`
 
 	jsonData, err := json.Marshal(r)
 	if err != nil {

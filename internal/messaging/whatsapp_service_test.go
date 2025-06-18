@@ -18,7 +18,7 @@ func TestWhatsAppService_SendMessage_Receipt(t *testing.T) {
 	mockClient := whatsapp.NewMockClient()
 	svc := NewWhatsAppService(mockClient)
 	ctx := context.Background()
-	to, body := "+123", "hello"
+	to, body := "+1234567890", "hello"
 	if err := svc.SendMessage(ctx, to, body); err != nil {
 		t.Fatalf("SendMessage returned error: %v", err)
 	}

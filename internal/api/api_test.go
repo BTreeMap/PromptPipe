@@ -56,7 +56,7 @@ func createJSONRequest(t *testing.T, method, url, jsonBody string) *http.Request
 func TestSendHandler_Success(t *testing.T) {
 	server := newTestServer()
 
-	req := createJSONRequest(t, "POST", "/send", `{"to":"+123","body":"hi"}`)
+	req := createJSONRequest(t, "POST", "/send", `{"to":"+1234567890","body":"hi"}`)
 	rr := httptest.NewRecorder()
 	server.sendHandler(rr, req)
 
@@ -87,7 +87,7 @@ func TestSendHandler_MissingRecipient(t *testing.T) {
 func TestScheduleHandler_Success(t *testing.T) {
 	server := newTestServer()
 
-	req := createJSONRequest(t, "POST", "/schedule", `{"to":"+123","cron":"* * * * *","body":"hi"}`)
+	req := createJSONRequest(t, "POST", "/schedule", `{"to":"+1234567890","cron":"* * * * *","body":"hi"}`)
 	rr := httptest.NewRecorder()
 	server.scheduleHandler(rr, req)
 
@@ -152,7 +152,7 @@ func TestReceiptsHandler_MethodNotAllowed(t *testing.T) {
 func TestResponseHandler_Success(t *testing.T) {
 	server := newTestServer()
 
-	req := createJSONRequest(t, "POST", "/response", `{"from":"+123","body":"hello"}`)
+	req := createJSONRequest(t, "POST", "/response", `{"from":"+1234567890","body":"hello"}`)
 	rr := httptest.NewRecorder()
 	server.responseHandler(rr, req)
 
@@ -168,7 +168,7 @@ func TestResponseHandler_Success(t *testing.T) {
 		t.Errorf("expected 1 response, got %d", len(responses))
 	}
 
-	if responses[0].From != "+123" || responses[0].Body != "hello" {
+	if responses[0].From != "+1234567890" || responses[0].Body != "hello" {
 		t.Errorf("response not stored correctly: %+v", responses[0])
 	}
 
@@ -189,7 +189,7 @@ func TestResponsesHandler_Success(t *testing.T) {
 	server := newTestServer()
 
 	// Seed one response
-	server.st.AddResponse(models.Response{From: "+123", Body: "hi", Time: 1})
+	server.st.AddResponse(models.Response{From: "+1234567890", Body: "hi", Time: 1})
 
 	req, _ := http.NewRequest("GET", "/responses", nil)
 	rr := httptest.NewRecorder()
@@ -302,27 +302,27 @@ func TestSendHandler_ValidationErrors(t *testing.T) {
 		},
 		{
 			name:     "static prompt without body",
-			jsonBody: `{"to":"+123","type":"static"}`,
+			jsonBody: `{"to":"+1234567890","type":"static"}`,
 			wantCode: http.StatusBadRequest,
 		},
 		{
 			name:     "genai prompt without system prompt",
-			jsonBody: `{"to":"+123","type":"genai","user_prompt":"test"}`,
+			jsonBody: `{"to":"+1234567890","type":"genai","user_prompt":"test"}`,
 			wantCode: http.StatusBadRequest,
 		},
 		{
 			name:     "genai prompt without user prompt",
-			jsonBody: `{"to":"+123","type":"genai","system_prompt":"test"}`,
+			jsonBody: `{"to":"+1234567890","type":"genai","system_prompt":"test"}`,
 			wantCode: http.StatusBadRequest,
 		},
 		{
 			name:     "branch prompt without options",
-			jsonBody: `{"to":"+123","type":"branch"}`,
+			jsonBody: `{"to":"+1234567890","type":"branch"}`,
 			wantCode: http.StatusBadRequest,
 		},
 		{
 			name:     "branch prompt with too few options",
-			jsonBody: `{"to":"+123","type":"branch","branch_options":[{"label":"A","body":"Option A"}]}`,
+			jsonBody: `{"to":"+1234567890","type":"branch","branch_options":[{"label":"A","body":"Option A"}]}`,
 			wantCode: http.StatusBadRequest,
 		},
 	}
@@ -352,12 +352,12 @@ func TestScheduleHandler_ValidationErrors(t *testing.T) {
 		},
 		{
 			name:     "static prompt without body",
-			jsonBody: `{"to":"+123","type":"static","cron":"* * * * *"}`,
+			jsonBody: `{"to":"+1234567890","type":"static","cron":"* * * * *"}`,
 			wantCode: http.StatusBadRequest,
 		},
 		{
 			name:     "branch prompt with empty label",
-			jsonBody: `{"to":"+123","type":"branch","cron":"* * * * *","branch_options":[{"label":"","body":"Option A"},{"label":"B","body":"Option B"}]}`,
+			jsonBody: `{"to":"+1234567890","type":"branch","cron":"* * * * *","branch_options":[{"label":"","body":"Option A"},{"label":"B","body":"Option B"}]}`,
 			wantCode: http.StatusBadRequest,
 		},
 	}
