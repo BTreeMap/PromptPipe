@@ -63,8 +63,8 @@ func TestReceiptJSONTags(t *testing.T) {
 }
 
 func TestResponseJSONTags(t *testing.T) {
-	resp := Response{From: "+123", Body: "hello", Time: 123456}
-	expectedJSON := `{"from":"+123","body":"hello","time":123456}`
+	resp := Response{From: "+1234567890", Body: "hello", Time: 123456}
+	expectedJSON := `{"from":"+1234567890","body":"hello","time":123456}`
 
 	jsonData, err := json.Marshal(resp)
 	if err != nil {
