@@ -9,7 +9,6 @@ import (
 	"io"
 	"log/slog"
 	"os"
-	"regexp"
 	"strings"
 
 	"github.com/BTreeMap/PromptPipe/internal/store"
@@ -28,16 +27,6 @@ const (
 	// JIDSuffix is the WhatsApp JID suffix for regular users
 	JIDSuffix = "s.whatsapp.net"
 )
-
-// phoneNumberRegex is a compiled regex for extracting only numeric characters from phone numbers
-var phoneNumberRegex = regexp.MustCompile(`[^0-9]`)
-
-// canonicalizePhoneNumber removes all non-numeric characters from a phone number string.
-// It returns the canonicalized phone number and a boolean indicating if any changes were made.
-func canonicalizePhoneNumber(phoneNumber string) (string, bool) {
-	canonical := phoneNumberRegex.ReplaceAllString(phoneNumber, "")
-	return canonical, phoneNumber != canonical
-}
 
 // WhatsAppSender is an interface for sending WhatsApp messages (for production and testing)
 type WhatsAppSender interface {
@@ -181,7 +170,7 @@ func NewClient(opts ...Option) (*Client, error) {
 }
 
 // SendMessage sends a WhatsApp message to the specified recipient.
-// It performs comprehensive validation and provides detailed error information.
+// It performs basic validation and relies on the service layer for phone number validation.
 func (c *Client) SendMessage(ctx context.Context, to string, body string) error {
 	if c.waClient == nil {
 		return fmt.Errorf("whatsapp client not initialized")
@@ -196,33 +185,20 @@ func (c *Client) SendMessage(ctx context.Context, to string, body string) error 
 		return fmt.Errorf("message body cannot be empty")
 	}
 
-	// Canonicalize the recipient by filtering out everything that's not a number
-	canonicalTo, wasModified := canonicalizePhoneNumber(to)
+	// Note: Phone number validation and canonicalization should be handled by the service layer.
+	// The recipient should already be validated and canonicalized when this method is called.
 
-	// Validate canonicalized phone number
-	if canonicalTo == "" {
-		return fmt.Errorf("invalid phone number: no digits found in recipient %q", to)
-	}
-	if len(canonicalTo) < 6 {
-		return fmt.Errorf("invalid phone number: %q is too short (minimum 6 digits required)", canonicalTo)
-	}
-
-	// Log if canonicalization modified the recipient
-	if wasModified {
-		slog.Debug("Canonicalized WhatsApp recipient", "original", to, "canonical", canonicalTo)
-	}
-
-	slog.Debug("Sending WhatsApp message", "to", canonicalTo, "body_length", len(body))
-	jid := types.NewJID(canonicalTo, JIDSuffix)
+	slog.Debug("Sending WhatsApp message", "to", to, "body_length", len(body))
+	jid := types.NewJID(to, JIDSuffix)
 	msg := &waE2E.Message{Conversation: &body}
 
 	_, err := c.waClient.SendMessage(ctx, jid, msg)
 	if err != nil {
-		slog.Error("Failed to send WhatsApp message", "error", err, "to", canonicalTo)
-		return fmt.Errorf("failed to send message to %s: %w", canonicalTo, err)
+		slog.Error("Failed to send WhatsApp message", "error", err, "to", to)
+		return fmt.Errorf("failed to send message to %s: %w", to, err)
 	}
 
-	slog.Debug("WhatsApp message sent successfully", "to", canonicalTo)
+	slog.Debug("WhatsApp message sent successfully", "to", to)
 	return nil
 }
 
@@ -241,23 +217,12 @@ func NewMockClient() *MockClient {
 }
 
 func (m *MockClient) SendMessage(ctx context.Context, to string, body string) error {
-	// Apply the same validation logic as the real client for testing
+	// Basic validation only - detailed validation should be done at service level
 	if to == "" {
 		return fmt.Errorf("recipient cannot be empty")
 	}
 	if body == "" {
 		return fmt.Errorf("message body cannot be empty")
-	}
-
-	// Canonicalize the recipient by filtering out everything that's not a number
-	canonicalTo, _ := canonicalizePhoneNumber(to)
-
-	// Validate canonicalized phone number
-	if canonicalTo == "" {
-		return fmt.Errorf("invalid phone number: no digits found in recipient %q", to)
-	}
-	if len(canonicalTo) < 6 {
-		return fmt.Errorf("invalid phone number: %q is too short (minimum 6 digits required)", canonicalTo)
 	}
 
 	return nil

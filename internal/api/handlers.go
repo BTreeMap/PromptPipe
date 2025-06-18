@@ -36,6 +36,16 @@ func (s *Server) sendHandler(w http.ResponseWriter, r *http.Request) {
 		p.Type = models.PromptTypeStatic
 	}
 
+	// Validate and canonicalize recipient using the messaging service
+	canonicalTo, err := s.msgService.ValidateAndCanonicalizeRecipient(p.To)
+	if err != nil {
+		slog.Warn("sendHandler recipient validation failed", "error", err, "original_to", p.To)
+		writeJSONResponse(w, http.StatusBadRequest, models.Error(err.Error()))
+		return
+	}
+	// Update the prompt with the canonicalized recipient
+	p.To = canonicalTo
+
 	// Validate prompt using the models validation
 	if err := p.Validate(); err != nil {
 		slog.Warn("sendHandler validation failed", "error", err, "prompt", p)
@@ -83,6 +93,16 @@ func (s *Server) scheduleHandler(w http.ResponseWriter, r *http.Request) {
 	if p.Type == "" {
 		p.Type = models.PromptTypeStatic
 	}
+
+	// Validate and canonicalize recipient using the messaging service
+	canonicalTo, err := s.msgService.ValidateAndCanonicalizeRecipient(p.To)
+	if err != nil {
+		slog.Warn("scheduleHandler recipient validation failed", "error", err, "original_to", p.To)
+		writeJSONResponse(w, http.StatusBadRequest, models.Error(err.Error()))
+		return
+	}
+	// Update the prompt with the canonicalized recipient
+	p.To = canonicalTo
 
 	// Validate prompt using the models validation
 	if err := p.Validate(); err != nil {

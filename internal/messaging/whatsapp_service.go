@@ -3,7 +3,9 @@ package messaging
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -26,6 +28,9 @@ const (
 var (
 	ErrServiceStopped = errors.New("messaging service has been stopped")
 )
+
+// phoneNumberRegex is a compiled regex for extracting only numeric characters from phone numbers
+var phoneNumberRegex = regexp.MustCompile(`[^0-9]`)
 
 // WhatsAppService implements Service using the Whatsmeow-based whatsapp client.
 type WhatsAppService struct {
@@ -56,6 +61,33 @@ func NewWhatsAppService(client whatsapp.WhatsAppSender) *WhatsAppService {
 	}
 
 	return service
+}
+
+// ValidateAndCanonicalizeRecipient validates and canonicalizes a WhatsApp phone number.
+// It removes all non-numeric characters and validates the result has at least 6 digits.
+func (s *WhatsAppService) ValidateAndCanonicalizeRecipient(recipient string) (string, error) {
+	if recipient == "" {
+		return "", fmt.Errorf("recipient cannot be empty")
+	}
+
+	// Canonicalize by removing all non-numeric characters
+	canonical := phoneNumberRegex.ReplaceAllString(recipient, "")
+	wasModified := recipient != canonical
+	
+	// Validate canonicalized phone number
+	if canonical == "" {
+		return "", fmt.Errorf("invalid phone number: no digits found in recipient %q", recipient)
+	}
+	if len(canonical) < 6 {
+		return "", fmt.Errorf("invalid phone number: %q is too short (minimum 6 digits required)", canonical)
+	}
+
+	// Log if canonicalization modified the recipient
+	if wasModified {
+		slog.Debug("WhatsAppService canonicalized recipient", "original", recipient, "canonical", canonical)
+	}
+
+	return canonical, nil
 }
 
 // Start begins background processing (e.g., event polling).
@@ -108,16 +140,23 @@ func (s *WhatsAppService) SendMessage(ctx context.Context, to string, body strin
 	}
 	s.mu.RUnlock()
 
-	slog.Debug("WhatsAppService SendMessage invoked", "to", to, "body_length", len(body))
-	err := s.client.SendMessage(ctx, to, body)
+	// Validate and canonicalize recipient before sending
+	canonicalTo, err := s.ValidateAndCanonicalizeRecipient(to)
 	if err != nil {
-		slog.Error("WhatsAppService SendMessage error", "error", err, "to", to)
+		slog.Error("WhatsAppService SendMessage validation error", "error", err, "to", to)
+		return err
+	}
+
+	slog.Debug("WhatsAppService SendMessage invoked", "to", canonicalTo, "body_length", len(body))
+	err = s.client.SendMessage(ctx, canonicalTo, body)
+	if err != nil {
+		slog.Error("WhatsAppService SendMessage error", "error", err, "to", canonicalTo)
 		return err
 	}
 
 	// Emit sent receipt (with safety check)
-	s.safeEmitReceipt(models.Receipt{To: to, Status: models.MessageStatusSent, Time: time.Now().Unix()})
-	slog.Info("WhatsAppService message sent and receipt emitted", "to", to)
+	s.safeEmitReceipt(models.Receipt{To: canonicalTo, Status: models.MessageStatusSent, Time: time.Now().Unix()})
+	slog.Info("WhatsAppService message sent and receipt emitted", "to", canonicalTo)
 	return nil
 }
 

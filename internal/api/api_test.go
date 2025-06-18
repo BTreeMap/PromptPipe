@@ -84,6 +84,43 @@ func TestSendHandler_MissingRecipient(t *testing.T) {
 	assertHTTPStatus(t, http.StatusBadRequest, rr.Code, "send handler missing recipient")
 }
 
+func TestSendHandler_InvalidPhoneNumber(t *testing.T) {
+	server := newTestServer()
+
+	tests := []struct {
+		name        string
+		phoneNumber string
+		expectError string
+	}{
+		{
+			name:        "too short phone number",
+			phoneNumber: "+123",
+			expectError: "too short",
+		},
+		{
+			name:        "no digits",
+			phoneNumber: "abc-def",
+			expectError: "no digits found",
+		},
+		{
+			name:        "empty phone number", 
+			phoneNumber: "",
+			expectError: "recipient cannot be empty",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := createJSONRequest(t, "POST", "/send", `{"to":"`+tt.phoneNumber+`","body":"hi"}`)
+			rr := httptest.NewRecorder()
+			server.sendHandler(rr, req)
+
+			assertHTTPStatus(t, http.StatusBadRequest, rr.Code, "send handler invalid phone")
+			assertJSONStatus(t, rr, "error")
+		})
+	}
+}
+
 func TestScheduleHandler_Success(t *testing.T) {
 	server := newTestServer()
 
@@ -113,6 +150,43 @@ func TestScheduleHandler_MissingRecipient(t *testing.T) {
 	server.scheduleHandler(rr, req)
 
 	assertHTTPStatus(t, http.StatusBadRequest, rr.Code, "schedule handler missing recipient")
+}
+
+func TestScheduleHandler_InvalidPhoneNumber(t *testing.T) {
+	server := newTestServer()
+
+	tests := []struct {
+		name        string
+		phoneNumber string
+		expectError string
+	}{
+		{
+			name:        "too short phone number",
+			phoneNumber: "+123",
+			expectError: "too short",
+		},
+		{
+			name:        "no digits",
+			phoneNumber: "abc-def",
+			expectError: "no digits found",
+		},
+		{
+			name:        "empty phone number", 
+			phoneNumber: "",
+			expectError: "recipient cannot be empty",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := createJSONRequest(t, "POST", "/schedule", `{"to":"`+tt.phoneNumber+`","cron":"* * * * *","body":"hi"}`)
+			rr := httptest.NewRecorder()
+			server.scheduleHandler(rr, req)
+
+			assertHTTPStatus(t, http.StatusBadRequest, rr.Code, "schedule handler invalid phone")
+			assertJSONStatus(t, rr, "error")
+		})
+	}
 }
 
 func TestReceiptsHandler_Success(t *testing.T) {
