@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
@@ -252,10 +251,6 @@ func startHTTPServer(addr string, server *Server) *http.Server {
 	http.HandleFunc("/response", server.responseHandler)
 	http.HandleFunc("/responses", server.responsesHandler)
 	http.HandleFunc("/stats", server.statsHandler)
-
-	// Intervention management endpoints with proper routing
-	http.HandleFunc("/intervention/", server.interventionRouter)
-
 	slog.Debug("HTTP handlers registered")
 
 	// Start HTTP server with graceful shutdown
@@ -335,104 +330,4 @@ func (s *Server) gracefulShutdown(srv *http.Server) error {
 
 	slog.Info("Graceful shutdown completed successfully")
 	return nil
-}
-
-// interventionRouter handles all intervention-related endpoints with proper RESTful routing
-func (s *Server) interventionRouter(w http.ResponseWriter, r *http.Request) {
-	path := strings.TrimPrefix(r.URL.Path, "/intervention")
-
-	// Remove leading slash if present
-	if strings.HasPrefix(path, "/") {
-		path = path[1:]
-	}
-
-	slog.Debug("Intervention router", "method", r.Method, "path", path, "fullPath", r.URL.Path)
-
-	// Split path into segments
-	segments := strings.Split(path, "/")
-	if len(segments) == 0 || segments[0] == "" {
-		http.Error(w, "Invalid intervention endpoint", http.StatusNotFound)
-		return
-	}
-
-	switch segments[0] {
-	case "participants":
-		s.handleParticipantRoutes(w, r, segments[1:])
-	case "weekly-summary":
-		s.triggerWeeklySummaryHandler(w, r)
-	case "stats":
-		s.interventionStatsHandler(w, r)
-	default:
-		http.Error(w, "Unknown intervention endpoint", http.StatusNotFound)
-	}
-}
-
-// handleParticipantRoutes handles all participant-related routes
-func (s *Server) handleParticipantRoutes(w http.ResponseWriter, r *http.Request, segments []string) {
-	if len(segments) == 0 || segments[0] == "" {
-		// /intervention/participants
-		switch r.Method {
-		case http.MethodGet:
-			s.listParticipantsHandler(w, r)
-		case http.MethodPost:
-			s.enrollParticipantHandler(w, r)
-		default:
-			w.Header().Set("Allow", "GET, POST")
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		}
-		return
-	}
-
-	// Extract participant ID and add to request context for handlers to use
-	participantID := segments[0]
-	ctx := context.WithValue(r.Context(), "participantID", participantID)
-	r = r.WithContext(ctx)
-
-	if len(segments) == 1 {
-		// /intervention/participants/{id}
-		switch r.Method {
-		case http.MethodGet:
-			s.getParticipantHandler(w, r)
-		case http.MethodDelete:
-			s.deleteParticipantHandler(w, r)
-		default:
-			w.Header().Set("Allow", "GET, DELETE")
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		}
-		return
-	}
-
-	// Handle sub-routes for specific participant
-	switch segments[1] {
-	case "responses":
-		if r.Method == http.MethodPost {
-			s.processResponseHandler(w, r)
-		} else {
-			w.Header().Set("Allow", "POST")
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		}
-	case "advance":
-		if r.Method == http.MethodPost {
-			s.advanceStateHandler(w, r)
-		} else {
-			w.Header().Set("Allow", "POST")
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		}
-	case "reset":
-		if r.Method == http.MethodPost {
-			s.resetParticipantHandler(w, r)
-		} else {
-			w.Header().Set("Allow", "POST")
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		}
-	case "history":
-		if r.Method == http.MethodGet {
-			s.getParticipantHistoryHandler(w, r)
-		} else {
-			w.Header().Set("Allow", "GET")
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		}
-	default:
-		http.Error(w, "Unknown participant endpoint", http.StatusNotFound)
-	}
 }
