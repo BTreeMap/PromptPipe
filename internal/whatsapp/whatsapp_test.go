@@ -176,11 +176,11 @@ func TestCanonicalizePhoneNumber(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result, changed := canonicalizePhoneNumber(tt.input)
-			
+
 			if result != tt.expected {
 				t.Errorf("canonicalizePhoneNumber(%q) = %q, expected %q", tt.input, result, tt.expected)
 			}
-			
+
 			if changed != tt.expectChange {
 				t.Errorf("canonicalizePhoneNumber(%q) changed flag = %v, expected %v", tt.input, changed, tt.expectChange)
 			}
@@ -191,7 +191,7 @@ func TestCanonicalizePhoneNumber(t *testing.T) {
 func TestSendMessagePhoneNumberValidation(t *testing.T) {
 	// Create a mock client to test validation without actual WhatsApp connection
 	mockClient := &MockClient{}
-	
+
 	// Test cases for phone number validation in SendMessage
 	tests := []struct {
 		name        string
@@ -249,7 +249,7 @@ func TestSendMessagePhoneNumberValidation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := mockClient.SendMessage(ctx, tt.phoneNumber, "test message")
-			
+
 			if tt.expectError {
 				if err == nil {
 					t.Errorf("Expected error for phone number %q, but got nil", tt.phoneNumber)

@@ -198,7 +198,7 @@ func (c *Client) SendMessage(ctx context.Context, to string, body string) error 
 
 	// Canonicalize the recipient by filtering out everything that's not a number
 	canonicalTo, wasModified := canonicalizePhoneNumber(to)
-	
+
 	// Validate canonicalized phone number
 	if canonicalTo == "" {
 		return fmt.Errorf("invalid phone number: no digits found in recipient %q", to)
@@ -206,7 +206,7 @@ func (c *Client) SendMessage(ctx context.Context, to string, body string) error 
 	if len(canonicalTo) < 6 {
 		return fmt.Errorf("invalid phone number: %q is too short (minimum 6 digits required)", canonicalTo)
 	}
-	
+
 	// Log if canonicalization modified the recipient
 	if wasModified {
 		slog.Debug("Canonicalized WhatsApp recipient", "original", to, "canonical", canonicalTo)
@@ -251,7 +251,7 @@ func (m *MockClient) SendMessage(ctx context.Context, to string, body string) er
 
 	// Canonicalize the recipient by filtering out everything that's not a number
 	canonicalTo, _ := canonicalizePhoneNumber(to)
-	
+
 	// Validate canonicalized phone number
 	if canonicalTo == "" {
 		return fmt.Errorf("invalid phone number: no digits found in recipient %q", to)
