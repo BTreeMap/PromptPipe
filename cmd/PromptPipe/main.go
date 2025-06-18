@@ -3,11 +3,9 @@ package main
 import (
 	"flag"
 	"log/slog"
-	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
-	"strings"
 	"syscall"
 
 	"github.com/BTreeMap/PromptPipe/internal/api"
@@ -256,18 +254,12 @@ func ensureDirectoriesExist(flags Flags) error {
 	dbDSNs := []string{*flags.whatsappDBDSN, *flags.appDBDSN}
 
 	for _, dsn := range dbDSNs {
+		// Only process SQLite DSNs
 		if store.DetectDSNType(dsn) == "sqlite3" {
-			// Extract file path from DSN, handling file:// URI scheme
-			dbPath := dsn
-			if strings.HasPrefix(dbPath, "file:") {
-				if parsedURL, err := url.Parse(dbPath); err == nil {
-					dbPath = parsedURL.Path
-				}
-				// If parsing fails, continue with original path
-			}
-
-			// Add directory to creation list if it's not current directory
-			if dir := filepath.Dir(dbPath); dir != "" && dir != "." {
+			if dir, err := store.ExtractDirFromSQLiteDSN(dsn); err != nil {
+				slog.Error("Failed to extract directory from SQLite DSN", "error", err, "dsn", dsn)
+				return err
+			} else if dir != "" {
 				dirsToCreate[dir] = true
 			}
 		}

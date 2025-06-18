@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"path/filepath"
 	"time"
 
 	_ "embed"
@@ -55,13 +54,19 @@ func NewSQLiteStore(opts ...Option) (*SQLiteStore, error) {
 		return nil, fmt.Errorf("database DSN not set")
 	}
 
-	// Ensure the directory exists
-	dir := filepath.Dir(dsn)
-	if err := os.MkdirAll(dir, DefaultDirPermissions); err != nil {
-		slog.Error("Failed to create database directory", "error", err, "dir", dir)
-		return nil, fmt.Errorf("failed to create database directory: %w", err)
+	// Ensure the directory exists using unified SQLite DSN directory extraction
+	if dir, err := ExtractDirFromSQLiteDSN(dsn); err != nil {
+		slog.Error("Failed to extract directory from SQLite DSN", "error", err, "dsn", dsn)
+		return nil, fmt.Errorf("failed to extract directory from SQLite DSN: %w", err)
+	} else if dir != "" {
+		if err := os.MkdirAll(dir, DefaultDirPermissions); err != nil {
+			slog.Error("Failed to create database directory", "error", err, "dir", dir)
+			return nil, fmt.Errorf("failed to create database directory: %w", err)
+		}
+		slog.Debug("SQLite database directory verified/created", "dir", dir)
+	} else {
+		slog.Debug("No directory creation needed for SQLite DSN", "dsn", dsn)
 	}
-	slog.Debug("SQLite database directory verified/created", "dir", dir)
 
 	slog.Debug("Opening SQLite database connection")
 	db, err := sql.Open("sqlite3", dsn)

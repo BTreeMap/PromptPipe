@@ -4,9 +4,12 @@
 package store
 
 import (
+	"fmt"
 	"log/slog"
 	"strings"
 	"sync"
+	"net/url"
+	"path/filepath"
 
 	"github.com/BTreeMap/PromptPipe/internal/models"
 )
@@ -58,6 +61,47 @@ func DetectDSNType(dsn string) string {
 		return "postgres"
 	}
 	return "sqlite3"
+}
+
+// ExtractDirFromSQLiteDSN extracts the directory path from a SQLite DSN string, handling both
+// file URIs (e.g., "file:/path/to/file?_foreign_keys=on") and regular file paths.
+// This function is specifically designed for SQLite DSNs and will return an error
+// if called with non-SQLite DSNs (e.g., PostgreSQL DSNs).
+// Returns the directory containing the SQLite database file, or an error if:
+// - The DSN is not a SQLite DSN
+// - The file URI cannot be parsed
+// - The resulting path is invalid
+func ExtractDirFromSQLiteDSN(dsn string) (string, error) {
+	// Ensure this is only used with SQLite DSNs
+	if DetectDSNType(dsn) != "sqlite3" {
+		return "", fmt.Errorf("ExtractDirFromSQLiteDSN can only be used with SQLite DSNs, got: %s", dsn)
+	}
+
+	// Extract file path from DSN, handling file:// URI scheme
+	dbPath := dsn
+	if strings.HasPrefix(dbPath, "file:") {
+		// Parse as URL to properly handle file:// scheme and query parameters
+		parsedURL, err := url.Parse(dbPath)
+		if err != nil {
+			return "", fmt.Errorf("failed to parse SQLite file URI '%s': %w", dsn, err)
+		}
+		dbPath = parsedURL.Path
+	}
+
+	// Validate that we have a valid path
+	if dbPath == "" {
+		return "", fmt.Errorf("invalid SQLite DSN: empty path after parsing '%s'", dsn)
+	}
+
+	// Get directory path
+	dir := filepath.Dir(dbPath)
+	
+	// Return empty string for current directory to avoid unnecessary creation
+	if dir == "" || dir == "." {
+		return "", nil
+	}
+
+	return dir, nil
 }
 
 // InMemoryStore is a simple in-memory implementation of the Store interface.
