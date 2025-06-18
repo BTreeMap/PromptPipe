@@ -273,3 +273,102 @@ func (s *SQLiteStore) DeleteFlowState(participantID, flowType string) error {
 	slog.Debug("SQLiteStore DeleteFlowState succeeded", "participantID", participantID, "flowType", flowType)
 	return nil
 }
+
+// Intervention participant management methods - SQLite implementation
+
+// SaveInterventionParticipant stores or updates an intervention participant.
+func (s *SQLiteStore) SaveInterventionParticipant(participant models.InterventionParticipant) error {
+	query := `
+		INSERT OR REPLACE INTO intervention_participants 
+		(id, phone_number, name, enrolled_at, status, current_state, timezone, schedule_time, 
+		 has_seen_orientation, times_completed_week, week_start_date, last_prompt_date, custom_data)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+
+	// TODO: Implement JSON marshaling for custom_data
+	customDataJSON := "{}"
+
+	_, err := s.db.Exec(query, participant.ID, participant.PhoneNumber, participant.Name,
+		participant.EnrolledAt, participant.Status, participant.CurrentState, participant.Timezone,
+		participant.ScheduleTime, participant.HasSeenOrientation, participant.TimesCompletedWeek,
+		participant.WeekStartDate, participant.LastPromptDate, customDataJSON)
+	if err != nil {
+		slog.Error("SQLiteStore SaveInterventionParticipant failed", "error", err, "participantID", participant.ID)
+		return err
+	}
+	slog.Debug("SQLiteStore SaveInterventionParticipant succeeded", "participantID", participant.ID)
+	return nil
+}
+
+// GetInterventionParticipant retrieves an intervention participant by ID.
+func (s *SQLiteStore) GetInterventionParticipant(id string) (*models.InterventionParticipant, error) {
+	// TODO: Implement SQLite query and JSON unmarshaling for custom_data
+	slog.Debug("SQLiteStore GetInterventionParticipant not implemented", "participantID", id)
+	return nil, fmt.Errorf("GetInterventionParticipant not implemented for SQLite")
+}
+
+// GetInterventionParticipantByPhone retrieves an intervention participant by phone number.
+func (s *SQLiteStore) GetInterventionParticipantByPhone(phoneNumber string) (*models.InterventionParticipant, error) {
+	// TODO: Implement SQLite query
+	slog.Debug("SQLiteStore GetInterventionParticipantByPhone not implemented", "phoneNumber", phoneNumber)
+	return nil, fmt.Errorf("GetInterventionParticipantByPhone not implemented for SQLite")
+}
+
+// ListInterventionParticipants retrieves all intervention participants.
+func (s *SQLiteStore) ListInterventionParticipants() ([]models.InterventionParticipant, error) {
+	// TODO: Implement SQLite query
+	slog.Debug("SQLiteStore ListInterventionParticipants not implemented")
+	return nil, fmt.Errorf("ListInterventionParticipants not implemented for SQLite")
+}
+
+// DeleteInterventionParticipant removes an intervention participant.
+func (s *SQLiteStore) DeleteInterventionParticipant(id string) error {
+	// TODO: Implement SQLite delete
+	slog.Debug("SQLiteStore DeleteInterventionParticipant not implemented", "participantID", id)
+	return fmt.Errorf("DeleteInterventionParticipant not implemented for SQLite")
+}
+
+// Intervention response management methods - SQLite implementation
+
+// SaveInterventionResponse stores an intervention response.
+func (s *SQLiteStore) SaveInterventionResponse(response models.InterventionResponse) error {
+	// TODO: Implement SQLite insert
+	slog.Debug("SQLiteStore SaveInterventionResponse not implemented", "responseID", response.ID)
+	return fmt.Errorf("SaveInterventionResponse not implemented for SQLite")
+}
+
+// GetInterventionResponses retrieves all intervention responses for a participant.
+func (s *SQLiteStore) GetInterventionResponses(participantID string) ([]models.InterventionResponse, error) {
+	// TODO: Implement SQLite query
+	slog.Debug("SQLiteStore GetInterventionResponses not implemented", "participantID", participantID)
+	return nil, fmt.Errorf("GetInterventionResponses not implemented for SQLite")
+}
+
+// GetAllInterventionResponses retrieves all intervention responses.
+func (s *SQLiteStore) GetAllInterventionResponses() ([]models.InterventionResponse, error) {
+	// TODO: Implement SQLite query
+	slog.Debug("SQLiteStore GetAllInterventionResponses not implemented")
+	return nil, fmt.Errorf("GetAllInterventionResponses not implemented for SQLite")
+}
+
+// Intervention message management methods - SQLite implementation
+
+// SaveInterventionMessage stores an intervention message.
+func (s *SQLiteStore) SaveInterventionMessage(message models.InterventionMessage) error {
+	// TODO: Implement SQLite insert
+	slog.Debug("SQLiteStore SaveInterventionMessage not implemented", "messageID", message.ID)
+	return fmt.Errorf("SaveInterventionMessage not implemented for SQLite")
+}
+
+// GetInterventionMessages retrieves all intervention messages for a participant.
+func (s *SQLiteStore) GetInterventionMessages(participantID string) ([]models.InterventionMessage, error) {
+	// TODO: Implement SQLite query
+	slog.Debug("SQLiteStore GetInterventionMessages not implemented", "participantID", participantID)
+	return nil, fmt.Errorf("GetInterventionMessages not implemented for SQLite")
+}
+
+// GetAllInterventionMessages retrieves all intervention messages.
+func (s *SQLiteStore) GetAllInterventionMessages() ([]models.InterventionMessage, error) {
+	// TODO: Implement SQLite query
+	slog.Debug("SQLiteStore GetAllInterventionMessages not implemented")
+	return nil, fmt.Errorf("GetAllInterventionMessages not implemented for SQLite")
+}

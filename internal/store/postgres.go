@@ -259,3 +259,114 @@ func (s *PostgresStore) DeleteFlowState(participantID, flowType string) error {
 	slog.Debug("PostgresStore DeleteFlowState succeeded", "participantID", participantID, "flowType", flowType)
 	return nil
 }
+
+// Intervention participant management methods - PostgreSQL implementation
+
+// SaveInterventionParticipant stores or updates an intervention participant.
+func (s *PostgresStore) SaveInterventionParticipant(participant models.InterventionParticipant) error {
+	query := `
+		INSERT INTO intervention_participants 
+		(id, phone_number, name, enrolled_at, status, current_state, timezone, schedule_time, 
+		 has_seen_orientation, times_completed_week, week_start_date, last_prompt_date, custom_data)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+		ON CONFLICT (id) DO UPDATE SET 
+			phone_number = EXCLUDED.phone_number,
+			name = EXCLUDED.name,
+			status = EXCLUDED.status,
+			current_state = EXCLUDED.current_state,
+			timezone = EXCLUDED.timezone,
+			schedule_time = EXCLUDED.schedule_time,
+			has_seen_orientation = EXCLUDED.has_seen_orientation,
+			times_completed_week = EXCLUDED.times_completed_week,
+			week_start_date = EXCLUDED.week_start_date,
+			last_prompt_date = EXCLUDED.last_prompt_date,
+			custom_data = EXCLUDED.custom_data`
+
+	// TODO: Implement JSON marshaling for custom_data
+	customDataJSON := "{}"
+
+	_, err := s.db.Exec(query, participant.ID, participant.PhoneNumber, participant.Name,
+		participant.EnrolledAt, participant.Status, participant.CurrentState, participant.Timezone,
+		participant.ScheduleTime, participant.HasSeenOrientation, participant.TimesCompletedWeek,
+		participant.WeekStartDate, participant.LastPromptDate, customDataJSON)
+	if err != nil {
+		slog.Error("PostgresStore SaveInterventionParticipant failed", "error", err, "participantID", participant.ID)
+		return err
+	}
+	slog.Debug("PostgresStore SaveInterventionParticipant succeeded", "participantID", participant.ID)
+	return nil
+}
+
+// GetInterventionParticipant retrieves an intervention participant by ID.
+func (s *PostgresStore) GetInterventionParticipant(id string) (*models.InterventionParticipant, error) {
+	// TODO: Implement PostgreSQL query and JSON unmarshaling for custom_data
+	slog.Debug("PostgresStore GetInterventionParticipant not implemented", "participantID", id)
+	return nil, fmt.Errorf("GetInterventionParticipant not implemented for PostgreSQL")
+}
+
+// GetInterventionParticipantByPhone retrieves an intervention participant by phone number.
+func (s *PostgresStore) GetInterventionParticipantByPhone(phoneNumber string) (*models.InterventionParticipant, error) {
+	// TODO: Implement PostgreSQL query
+	slog.Debug("PostgresStore GetInterventionParticipantByPhone not implemented", "phoneNumber", phoneNumber)
+	return nil, fmt.Errorf("GetInterventionParticipantByPhone not implemented for PostgreSQL")
+}
+
+// ListInterventionParticipants retrieves all intervention participants.
+func (s *PostgresStore) ListInterventionParticipants() ([]models.InterventionParticipant, error) {
+	// TODO: Implement PostgreSQL query
+	slog.Debug("PostgresStore ListInterventionParticipants not implemented")
+	return nil, fmt.Errorf("ListInterventionParticipants not implemented for PostgreSQL")
+}
+
+// DeleteInterventionParticipant removes an intervention participant.
+func (s *PostgresStore) DeleteInterventionParticipant(id string) error {
+	// TODO: Implement PostgreSQL delete
+	slog.Debug("PostgresStore DeleteInterventionParticipant not implemented", "participantID", id)
+	return fmt.Errorf("DeleteInterventionParticipant not implemented for PostgreSQL")
+}
+
+// Intervention response management methods - PostgreSQL implementation
+
+// SaveInterventionResponse stores an intervention response.
+func (s *PostgresStore) SaveInterventionResponse(response models.InterventionResponse) error {
+	// TODO: Implement PostgreSQL insert
+	slog.Debug("PostgresStore SaveInterventionResponse not implemented", "responseID", response.ID)
+	return fmt.Errorf("SaveInterventionResponse not implemented for PostgreSQL")
+}
+
+// GetInterventionResponses retrieves all intervention responses for a participant.
+func (s *PostgresStore) GetInterventionResponses(participantID string) ([]models.InterventionResponse, error) {
+	// TODO: Implement PostgreSQL query
+	slog.Debug("PostgresStore GetInterventionResponses not implemented", "participantID", participantID)
+	return nil, fmt.Errorf("GetInterventionResponses not implemented for PostgreSQL")
+}
+
+// GetAllInterventionResponses retrieves all intervention responses.
+func (s *PostgresStore) GetAllInterventionResponses() ([]models.InterventionResponse, error) {
+	// TODO: Implement PostgreSQL query
+	slog.Debug("PostgresStore GetAllInterventionResponses not implemented")
+	return nil, fmt.Errorf("GetAllInterventionResponses not implemented for PostgreSQL")
+}
+
+// Intervention message management methods - PostgreSQL implementation
+
+// SaveInterventionMessage stores an intervention message.
+func (s *PostgresStore) SaveInterventionMessage(message models.InterventionMessage) error {
+	// TODO: Implement PostgreSQL insert
+	slog.Debug("PostgresStore SaveInterventionMessage not implemented", "messageID", message.ID)
+	return fmt.Errorf("SaveInterventionMessage not implemented for PostgreSQL")
+}
+
+// GetInterventionMessages retrieves all intervention messages for a participant.
+func (s *PostgresStore) GetInterventionMessages(participantID string) ([]models.InterventionMessage, error) {
+	// TODO: Implement PostgreSQL query
+	slog.Debug("PostgresStore GetInterventionMessages not implemented", "participantID", participantID)
+	return nil, fmt.Errorf("GetInterventionMessages not implemented for PostgreSQL")
+}
+
+// GetAllInterventionMessages retrieves all intervention messages.
+func (s *PostgresStore) GetAllInterventionMessages() ([]models.InterventionMessage, error) {
+	// TODO: Implement PostgreSQL query
+	slog.Debug("PostgresStore GetAllInterventionMessages not implemented")
+	return nil, fmt.Errorf("GetAllInterventionMessages not implemented for PostgreSQL")
+}
