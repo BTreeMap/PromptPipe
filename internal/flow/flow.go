@@ -88,4 +88,5 @@ func Generate(ctx context.Context, p models.Prompt) (string, error) {
 func init() {
 	Register(models.PromptTypeStatic, &StaticGenerator{})
 	Register(models.PromptTypeBranch, &BranchGenerator{})
+	Register(models.PromptTypeGenAI, &GenAIGenerator{})
 }
