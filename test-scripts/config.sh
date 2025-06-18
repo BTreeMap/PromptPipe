@@ -1,10 +1,5 @@
 #!/bin/bash
 
-# PromptPipe API Test Configuration
-export API_BASE_URL="http://localhost:8080"
-export TEST_PHONE="+15551234567"
-export TEST_PHONE_2="+15551234568"
-
 # Colors for output
 export RED='\033[0;31m'
 export GREEN='\033[0;32m'
@@ -34,6 +29,25 @@ error() {
 warn() {
     echo -e "${YELLOW}⚠${NC} $1"
 }
+
+# Load environment variables from .env files
+# Check for .env files in order of priority
+ENV_FILES=(".env" "../.env" "../../.env")
+
+for env_file in "${ENV_FILES[@]}"; do
+    if [ -f "$env_file" ]; then
+        log "Loading environment variables from $env_file"
+        set -a  # automatically export all variables
+        source "$env_file"
+        set +a  # stop automatically exporting
+        break
+    fi
+done
+
+# PromptPipe API Test Configuration
+export API_BASE_URL="${API_BASE_URL:-http://localhost:8080}"
+export TEST_PHONE="${TEST_PHONE:-+15551234567}"  # Default test phone number
+export TEST_PHONE_2="${TEST_PHONE_2:-+15557654321}"  # Second test phone number
 
 # Test helper function
 test_endpoint() {
