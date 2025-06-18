@@ -83,7 +83,7 @@ Create a `.env` file or export the following environment variables:
 
 ```bash
 # WhatsApp/Whatsmeow Database Configuration
-WHATSAPP_DB_DSN="file:/var/lib/promptpipe/whatsapp.db?_foreign_keys=on"
+WHATSAPP_DB_DSN="file:/var/lib/promptpipe/whatsmeow.db?_foreign_keys=on"
 
 # Application Database Configuration  
 DATABASE_DSN="postgres://user:pass@host:port/dbname?sslmode=disable"
@@ -104,7 +104,7 @@ OPENAI_API_KEY="your_openai_api_key"          # OpenAI API key for GenAI operati
 
 If no database configuration is provided, both databases will use SQLite files:
 
-- WhatsApp database: `{STATE_DIR}/whatsapp.db` (with foreign keys enabled)
+- WhatsApp database: `{STATE_DIR}/whatsmeow.db` (with foreign keys enabled)
 - Application database: `{STATE_DIR}/app.db`
 
 #### PostgreSQL for Both Databases

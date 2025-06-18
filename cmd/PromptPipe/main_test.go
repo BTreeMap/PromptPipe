@@ -240,7 +240,7 @@ func TestEnsureDirectoriesExist(t *testing.T) {
 	// Create a temporary directory for testing
 	tempDir := t.TempDir()
 
-	whatsappDBPath := filepath.Join(tempDir, "subdir", "whatsapp.db")
+	whatsappDBPath := filepath.Join(tempDir, "subdir", "whatsmeow.db")
 	appDBPath := filepath.Join(tempDir, "subdir", "app.db")
 
 	flags := Flags{
@@ -271,7 +271,7 @@ func TestEnsureDirectoriesExistFileURI(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	// Test with file URI for WhatsApp database
-	whatsappDBPath := filepath.Join(tempDir, "subdir", "whatsapp.db")
+	whatsappDBPath := filepath.Join(tempDir, "subdir", "whatsmeow.db")
 	whatsappFileURI := "file:" + whatsappDBPath + "?_foreign_keys=on"
 
 	appDBPath := filepath.Join(tempDir, "app.db")
@@ -339,7 +339,7 @@ func TestFileURIHandling(t *testing.T) {
 	// Test that we properly handle file URIs with foreign keys for both databases
 	tempDir := t.TempDir()
 
-	whatsappDSN := "file:" + filepath.Join(tempDir, "whatsapp.db") + "?_foreign_keys=on"
+	whatsappDSN := "file:" + filepath.Join(tempDir, "whatsmeow.db") + "?_foreign_keys=on"
 	appDSN := "file:" + filepath.Join(tempDir, "app.db") + "?_foreign_keys=on"
 
 	flags := Flags{

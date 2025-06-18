@@ -23,7 +23,7 @@ import (
 // Constants for WhatsApp client configuration
 const (
 	// DefaultSQLitePath is the default path for WhatsApp/whatsmeow SQLite database
-	DefaultSQLitePath = "/var/lib/promptpipe/whatsapp.db"
+	DefaultSQLitePath = "/var/lib/promptpipe/whatsmeow.db"
 	// JIDSuffix is the WhatsApp JID suffix for regular users
 	JIDSuffix = "s.whatsapp.net"
 )
