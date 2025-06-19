@@ -366,6 +366,18 @@ func (s *Server) processResponseHandler(w http.ResponseWriter, r *http.Request) 
 	// This would involve calling the MicroHealthInterventionGenerator.ProcessResponse method
 	// For now, we just record the response
 
+	// Create micro health intervention generator with dependencies
+	timer := flow.NewSimpleTimer()
+	generator := flow.NewMicroHealthInterventionGenerator(stateManager, timer)
+
+	// Process the response through the flow logic
+	if err := generator.ProcessResponse(ctx, participantID, req.ResponseText); err != nil {
+		slog.Error("processResponseHandler flow processing failed", "error", err, "participantID", participantID)
+		// Don't fail the API call if flow processing fails, but log it
+	} else {
+		slog.Debug("Response processed through flow logic", "participantID", participantID)
+	}
+
 	slog.Info("Response processed successfully", "participantID", participantID, "responseID", responseID, "state", currentState)
 	writeJSONResponse(w, http.StatusCreated, models.Success(response))
 }
