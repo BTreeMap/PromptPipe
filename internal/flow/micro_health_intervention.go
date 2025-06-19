@@ -4,16 +4,40 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/BTreeMap/PromptPipe/internal/models"
 )
 
-// canonicalizeResponse standardizes user responses by trimming whitespace and converting to lowercase.
-// This ensures consistent processing of user input across all intervention flows.
+// Compiled regex patterns for response canonicalization
+var (
+	// leadingWhitespaceAndPunctuationRegex matches leading whitespace and common punctuation (not emojis)
+	leadingWhitespaceAndPunctuationRegex = regexp.MustCompile(`^[\s!.?,:;_-]+`)
+	// trailingWhitespaceAndPunctuationRegex matches trailing whitespace and common punctuation (not emojis)
+	trailingWhitespaceAndPunctuationRegex = regexp.MustCompile(`[\s!.?,:;_-]+$`)
+)
+
+// canonicalizeResponse standardizes user responses by trimming whitespace, converting to lowercase,
+// and removing common punctuation from the edges using compiled regex patterns. This ensures
+// consistent processing of user input across all intervention flows.
+// Examples: "Done!" -> "done", "Ready." -> "ready", "Yes!" -> "yes", " 1. " -> "1"
+// "done!." -> "done", " ready ! " -> "ready"
 func canonicalizeResponse(response string) string {
-	return strings.ToLower(strings.TrimSpace(response))
+	// First, trim whitespace and convert to lowercase
+	response = strings.ToLower(strings.TrimSpace(response))
+
+	// Remove leading punctuation and whitespace using compiled regex
+	response = leadingWhitespaceAndPunctuationRegex.ReplaceAllString(response, "")
+
+	// Remove trailing punctuation and whitespace using compiled regex
+	response = trailingWhitespaceAndPunctuationRegex.ReplaceAllString(response, "")
+
+	// Final trim to ensure cleanest possible form
+	response = strings.TrimSpace(response)
+
+	return response
 }
 
 // Simple message constants for micro health intervention flow.
@@ -339,7 +363,7 @@ func (g *MicroHealthInterventionGenerator) processCommitmentResponse(ctx context
 	}
 
 	switch response {
-	case "1", "🚀 let's do it!":
+	case "1", "🚀 let's do it":
 		// Store positive response and move to feeling prompt
 		err := g.stateManager.SetStateData(ctx, participantID, models.FlowTypeMicroHealthIntervention, models.DataKeyCommitmentTimerID, "")
 		if err != nil {

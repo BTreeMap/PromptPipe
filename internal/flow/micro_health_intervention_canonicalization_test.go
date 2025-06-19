@@ -14,6 +14,7 @@ func TestCanonicalizeResponse(t *testing.T) {
 		input    string
 		expected string
 	}{
+		// Basic functionality
 		{
 			name:     "simple text",
 			input:    "Hello",
@@ -42,7 +43,7 @@ func TestCanonicalizeResponse(t *testing.T) {
 		{
 			name:     "emoji with text",
 			input:    " 🚀 Let's do it! ",
-			expected: "🚀 let's do it!",
+			expected: "🚀 let's do it",
 		},
 		{
 			name:     "empty string",
@@ -53,6 +54,108 @@ func TestCanonicalizeResponse(t *testing.T) {
 			name:     "whitespace only",
 			input:    "   \t\n   ",
 			expected: "",
+		},
+
+		// Punctuation handling tests
+		{
+			name:     "done with exclamation",
+			input:    "done!",
+			expected: "done",
+		},
+		{
+			name:     "done with period",
+			input:    "done.",
+			expected: "done",
+		},
+		{
+			name:     "done with multiple exclamations",
+			input:    "done!!!",
+			expected: "done",
+		},
+		{
+			name:     "ready with exclamation and space",
+			input:    " ready! ",
+			expected: "ready",
+		},
+		{
+			name:     "yes with period",
+			input:    "yes.",
+			expected: "yes",
+		},
+		{
+			name:     "no with question mark",
+			input:    "no?",
+			expected: "no",
+		},
+		{
+			name:     "number with period",
+			input:    "1.",
+			expected: "1",
+		},
+		{
+			name:     "number with dash",
+			input:    "1-",
+			expected: "1",
+		},
+		{
+			name:     "mixed punctuation",
+			input:    "done!.",
+			expected: "done",
+		},
+		{
+			name:     "punctuation with spaces",
+			input:    " ready ! ",
+			expected: "ready",
+		},
+		{
+			name:     "only punctuation",
+			input:    "!",
+			expected: "",
+		},
+		{
+			name:     "text with comma",
+			input:    "done,",
+			expected: "done",
+		},
+		{
+			name:     "text with semicolon",
+			input:    "ready;",
+			expected: "ready",
+		},
+		{
+			name:     "text with colon",
+			input:    "yes:",
+			expected: "yes",
+		},
+		{
+			name:     "text with underscore",
+			input:    "done_",
+			expected: "done",
+		},
+		{
+			name:     "complex response with punctuation",
+			input:    "  DONE!!!  ",
+			expected: "done",
+		},
+		{
+			name:     "real user response examples",
+			input:    "Done!",
+			expected: "done",
+		},
+		{
+			name:     "real user response with enthusiasm",
+			input:    "READY!!!",
+			expected: "ready",
+		},
+		{
+			name:     "formal response",
+			input:    "Yes.",
+			expected: "yes",
+		},
+		{
+			name:     "hesitant response",
+			input:    "no...",
+			expected: "no",
 		},
 	}
 
@@ -91,6 +194,12 @@ func TestMicroHealthInterventionCanonicalization(t *testing.T) {
 		{"negative response", " 2 ", models.StateEndOfDay},
 		{"negative emoji", "⏳ Not yet", models.StateEndOfDay},
 		{"mixed case negative", "  ⏳ NOT YET  ", models.StateEndOfDay},
+		// Punctuation handling tests
+		{"number with period", "1.", models.StateFeelingPrompt},
+		{"number with exclamation", "1!", models.StateFeelingPrompt},
+		{"number with comma", "1,", models.StateFeelingPrompt},
+		{"negative with punctuation", "2!", models.StateEndOfDay},
+		{"mixed punctuation", "1!.", models.StateFeelingPrompt},
 	}
 
 	for _, tt := range commitmentTests {
@@ -126,6 +235,13 @@ func TestMicroHealthInterventionCanonicalization(t *testing.T) {
 		{"with tabs", "\t4\t", "4"},
 		{"ready override", " READY ", "on_demand"},
 		{"ready mixed case", "ReAdY", "on_demand"},
+		// Punctuation handling tests
+		{"number with period", "3.", "3"},
+		{"number with exclamation", "4!", "4"},
+		{"number with comma", "2,", "2"},
+		{"ready with punctuation", "ready!", "on_demand"},
+		{"ready with period", "Ready.", "on_demand"},
+		{"mixed punctuation number", "1!.", "1"},
 	}
 
 	for _, tt := range feelingTests {

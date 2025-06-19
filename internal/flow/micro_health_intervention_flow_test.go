@@ -408,3 +408,193 @@ func TestMicroHealthInterventionFlow_ReadyOverride(t *testing.T) {
 		t.Errorf("Expected intervention state, got %s", currentState)
 	}
 }
+
+// TestMicroHealthInterventionFlow_PunctuationHandling tests that the system correctly handles
+// user responses with various punctuation marks (done!, done., ready!, yes!, etc.)
+func TestMicroHealthInterventionFlow_PunctuationHandling(t *testing.T) {
+	stateManager := NewMockStateManager()
+	timer := NewSimpleTimer()
+	generator := NewMicroHealthInterventionGenerator(stateManager, timer)
+	ctx := context.Background()
+	participantID := "test-participant-punctuation"
+
+	// Test cases for "done" responses with punctuation
+	doneTestCases := []string{
+		"done!",
+		"done.",
+		"Done!",
+		"DONE!",
+		"  done!  ",
+		"done!!!",
+		"done!.",
+		"done,",
+		"done;",
+		"done:",
+		"done-",
+		"done_",
+	}
+
+	for _, doneResponse := range doneTestCases {
+		t.Run("done_response_"+doneResponse, func(t *testing.T) {
+			// Reset state for each test
+			err := stateManager.SetCurrentState(ctx, participantID, models.FlowTypeMicroHealthIntervention, models.StateSendInterventionImmediate)
+			if err != nil {
+				t.Fatalf("Failed to set initial state: %v", err)
+			}
+
+			// Process the "done" response with punctuation
+			err = generator.ProcessResponse(ctx, participantID, doneResponse)
+			if err != nil {
+				t.Fatalf("Failed to process done response %q: %v", doneResponse, err)
+			}
+
+			// Verify it transitioned to reinforcement state
+			currentState, err := stateManager.GetCurrentState(ctx, participantID, models.FlowTypeMicroHealthIntervention)
+			if err != nil {
+				t.Fatalf("Failed to get current state: %v", err)
+			}
+			if currentState != models.StateReinforcementFollowup {
+				t.Errorf("Expected state %s after done response %q, got %s", models.StateReinforcementFollowup, doneResponse, currentState)
+			}
+
+			// Verify the response was stored correctly (without punctuation)
+			storedResponse, err := stateManager.GetStateData(ctx, participantID, models.FlowTypeMicroHealthIntervention, models.DataKeyCompletionResponse)
+			if err != nil {
+				t.Fatalf("Failed to get stored response: %v", err)
+			}
+			if storedResponse != string(models.ResponseDone) {
+				t.Errorf("Expected stored response %s, got %s", models.ResponseDone, storedResponse)
+			}
+		})
+	}
+
+	// Test cases for "ready" responses with punctuation
+	readyTestCases := []string{
+		"ready!",
+		"ready.",
+		"Ready!",
+		"READY!",
+		"  ready!  ",
+		"ready!!!",
+		"ready!.",
+	}
+
+	for _, readyResponse := range readyTestCases {
+		t.Run("ready_response_"+readyResponse, func(t *testing.T) {
+			// Reset state to END_OF_DAY for ready override test
+			err := stateManager.SetCurrentState(ctx, participantID, models.FlowTypeMicroHealthIntervention, models.StateEndOfDay)
+			if err != nil {
+				t.Fatalf("Failed to set initial state: %v", err)
+			}
+
+			// Process the "ready" response with punctuation
+			err = generator.ProcessResponse(ctx, participantID, readyResponse)
+			if err != nil {
+				t.Fatalf("Failed to process ready response %q: %v", readyResponse, err)
+			}
+
+			// Verify it transitioned to commitment prompt state
+			currentState, err := stateManager.GetCurrentState(ctx, participantID, models.FlowTypeMicroHealthIntervention)
+			if err != nil {
+				t.Fatalf("Failed to get current state: %v", err)
+			}
+			if currentState != models.StateCommitmentPrompt {
+				t.Errorf("Expected state %s after ready response %q, got %s", models.StateCommitmentPrompt, readyResponse, currentState)
+			}
+		})
+	}
+
+	// Test cases for "yes" and "no" responses with punctuation
+	yesNoTestCases := []struct {
+		response      string
+		expectedState models.StateType
+	}{
+		{"yes!", models.StateContextQuestion},
+		{"yes.", models.StateContextQuestion},
+		{"Yes!", models.StateContextQuestion},
+		{"YES!", models.StateContextQuestion},
+		{"  yes!  ", models.StateContextQuestion},
+		{"no!", models.StateBarrierReasonNoChance},
+		{"no.", models.StateBarrierReasonNoChance},
+		{"No!", models.StateBarrierReasonNoChance},
+		{"NO!", models.StateBarrierReasonNoChance},
+		{"  no!  ", models.StateBarrierReasonNoChance},
+	}
+
+	for _, testCase := range yesNoTestCases {
+		t.Run("yes_no_response_"+testCase.response, func(t *testing.T) {
+			// Reset state to DID_YOU_GET_A_CHANCE for yes/no test
+			err := stateManager.SetCurrentState(ctx, participantID, models.FlowTypeMicroHealthIntervention, models.StateDidYouGetAChance)
+			if err != nil {
+				t.Fatalf("Failed to set initial state: %v", err)
+			}
+
+			// Process the yes/no response with punctuation
+			err = generator.ProcessResponse(ctx, participantID, testCase.response)
+			if err != nil {
+				t.Fatalf("Failed to process yes/no response %q: %v", testCase.response, err)
+			}
+
+			// Verify it transitioned to the expected state
+			currentState, err := stateManager.GetCurrentState(ctx, participantID, models.FlowTypeMicroHealthIntervention)
+			if err != nil {
+				t.Fatalf("Failed to get current state: %v", err)
+			}
+			if currentState != testCase.expectedState {
+				t.Errorf("Expected state %s after response %q, got %s", testCase.expectedState, testCase.response, currentState)
+			}
+		})
+	}
+
+	// Test cases for numeric responses with punctuation
+	numericTestCases := []struct {
+		response      string
+		initialState  models.StateType
+		expectedState models.StateType
+	}{
+		{"1!", models.StateCommitmentPrompt, models.StateFeelingPrompt},
+		{"1.", models.StateCommitmentPrompt, models.StateFeelingPrompt},
+		{"2!", models.StateCommitmentPrompt, models.StateEndOfDay},
+		{"2.", models.StateCommitmentPrompt, models.StateEndOfDay},
+		{"3!", models.StateFeelingPrompt, models.StateRandomAssignment},
+		{"3.", models.StateFeelingPrompt, models.StateRandomAssignment},
+		{"4!", models.StateFeelingPrompt, models.StateRandomAssignment},
+		{"4.", models.StateFeelingPrompt, models.StateRandomAssignment},
+	}
+
+	for _, testCase := range numericTestCases {
+		t.Run("numeric_response_"+testCase.response, func(t *testing.T) {
+			// Reset state to the specified initial state
+			err := stateManager.SetCurrentState(ctx, participantID, models.FlowTypeMicroHealthIntervention, testCase.initialState)
+			if err != nil {
+				t.Fatalf("Failed to set initial state: %v", err)
+			}
+
+			// Process the numeric response with punctuation
+			err = generator.ProcessResponse(ctx, participantID, testCase.response)
+			if err != nil {
+				t.Fatalf("Failed to process numeric response %q: %v", testCase.response, err)
+			}
+
+			// For feeling prompts that go to random assignment, we need to check for either intervention state
+			if testCase.expectedState == models.StateRandomAssignment {
+				currentState, err := stateManager.GetCurrentState(ctx, participantID, models.FlowTypeMicroHealthIntervention)
+				if err != nil {
+					t.Fatalf("Failed to get current state: %v", err)
+				}
+				if currentState != models.StateSendInterventionImmediate && currentState != models.StateSendInterventionReflective {
+					t.Errorf("Expected intervention state after response %q, got %s", testCase.response, currentState)
+				}
+			} else {
+				// Verify it transitioned to the expected state
+				currentState, err := stateManager.GetCurrentState(ctx, participantID, models.FlowTypeMicroHealthIntervention)
+				if err != nil {
+					t.Fatalf("Failed to get current state: %v", err)
+				}
+				if currentState != testCase.expectedState {
+					t.Errorf("Expected state %s after response %q, got %s", testCase.expectedState, testCase.response, currentState)
+				}
+			}
+		})
+	}
+}
