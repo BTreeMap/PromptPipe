@@ -303,16 +303,22 @@ func TestCreateInterventionHook_FeelingResponse(t *testing.T) {
 		t.Error("Feeling response should have been handled")
 	}
 
-	// Verify state transition
+	// Verify state transition - should be one of the intervention states
 	newState, _ := stateManager.GetCurrentState(ctx, participantID, "micro_health_intervention")
-	if newState != "RANDOM_ASSIGNMENT" {
-		t.Errorf("Expected state RANDOM_ASSIGNMENT, got %s", newState)
+	if newState != "SEND_INTERVENTION_IMMEDIATE" && newState != "SEND_INTERVENTION_REFLECTIVE" {
+		t.Errorf("Expected state SEND_INTERVENTION_IMMEDIATE or SEND_INTERVENTION_REFLECTIVE, got %s", newState)
 	}
 
 	// Verify feeling response was stored
 	feelingResponse, _ := stateManager.GetStateData(ctx, participantID, "micro_health_intervention", "feelingResponse")
 	if feelingResponse != "3" {
 		t.Errorf("Expected feeling response 3, got %s", feelingResponse)
+	}
+
+	// Verify flow assignment was stored
+	flowAssignment, _ := stateManager.GetStateData(ctx, participantID, "micro_health_intervention", "flowAssignment")
+	if flowAssignment != "IMMEDIATE" && flowAssignment != "REFLECTIVE" {
+		t.Errorf("Expected flow assignment IMMEDIATE or REFLECTIVE, got %s", flowAssignment)
 	}
 }
 

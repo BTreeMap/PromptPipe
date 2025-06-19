@@ -5,6 +5,7 @@ package models
 
 import (
 	"errors"
+	"fmt"
 	"time"
 )
 
@@ -67,6 +68,78 @@ func IsValidPromptType(pt PromptType) bool {
 type BranchOption struct {
 	Label string `json:"label"` // option identifier shown to user
 	Body  string `json:"body"`  // message content if selected
+}
+
+// Branch represents a structured branching prompt with a main body and selectable options.
+// This provides a common structure for both branch prompts and micro health intervention flows.
+type Branch struct {
+	Body    string         `json:"body"`    // main prompt text
+	Options []BranchOption `json:"options"` // selectable options
+}
+
+// Generate formats the branch into a complete message with numbered options and instructions.
+func (b *Branch) Generate() string {
+	if len(b.Options) == 0 {
+		return b.Body
+	}
+
+	result := b.Body
+
+	// Add a separator line if body doesn't end with newline
+	if len(result) > 0 && result[len(result)-1] != '\n' {
+		result += "\n"
+	}
+
+	// Add options with better formatting
+	result += "\n"
+	for i, opt := range b.Options {
+		result += fmt.Sprintf("%d. %s: %s\n", i+1, opt.Label, opt.Body)
+	}
+
+	// Add user instruction with proper grammar
+	result += "\n"
+	if len(b.Options) == 2 {
+		result += "(Reply with '1' or '2')"
+	} else {
+		// Generate the range dynamically for multiple options
+		result += "(Reply with '1'"
+		for i := 2; i < len(b.Options); i++ {
+			result += fmt.Sprintf(", '%d'", i)
+		}
+		result += fmt.Sprintf(", or '%d')", len(b.Options))
+	}
+
+	return result
+}
+
+// Validate ensures the branch has valid structure.
+func (b *Branch) Validate() error {
+	if len(b.Options) == 0 {
+		return ErrMissingBranchOptions
+	}
+	if len(b.Options) < MinBranchOptionsCount {
+		return ErrInsufficientBranchOptions
+	}
+	if len(b.Options) > MaxBranchOptionsCount {
+		return ErrTooManyBranchOptions
+	}
+
+	for _, option := range b.Options {
+		if option.Label == "" {
+			return ErrEmptyBranchLabel
+		}
+		if len(option.Label) > MaxBranchLabelLength {
+			return ErrBranchLabelTooLong
+		}
+		if option.Body == "" {
+			return ErrEmptyBranchBody
+		}
+		if len(option.Body) > MaxBranchBodyLength {
+			return ErrBranchBodyTooLong
+		}
+	}
+
+	return nil
 }
 
 // Prompt represents a message to be sent, supporting static, GenAI, or branch types.

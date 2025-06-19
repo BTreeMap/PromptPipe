@@ -5,10 +5,12 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"math/rand"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/BTreeMap/PromptPipe/internal/flow"
 	"github.com/BTreeMap/PromptPipe/internal/models"
 )
 
@@ -207,9 +209,12 @@ func (rh *ResponseHandler) Start(ctx context.Context) {
 // processes responses according to the micro health intervention flow logic.
 func CreateInterventionHook(participantID, phoneNumber string, stateManager StateManager, msgService Service) ResponseAction {
 	return func(ctx context.Context, from, responseText string, timestamp int64) (bool, error) {
-		slog.Debug("InterventionHook processing response", "participantID", participantID, "from", from, "responseText", responseText)
+		slog.Debug("InterventionHook processing response", "from", from, "responseText", responseText)
 
-		// Get current state
+		// For simple operations, we use the stored participantID that was passed during hook creation.
+		// Only look up the participant from store when we need additional participant data.
+
+		// Get current state using the participantID from hook creation
 		currentState, err := stateManager.GetCurrentState(ctx, participantID, "micro_health_intervention")
 		if err != nil {
 			slog.Error("InterventionHook failed to get current state", "error", err, "participantID", participantID)
@@ -229,9 +234,8 @@ func CreateInterventionHook(participantID, phoneNumber string, stateManager Stat
 					return false, fmt.Errorf("failed to transition state: %w", err)
 				}
 
-				// Send commitment prompt
-				commitmentMsg := "You committed to trying a quick habit today—ready to go?\n1. 🚀 Let's do it!\n2. ⏳ Not yet\n(Reply with '1' or '2')"
-				if err := msgService.SendMessage(ctx, from, commitmentMsg); err != nil {
+				// Send commitment prompt using global variable
+				if err := msgService.SendMessage(ctx, from, flow.MsgCommitment); err != nil {
 					slog.Error("InterventionHook failed to send commitment prompt", "error", err, "participantID", participantID)
 					return false, fmt.Errorf("failed to send commitment prompt: %w", err)
 				}
@@ -243,19 +247,21 @@ func CreateInterventionHook(participantID, phoneNumber string, stateManager Stat
 		// Handle responses based on current state
 		switch currentState {
 		case "COMMITMENT_PROMPT":
-			return handleCommitmentResponse(ctx, participantID, responseText, stateManager, msgService)
+			return handleCommitmentResponse(ctx, participantID, from, responseText, stateManager, msgService)
 		case "FEELING_PROMPT":
-			return handleFeelingResponse(ctx, participantID, responseText, stateManager, msgService)
+			return handleFeelingResponse(ctx, participantID, from, responseText, stateManager, msgService)
 		case "SEND_INTERVENTION_IMMEDIATE", "SEND_INTERVENTION_REFLECTIVE":
-			return handleCompletionResponse(ctx, participantID, responseText, stateManager, msgService)
+			return handleCompletionResponse(ctx, participantID, from, responseText, stateManager, msgService)
 		case "DID_YOU_GET_A_CHANCE":
-			return handleDidYouGetAChanceResponse(ctx, participantID, responseText, stateManager, msgService)
+			return handleDidYouGetAChanceResponse(ctx, participantID, from, responseText, stateManager, msgService)
 		case "CONTEXT_QUESTION":
-			return handleContextResponse(ctx, participantID, responseText, stateManager, msgService)
+			return handleContextResponse(ctx, participantID, from, responseText, stateManager, msgService)
 		case "MOOD_QUESTION":
-			return handleMoodResponse(ctx, participantID, responseText, stateManager, msgService)
+			return handleMoodResponse(ctx, participantID, from, responseText, stateManager, msgService)
 		case "BARRIER_CHECK_AFTER_CONTEXT_MOOD":
-			return handleBarrierResponse(ctx, participantID, responseText, stateManager, msgService)
+			return handleBarrierResponse(ctx, participantID, from, responseText, stateManager, msgService)
+		case "BARRIER_REASON_NO_CHANCE":
+			return handleBarrierReasonResponse(ctx, participantID, from, responseText, stateManager, msgService)
 		case "END_OF_DAY":
 			// In END_OF_DAY, only "Ready" is handled (already processed above)
 			// Send polite message for other responses
@@ -488,10 +494,9 @@ type StateManager interface {
 	TransitionState(ctx context.Context, participantID, flowType, fromState, toState string) error
 }
 
-// Helper functions for handling specific state responses...
-// (These would be implemented to handle the micro health intervention logic)
+// Helper functions for handling specific intervention state responses
 
-func handleCommitmentResponse(ctx context.Context, participantID, responseText string, stateManager StateManager, msgService Service) (bool, error) {
+func handleCommitmentResponse(ctx context.Context, participantID, from, responseText string, stateManager StateManager, msgService Service) (bool, error) {
 	responseText = strings.TrimSpace(responseText)
 
 	switch responseText {
@@ -501,22 +506,35 @@ func handleCommitmentResponse(ctx context.Context, participantID, responseText s
 			return false, err
 		}
 
-		// TODO: Send feeling prompt message - need participant phone number
-		// For now, just transition state
+		// Send feeling prompt message using global variable
+		if err := msgService.SendMessage(ctx, from, flow.MsgFeeling); err != nil {
+			slog.Error("Failed to send feeling prompt", "error", err, "participantID", participantID)
+			return false, fmt.Errorf("failed to send feeling prompt: %w", err)
+		}
+
 		return true, nil
 	case "2":
 		// User chose "Not yet" - end for today
 		if err := stateManager.SetCurrentState(ctx, participantID, "micro_health_intervention", "END_OF_DAY"); err != nil {
 			return false, err
 		}
+
+		// Send end of day message
+		if err := msgService.SendMessage(ctx, from, flow.MsgEndOfDay); err != nil {
+			slog.Error("Failed to send end of day message", "error", err, "participantID", participantID)
+		}
+
 		return true, nil
 	default:
 		// Invalid response - ask them to try again
-		return false, nil
+		if err := msgService.SendMessage(ctx, from, flow.MsgInvalidCommitmentChoice); err != nil {
+			slog.Error("Failed to send retry message", "error", err, "participantID", participantID)
+		}
+		return true, nil // We handled it, even if invalid
 	}
 }
 
-func handleFeelingResponse(ctx context.Context, participantID, responseText string, stateManager StateManager, msgService Service) (bool, error) {
+func handleFeelingResponse(ctx context.Context, participantID, from, responseText string, stateManager StateManager, msgService Service) (bool, error) {
 	responseText = strings.TrimSpace(responseText)
 
 	// Check if it's a valid feeling response (1-5)
@@ -531,14 +549,54 @@ func handleFeelingResponse(ctx context.Context, participantID, responseText stri
 			return false, err
 		}
 
-		// TODO: Implement random assignment logic and send appropriate intervention
-		return true, nil
+		// Perform random assignment and send appropriate intervention
+		return performRandomAssignmentAndSendIntervention(ctx, participantID, from, stateManager, msgService)
 	}
 
-	return false, nil
+	// Invalid response - ask them to try again
+	if err := msgService.SendMessage(ctx, from, flow.MsgInvalidFeelingChoice); err != nil {
+		slog.Error("Failed to send retry message", "error", err, "participantID", participantID)
+	}
+	return true, nil
 }
 
-func handleCompletionResponse(ctx context.Context, participantID, responseText string, stateManager StateManager, msgService Service) (bool, error) {
+func performRandomAssignmentAndSendIntervention(ctx context.Context, participantID, from string, stateManager StateManager, msgService Service) (bool, error) {
+	// Simple random assignment using Go 1.20+ recommended approach
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	isImmediate := rng.Float64() < 0.5
+
+	var nextState, interventionMsg string
+	if isImmediate {
+		nextState = "SEND_INTERVENTION_IMMEDIATE"
+		interventionMsg = flow.MsgImmediateIntervention
+		// Store assignment for tracking
+		if err := stateManager.SetStateData(ctx, participantID, "micro_health_intervention", "flowAssignment", "IMMEDIATE"); err != nil {
+			return false, err
+		}
+	} else {
+		nextState = "SEND_INTERVENTION_REFLECTIVE"
+		interventionMsg = flow.MsgReflectiveIntervention
+		// Store assignment for tracking
+		if err := stateManager.SetStateData(ctx, participantID, "micro_health_intervention", "flowAssignment", "REFLECTIVE"); err != nil {
+			return false, err
+		}
+	}
+
+	// Transition to intervention state
+	if err := stateManager.SetCurrentState(ctx, participantID, "micro_health_intervention", nextState); err != nil {
+		return false, err
+	}
+
+	// Send intervention message using the phone number (from), not participantID
+	if err := msgService.SendMessage(ctx, from, interventionMsg); err != nil {
+		slog.Error("Failed to send intervention message", "error", err, "participantID", participantID)
+		return false, fmt.Errorf("failed to send intervention message: %w", err)
+	}
+
+	return true, nil
+}
+
+func handleCompletionResponse(ctx context.Context, participantID, from, responseText string, stateManager StateManager, msgService Service) (bool, error) {
 	responseText = strings.ToLower(strings.TrimSpace(responseText))
 
 	switch responseText {
@@ -548,7 +606,17 @@ func handleCompletionResponse(ctx context.Context, participantID, responseText s
 			return false, err
 		}
 
-		// TODO: Send reinforcement message and transition to END_OF_DAY
+		// Send reinforcement message
+		if err := msgService.SendMessage(ctx, from, flow.MsgReinforcement); err != nil {
+			slog.Error("Failed to send reinforcement message", "error", err, "participantID", participantID)
+			return false, fmt.Errorf("failed to send reinforcement message: %w", err)
+		}
+
+		// Transition to end of day after reinforcement
+		if err := stateManager.SetCurrentState(ctx, participantID, "micro_health_intervention", "END_OF_DAY"); err != nil {
+			slog.Error("Failed to transition to END_OF_DAY after reinforcement", "error", err, "participantID", participantID)
+		}
+
 		return true, nil
 	case "no":
 		// User explicitly said no - ask if they got a chance
@@ -556,15 +624,24 @@ func handleCompletionResponse(ctx context.Context, participantID, responseText s
 			return false, err
 		}
 
-		// TODO: Send "did you get a chance" message
+		// Send "did you get a chance" message
+		if err := msgService.SendMessage(ctx, from, flow.MsgDidYouGetAChance); err != nil {
+			slog.Error("Failed to send 'did you get a chance' message", "error", err, "participantID", participantID)
+			return false, fmt.Errorf("failed to send followup message: %w", err)
+		}
+
 		return true, nil
 	default:
-		// Invalid response for completion check
-		return false, nil
+		// Invalid response for completion check - provide guidance
+		retryMsg := "Please reply 'Done' if you completed the habit, or 'No' if you didn't."
+		if err := msgService.SendMessage(ctx, from, retryMsg); err != nil {
+			slog.Error("Failed to send retry message", "error", err, "participantID", participantID)
+		}
+		return true, nil
 	}
 }
 
-func handleDidYouGetAChanceResponse(ctx context.Context, participantID, responseText string, stateManager StateManager, msgService Service) (bool, error) {
+func handleDidYouGetAChanceResponse(ctx context.Context, participantID, from, responseText string, stateManager StateManager, msgService Service) (bool, error) {
 	responseText = strings.TrimSpace(responseText)
 
 	switch responseText {
@@ -573,21 +650,37 @@ func handleDidYouGetAChanceResponse(ctx context.Context, participantID, response
 		if err := stateManager.SetCurrentState(ctx, participantID, "micro_health_intervention", "CONTEXT_QUESTION"); err != nil {
 			return false, err
 		}
-		// TODO: Send context question
+
+		// Send context question
+		if err := msgService.SendMessage(ctx, from, flow.MsgContext); err != nil {
+			slog.Error("Failed to send context message", "error", err, "participantID", participantID)
+			return false, fmt.Errorf("failed to send context message: %w", err)
+		}
+
 		return true, nil
 	case "2":
 		// No, they didn't get a chance - ask barrier reason
 		if err := stateManager.SetCurrentState(ctx, participantID, "micro_health_intervention", "BARRIER_REASON_NO_CHANCE"); err != nil {
 			return false, err
 		}
-		// TODO: Send barrier reason question
+
+		// Send barrier reason question
+		if err := msgService.SendMessage(ctx, from, flow.MsgBarrierReason); err != nil {
+			slog.Error("Failed to send barrier reason message", "error", err, "participantID", participantID)
+			return false, fmt.Errorf("failed to send barrier reason message: %w", err)
+		}
+
 		return true, nil
 	default:
-		return false, nil
+		// Invalid response - provide guidance
+		if err := msgService.SendMessage(ctx, from, flow.MsgInvalidDidYouGetAChance); err != nil {
+			slog.Error("Failed to send retry message", "error", err, "participantID", participantID)
+		}
+		return true, nil
 	}
 }
 
-func handleContextResponse(ctx context.Context, participantID, responseText string, stateManager StateManager, msgService Service) (bool, error) {
+func handleContextResponse(ctx context.Context, participantID, from, responseText string, stateManager StateManager, msgService Service) (bool, error) {
 	responseText = strings.TrimSpace(responseText)
 
 	if responseText >= "1" && responseText <= "4" {
@@ -600,14 +693,23 @@ func handleContextResponse(ctx context.Context, participantID, responseText stri
 			return false, err
 		}
 
-		// TODO: Send mood question
+		// Send mood question
+		if err := msgService.SendMessage(ctx, from, flow.MsgMood); err != nil {
+			slog.Error("Failed to send mood message", "error", err, "participantID", participantID)
+			return false, fmt.Errorf("failed to send mood message: %w", err)
+		}
+
 		return true, nil
 	}
 
-	return false, nil
+	// Invalid response - provide guidance
+	if err := msgService.SendMessage(ctx, from, flow.MsgInvalidContextChoice); err != nil {
+		slog.Error("Failed to send retry message", "error", err, "participantID", participantID)
+	}
+	return true, nil
 }
 
-func handleMoodResponse(ctx context.Context, participantID, responseText string, stateManager StateManager, msgService Service) (bool, error) {
+func handleMoodResponse(ctx context.Context, participantID, from, responseText string, stateManager StateManager, msgService Service) (bool, error) {
 	responseText = strings.TrimSpace(responseText)
 
 	if responseText >= "1" && responseText <= "3" {
@@ -620,14 +722,23 @@ func handleMoodResponse(ctx context.Context, participantID, responseText string,
 			return false, err
 		}
 
-		// TODO: Send barrier check question
+		// Send barrier detail question (free text)
+		if err := msgService.SendMessage(ctx, from, flow.MsgBarrierDetail); err != nil {
+			slog.Error("Failed to send barrier detail message", "error", err, "participantID", participantID)
+			return false, fmt.Errorf("failed to send barrier detail message: %w", err)
+		}
+
 		return true, nil
 	}
 
-	return false, nil
+	// Invalid response - provide guidance
+	if err := msgService.SendMessage(ctx, from, flow.MsgInvalidMoodChoice); err != nil {
+		slog.Error("Failed to send retry message", "error", err, "participantID", participantID)
+	}
+	return true, nil
 }
 
-func handleBarrierResponse(ctx context.Context, participantID, responseText string, stateManager StateManager, msgService Service) (bool, error) {
+func handleBarrierResponse(ctx context.Context, participantID, from, responseText string, stateManager StateManager, msgService Service) (bool, error) {
 	// Any text response is valid for barrier details - store and end
 	if err := stateManager.SetStateData(ctx, participantID, "micro_health_intervention", "barrierResponse", responseText); err != nil {
 		return false, err
@@ -637,5 +748,40 @@ func handleBarrierResponse(ctx context.Context, participantID, responseText stri
 		return false, err
 	}
 
+	// Send acknowledgment and end day message
+	endMsg := "Thank you for sharing. Your insights help us improve the program. Have a good rest of your day! 🌟"
+	if err := msgService.SendMessage(ctx, from, endMsg); err != nil {
+		slog.Error("Failed to send end of day acknowledgment", "error", err, "participantID", participantID)
+	}
+
+	return true, nil
+}
+
+func handleBarrierReasonResponse(ctx context.Context, participantID, from, responseText string, stateManager StateManager, msgService Service) (bool, error) {
+	responseText = strings.TrimSpace(responseText)
+
+	if responseText >= "1" && responseText <= "4" {
+		// Valid barrier reason response - store and end
+		if err := stateManager.SetStateData(ctx, participantID, "micro_health_intervention", "barrierReasonResponse", responseText); err != nil {
+			return false, err
+		}
+
+		if err := stateManager.SetCurrentState(ctx, participantID, "micro_health_intervention", "END_OF_DAY"); err != nil {
+			return false, err
+		}
+
+		// Send acknowledgment and end day message
+		endMsg := "Thank you for letting us know. We understand that things come up. Tomorrow is a new opportunity! 💪"
+		if err := msgService.SendMessage(ctx, from, endMsg); err != nil {
+			slog.Error("Failed to send end of day acknowledgment", "error", err, "participantID", participantID)
+		}
+
+		return true, nil
+	}
+
+	// Invalid response - provide guidance
+	if err := msgService.SendMessage(ctx, from, flow.MsgInvalidBarrierChoice); err != nil {
+		slog.Error("Failed to send retry message", "error", err, "participantID", participantID)
+	}
 	return true, nil
 }
