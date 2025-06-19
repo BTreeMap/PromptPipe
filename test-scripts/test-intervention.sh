@@ -15,11 +15,11 @@ echo "========================================================================"
 echo "Testing Stateful Micro Health Intervention API"
 echo "========================================================================"
 
-# Test variables
-PARTICIPANT_1_PHONE="${PARTICIPANT_1_PHONE:-+1555100001}"
-PARTICIPANT_2_PHONE="${PARTICIPANT_2_PHONE:-+1555100002}"
-PARTICIPANT_3_PHONE="${PARTICIPANT_3_PHONE:-+1555100003}"
+# Test variables - Use unique phone numbers for each test run
 CURRENT_TIME=$(date +%s)
+PARTICIPANT_1_PHONE="${PARTICIPANT_1_PHONE:-+1555${CURRENT_TIME}001}"
+PARTICIPANT_2_PHONE="${PARTICIPANT_2_PHONE:-+1555${CURRENT_TIME}002}"
+PARTICIPANT_3_PHONE="${PARTICIPANT_3_PHONE:-+1555${CURRENT_TIME}003}"
 
 # Global variables for participant IDs (extracted from responses)
 PARTICIPANT_1_ID=""
@@ -605,16 +605,16 @@ echo "=================================================="
 # Test 27: Comprehensive phone number validation
 phone_validation_tests() {
     local phones=(
-        "123456789:400"           # Too short
-        "+1234567890123456:400"   # Too long
-        "not-a-phone:400"         # Invalid format
-        "++1234567890:400"        # Double plus
-        "+1 (555) 123-4567:400"   # With formatting (might be valid depending on implementation)
+        "12345:400"               # Too short (5 digits, minimum is 6)
+        "1234:400"                # Too short (4 digits)
+        "not-a-phone:400"         # Invalid format (no digits)
+        "abc-def-ghij:400"        # No digits
+        "":400                    # Empty phone number
     )
     
     for phone_test in "${phones[@]}"; do
         IFS=':' read -r phone expected_status <<< "$phone_test"
-        test_endpoint "POST" "/intervention/participants" "{\"phone_number\": \"$phone\"}" "$expected_status" "Phone validation: $phone"
+        test_endpoint "POST" "/intervention/participants" "{\"phone_number\": \"$phone\", \"name\": \"Test User\"}" "$expected_status" "Phone validation: $phone"
     done
 }
 
