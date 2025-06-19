@@ -45,7 +45,7 @@ echo "=================================================="
 
 # Calculate a near-future time for immediate prompt testing
 IMMEDIATE_PROMPT_TIME=$(date -d "+2 minutes" +%H:%M)
-log "Setting up participants to receive prompts at $IMMEDIATE_PROMPT_TIME UTC (in 2 minutes)"
+log "Setting up participants to receive prompts at $IMMEDIATE_PROMPT_TIME America/Toronto (in 2 minutes)"
 
 # Test 1: Enroll first participant with immediate prompt time
 log "Testing participant enrollment with immediate prompt scheduling..."
@@ -54,7 +54,7 @@ response=$(curl -s -w "HTTPSTATUS:%{http_code}" -X POST \
     -d '{
         "phone_number": "'$PARTICIPANT_1_PHONE'",
         "name": "Test Participant One",
-        "timezone": "UTC",
+        "timezone": "America/Toronto",
         "daily_prompt_time": "'$IMMEDIATE_PROMPT_TIME'"
     }' \
     "$API_BASE_URL/intervention/participants")
@@ -67,7 +67,7 @@ if [ "$status" = "201" ]; then
     PARTICIPANT_1_ID=$(extract_participant_id "$body")
     if [ -n "$PARTICIPANT_1_ID" ]; then
         log "Extracted participant 1 ID: $PARTICIPANT_1_ID"
-        log "📱 Check $PARTICIPANT_1_PHONE for welcome message and prompt at $IMMEDIATE_PROMPT_TIME UTC"
+        log "📱 Check $PARTICIPANT_1_PHONE for welcome message and prompt at $IMMEDIATE_PROMPT_TIME America/Toronto"
     else
         error "Failed to extract participant ID from response"
     fi
@@ -83,7 +83,7 @@ response=$(curl -s -w "HTTPSTATUS:%{http_code}" -X POST \
     -d '{
         "phone_number": "'$PARTICIPANT_2_PHONE'",
         "name": "Test Participant Two", 
-        "timezone": "UTC",
+        "timezone": "America/Toronto",
         "daily_prompt_time": "'$IMMEDIATE_PROMPT_TIME'"
     }' \
     "$API_BASE_URL/intervention/participants")
@@ -96,7 +96,7 @@ if [ "$status" = "201" ]; then
     PARTICIPANT_2_ID=$(extract_participant_id "$body")
     if [ -n "$PARTICIPANT_2_ID" ]; then
         log "Extracted participant 2 ID: $PARTICIPANT_2_ID"
-        log "📱 Check $PARTICIPANT_2_PHONE for welcome message and prompt at $IMMEDIATE_PROMPT_TIME UTC"
+        log "📱 Check $PARTICIPANT_2_PHONE for welcome message and prompt at $IMMEDIATE_PROMPT_TIME America/Toronto"
     else
         error "Failed to extract participant ID from response"
     fi
@@ -111,7 +111,7 @@ response=$(curl -s -w "HTTPSTATUS:%{http_code}" -X POST \
     -d '{
         "phone_number": "'$PARTICIPANT_3_PHONE'",
         "name": "Test Participant Three",
-        "timezone": "UTC", 
+        "timezone": "America/Toronto", 
         "daily_prompt_time": "'$IMMEDIATE_PROMPT_TIME'"
     }' \
     "$API_BASE_URL/intervention/participants")
@@ -124,7 +124,7 @@ if [ "$status" = "201" ]; then
     PARTICIPANT_3_ID=$(extract_participant_id "$body")
     if [ -n "$PARTICIPANT_3_ID" ]; then
         log "Extracted participant 3 ID: $PARTICIPANT_3_ID"
-        log "📱 Check $PARTICIPANT_3_PHONE for welcome message and prompt at $IMMEDIATE_PROMPT_TIME UTC"
+        log "📱 Check $PARTICIPANT_3_PHONE for welcome message and prompt at $IMMEDIATE_PROMPT_TIME America/Toronto"
     else
         error "Failed to extract participant ID from response"
     fi
@@ -226,25 +226,25 @@ echo "=================================================="
 
 # Test all three participants with immediate schedule changes
 NEXT_MINUTE_1=$(date -d "+1 minute" +%H:%M)
-NEXT_MINUTE_2=$(date -d "+2 minutes" +%H:%M)
+NEXT_MINUTE_2=$(TZ=America/Toronto date -d "+2 minutes" +%H:%M)
 NEXT_MINUTE_3=$(date -d "+3 minutes" +%H:%M)
 
 log "Testing immediate schedule changes for all participants..."
-log "Participant 1 will get prompt at $NEXT_MINUTE_1 UTC (in ~1 minute)"
-log "Participant 2 will get prompt at $NEXT_MINUTE_2 UTC (in ~2 minutes)"
-log "Participant 3 will get prompt at $NEXT_MINUTE_3 UTC (in ~3 minutes)"
+log "Participant 1 will get prompt at $NEXT_MINUTE_1 America/Toronto (in ~1 minute)"
+log "Participant 2 will get prompt at $NEXT_MINUTE_2 America/Toronto (in ~2 minutes)"
+log "Participant 3 will get prompt at $NEXT_MINUTE_3 America/Toronto (in ~3 minutes)"
 
 # Test schedule change for Participant 1
 if [ -n "$PARTICIPANT_1_ID" ]; then
     log "Updating participant 1 schedule to $NEXT_MINUTE_1..."
     test_endpoint "PUT" "/intervention/participants/$PARTICIPANT_1_ID" '{
         "daily_prompt_time": "'$NEXT_MINUTE_1'",
-        "timezone": "UTC"
+        "timezone": "America/Toronto"
     }' "200" "Update participant 1 prompt time to $NEXT_MINUTE_1"
     
     log "📱 $PARTICIPANT_1_PHONE should receive:"
     log "   1. Schedule change notification immediately"
-    log "   2. Daily prompt at $NEXT_MINUTE_1 UTC"
+    log "   2. Daily prompt at $NEXT_MINUTE_1 America/Toronto"
 fi
 
 # Test schedule change for Participant 2
@@ -252,12 +252,12 @@ if [ -n "$PARTICIPANT_2_ID" ]; then
     log "Updating participant 2 schedule to $NEXT_MINUTE_2..."
     test_endpoint "PUT" "/intervention/participants/$PARTICIPANT_2_ID" '{
         "daily_prompt_time": "'$NEXT_MINUTE_2'",
-        "timezone": "UTC"
+        "timezone": "America/Toronto"
     }' "200" "Update participant 2 prompt time to $NEXT_MINUTE_2"
     
     log "📱 $PARTICIPANT_2_PHONE should receive:"
     log "   1. Schedule change notification immediately"
-    log "   2. Daily prompt at $NEXT_MINUTE_2 UTC"
+    log "   2. Daily prompt at $NEXT_MINUTE_2 America/Toronto"
 fi
 
 # Test schedule change for Participant 3
@@ -265,12 +265,12 @@ if [ -n "$PARTICIPANT_3_ID" ]; then
     log "Updating participant 3 schedule to $NEXT_MINUTE_3..."
     test_endpoint "PUT" "/intervention/participants/$PARTICIPANT_3_ID" '{
         "daily_prompt_time": "'$NEXT_MINUTE_3'",
-        "timezone": "UTC"
+        "timezone": "America/Toronto"
     }' "200" "Update participant 3 prompt time to $NEXT_MINUTE_3"
     
     log "📱 $PARTICIPANT_3_PHONE should receive:"
     log "   1. Schedule change notification immediately"
-    log "   2. Daily prompt at $NEXT_MINUTE_3 UTC"
+    log "   2. Daily prompt at $NEXT_MINUTE_3 America/Toronto"
 fi
 
 # Test updating other fields without changing schedule (should not send notification)
@@ -342,10 +342,10 @@ fi
 # Display summary of what should happen
 echo
 log "🕐 SCHEDULE SUMMARY - What should happen next:"
-log "   $NEXT_MINUTE_1 UTC: $PARTICIPANT_1_PHONE gets daily prompt"
-log "   $NEXT_MINUTE_2 UTC: $PARTICIPANT_2_PHONE gets daily prompt"  
-log "   $NEXT_MINUTE_3 UTC: $PARTICIPANT_3_PHONE gets daily prompt"
-log "   $NEXT_MINUTE_MULTI UTC: $PARTICIPANT_2_PHONE gets additional prompt (if not updated again)"
+log "   $NEXT_MINUTE_1 America/Toronto: $PARTICIPANT_1_PHONE gets daily prompt"
+log "   $NEXT_MINUTE_2 America/Toronto: $PARTICIPANT_2_PHONE gets daily prompt"  
+log "   $NEXT_MINUTE_3 America/Toronto: $PARTICIPANT_3_PHONE gets daily prompt"
+log "   $NEXT_MINUTE_MULTI America/Toronto: $PARTICIPANT_2_PHONE gets additional prompt (if not updated again)"
 log ""
 log "💡 All participants should have already received welcome messages and schedule change notifications"
 log "⏰ You can verify the system is working by checking these phones at the scheduled times!"
