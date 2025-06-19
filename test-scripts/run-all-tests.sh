@@ -29,6 +29,7 @@ test_suites=(
     "test-schedule.sh" 
     "test-responses.sh"
     "test-receipts.sh"
+    "test-intervention.sh"
 )
 
 for suite in "${test_suites[@]}"; do
