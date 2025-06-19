@@ -178,10 +178,7 @@ func (s *Server) scheduleHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	// Job scheduled successfully
 	slog.Info("Job scheduled successfully", "to", p.To, "cron", p.Cron, "timerID", timerID)
-	writeJSONResponse(w, http.StatusCreated, models.Success(map[string]interface{}{
-		"message": "Scheduled successfully",
-		"timerID": timerID,
-	}))
+	writeJSONResponse(w, http.StatusCreated, models.SuccessWithMessage("Scheduled successfully", timerID))
 }
 
 func (s *Server) receiptsHandler(w http.ResponseWriter, r *http.Request) {
