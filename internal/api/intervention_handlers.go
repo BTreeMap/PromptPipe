@@ -522,6 +522,14 @@ func (s *Server) getParticipantHistoryHandler(w http.ResponseWriter, r *http.Req
 func (s *Server) triggerWeeklySummaryHandler(w http.ResponseWriter, r *http.Request) {
 	slog.Debug("triggerWeeklySummaryHandler invoked", "method", r.Method, "path", r.URL.Path)
 
+	// Check HTTP method
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", http.MethodPost)
+		slog.Warn("triggerWeeklySummaryHandler method not allowed", "method", r.Method)
+		writeJSONResponse(w, http.StatusMethodNotAllowed, models.Error("Method not allowed"))
+		return
+	}
+
 	// Get all active participants
 	participants, err := s.st.ListInterventionParticipants()
 	if err != nil {
@@ -566,6 +574,14 @@ func (s *Server) triggerWeeklySummaryHandler(w http.ResponseWriter, r *http.Requ
 // interventionStatsHandler handles GET /intervention/stats
 func (s *Server) interventionStatsHandler(w http.ResponseWriter, r *http.Request) {
 	slog.Debug("interventionStatsHandler invoked", "method", r.Method, "path", r.URL.Path)
+
+	// Check HTTP method
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", http.MethodGet)
+		slog.Warn("interventionStatsHandler method not allowed", "method", r.Method)
+		writeJSONResponse(w, http.StatusMethodNotAllowed, models.Error("Method not allowed"))
+		return
+	}
 
 	// Get all participants
 	participants, err := s.st.ListInterventionParticipants()
