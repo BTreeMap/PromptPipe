@@ -235,11 +235,11 @@ func (s *PostgresStore) GetFlowState(participantID, flowType string) (*models.Fl
 
 	// Convert JSON back to map[string]string
 	if len(stateDataJSON) > 0 {
-		state.StateData = make(map[string]string)
+		state.StateData = make(map[models.DataKey]string)
 		if err := json.Unmarshal(stateDataJSON, &state.StateData); err != nil {
 			slog.Error("PostgresStore GetFlowState JSON unmarshal failed", "error", err, "participantID", participantID)
 			// Continue with empty map rather than failing
-			state.StateData = make(map[string]string)
+			state.StateData = make(map[models.DataKey]string)
 		}
 	}
 

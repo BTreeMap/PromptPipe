@@ -205,7 +205,7 @@ func (s *InMemoryStore) Close() error {
 func (s *InMemoryStore) SaveFlowState(state models.FlowState) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	key := state.ParticipantID + "_" + state.FlowType
+	key := state.ParticipantID + "_" + string(state.FlowType)
 	s.flowStates[key] = state
 	slog.Debug("InMemoryStore SaveFlowState succeeded", "participantID", state.ParticipantID, "flowType", state.FlowType, "state", state.CurrentState)
 	return nil

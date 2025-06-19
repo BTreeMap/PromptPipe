@@ -249,11 +249,11 @@ func (s *SQLiteStore) GetFlowState(participantID, flowType string) (*models.Flow
 
 	// Convert JSON back to map[string]string
 	if stateDataJSON != "" {
-		state.StateData = make(map[string]string)
+		state.StateData = make(map[models.DataKey]string)
 		if err := json.Unmarshal([]byte(stateDataJSON), &state.StateData); err != nil {
 			slog.Error("SQLiteStore GetFlowState JSON unmarshal failed", "error", err, "participantID", participantID)
 			// Continue with empty map rather than failing
-			state.StateData = make(map[string]string)
+			state.StateData = make(map[models.DataKey]string)
 		}
 	}
 
