@@ -10,6 +10,12 @@ import (
 	"github.com/BTreeMap/PromptPipe/internal/models"
 )
 
+// canonicalizeResponse standardizes user responses by trimming whitespace and converting to lowercase.
+// This ensures consistent processing of user input across all intervention flows.
+func canonicalizeResponse(response string) string {
+	return strings.ToLower(strings.TrimSpace(response))
+}
+
 // Simple message constants for micro health intervention flow.
 const (
 	MsgOrientation      = "Hi! 🌱 Welcome to our Healthy Habits study!\nHere's how it works: You will receive messages on a schedule, or type 'Ready' anytime to get a prompt. Your input is important."
@@ -264,7 +270,7 @@ func (g *MicroHealthInterventionGenerator) ProcessResponse(ctx context.Context, 
 	slog.Debug("MicroHealthIntervention ProcessResponse", "participantID", participantID, "response", response, "currentState", currentState)
 
 	// Handle "Ready" override - can be sent at any time to trigger immediate intervention
-	if strings.ToLower(strings.TrimSpace(response)) == "ready" && currentState == models.StateEndOfDay {
+	if canonicalizeResponse(response) == "ready" && currentState == models.StateEndOfDay {
 		return g.transitionToState(ctx, participantID, models.StateCommitmentPrompt)
 	}
 
@@ -300,7 +306,7 @@ func (g *MicroHealthInterventionGenerator) ProcessResponse(ctx context.Context, 
 
 	case models.StateEndOfDay:
 		// Ignore most responses when day is complete, except "Ready"
-		if strings.ToLower(strings.TrimSpace(response)) == "ready" {
+		if canonicalizeResponse(response) == "ready" {
 			return g.transitionToState(ctx, participantID, models.StateCommitmentPrompt)
 		}
 		slog.Debug("MicroHealthIntervention ignoring response in END_OF_DAY state", "participantID", participantID, "response", response)
@@ -325,7 +331,7 @@ func (g *MicroHealthInterventionGenerator) transitionToState(ctx context.Context
 
 // processCommitmentResponse handles responses to the commitment prompt
 func (g *MicroHealthInterventionGenerator) processCommitmentResponse(ctx context.Context, participantID, response string) error {
-	response = strings.TrimSpace(response)
+	response = canonicalizeResponse(response)
 
 	// Cancel any existing commitment timer
 	if timerID, err := g.stateManager.GetStateData(ctx, participantID, models.FlowTypeMicroHealthIntervention, models.DataKeyCommitmentTimerID); err == nil && timerID != "" {
@@ -333,7 +339,7 @@ func (g *MicroHealthInterventionGenerator) processCommitmentResponse(ctx context
 	}
 
 	switch response {
-	case "1", "🚀 Let's do it!":
+	case "1", "🚀 let's do it!":
 		// Store positive response and move to feeling prompt
 		err := g.stateManager.SetStateData(ctx, participantID, models.FlowTypeMicroHealthIntervention, models.DataKeyCommitmentTimerID, "")
 		if err != nil {
@@ -350,7 +356,7 @@ func (g *MicroHealthInterventionGenerator) processCommitmentResponse(ctx context
 
 		return g.transitionToState(ctx, participantID, models.StateFeelingPrompt)
 
-	case "2", "⏳ Not yet":
+	case "2", "⏳ not yet":
 		// Store negative response and end day
 		return g.transitionToState(ctx, participantID, models.StateEndOfDay)
 
@@ -363,7 +369,7 @@ func (g *MicroHealthInterventionGenerator) processCommitmentResponse(ctx context
 
 // processFeelingResponse handles responses to the feeling prompt
 func (g *MicroHealthInterventionGenerator) processFeelingResponse(ctx context.Context, participantID, response string) error {
-	response = strings.TrimSpace(response)
+	response = canonicalizeResponse(response)
 
 	// Cancel feeling timer
 	if timerID, err := g.stateManager.GetStateData(ctx, participantID, models.FlowTypeMicroHealthIntervention, models.DataKeyFeelingTimerID); err == nil && timerID != "" {
@@ -371,7 +377,7 @@ func (g *MicroHealthInterventionGenerator) processFeelingResponse(ctx context.Co
 	}
 
 	// Handle "Ready" override
-	if strings.ToLower(response) == "ready" {
+	if response == "ready" {
 		err := g.stateManager.SetStateData(ctx, participantID, models.FlowTypeMicroHealthIntervention, models.DataKeyFeelingResponse, "on_demand")
 		if err != nil {
 			return err
@@ -425,7 +431,7 @@ func (g *MicroHealthInterventionGenerator) processRandomAssignment(ctx context.C
 
 // processInterventionResponse handles responses to intervention prompts
 func (g *MicroHealthInterventionGenerator) processInterventionResponse(ctx context.Context, participantID, response string) error {
-	response = strings.TrimSpace(strings.ToLower(response))
+	response = canonicalizeResponse(response)
 
 	// Cancel completion timer
 	if timerID, err := g.stateManager.GetStateData(ctx, participantID, models.FlowTypeMicroHealthIntervention, models.DataKeyCompletionTimerID); err == nil && timerID != "" {
@@ -470,7 +476,7 @@ func (g *MicroHealthInterventionGenerator) scheduleDidYouGetAChance(ctx context.
 
 // processDidYouGetAChanceResponse handles responses to "did you get a chance" question
 func (g *MicroHealthInterventionGenerator) processDidYouGetAChanceResponse(ctx context.Context, participantID, response string) error {
-	response = strings.TrimSpace(response)
+	response = canonicalizeResponse(response)
 
 	// Cancel timer
 	if timerID, err := g.stateManager.GetStateData(ctx, participantID, models.FlowTypeMicroHealthIntervention, models.DataKeyDidYouGetAChanceTimerID); err == nil && timerID != "" {
@@ -514,7 +520,7 @@ func (g *MicroHealthInterventionGenerator) scheduleContextQuestion(ctx context.C
 
 // processContextResponse handles responses to context question
 func (g *MicroHealthInterventionGenerator) processContextResponse(ctx context.Context, participantID, response string) error {
-	response = strings.TrimSpace(response)
+	response = canonicalizeResponse(response)
 
 	// Cancel timer
 	if timerID, err := g.stateManager.GetStateData(ctx, participantID, models.FlowTypeMicroHealthIntervention, models.DataKeyContextTimerID); err == nil && timerID != "" {
@@ -547,7 +553,7 @@ func (g *MicroHealthInterventionGenerator) scheduleMoodQuestion(ctx context.Cont
 
 // processMoodResponse handles responses to mood question
 func (g *MicroHealthInterventionGenerator) processMoodResponse(ctx context.Context, participantID, response string) error {
-	response = strings.TrimSpace(response)
+	response = canonicalizeResponse(response)
 
 	// Cancel timer
 	if timerID, err := g.stateManager.GetStateData(ctx, participantID, models.FlowTypeMicroHealthIntervention, models.DataKeyMoodTimerID); err == nil && timerID != "" {
@@ -580,6 +586,8 @@ func (g *MicroHealthInterventionGenerator) scheduleBarrierCheck(ctx context.Cont
 
 // processBarrierDetailResponse handles free-text responses to barrier detail question
 func (g *MicroHealthInterventionGenerator) processBarrierDetailResponse(ctx context.Context, participantID, response string) error {
+	response = canonicalizeResponse(response)
+
 	// Cancel timer
 	if timerID, err := g.stateManager.GetStateData(ctx, participantID, models.FlowTypeMicroHealthIntervention, models.DataKeyBarrierCheckTimerID); err == nil && timerID != "" {
 		g.timer.Cancel(timerID)
@@ -608,7 +616,7 @@ func (g *MicroHealthInterventionGenerator) scheduleBarrierReason(ctx context.Con
 
 // processBarrierReasonResponse handles responses to barrier reason question
 func (g *MicroHealthInterventionGenerator) processBarrierReasonResponse(ctx context.Context, participantID, response string) error {
-	response = strings.TrimSpace(response)
+	response = canonicalizeResponse(response)
 
 	// Cancel timer
 	if timerID, err := g.stateManager.GetStateData(ctx, participantID, models.FlowTypeMicroHealthIntervention, models.DataKeyBarrierReasonTimerID); err == nil && timerID != "" {

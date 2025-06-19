@@ -50,6 +50,21 @@ func (m *MockStateManager) TransitionState(ctx context.Context, participantID st
 	return m.SetCurrentState(ctx, participantID, flowType, toState)
 }
 
+func (m *MockStateManager) ResetState(ctx context.Context, participantID string, flowType models.FlowType) error {
+	// Remove state and data for this participant and flow type
+	stateKey := participantID + ":" + string(flowType)
+	delete(m.states, stateKey)
+	
+	// Remove all state data for this participant and flow type
+	prefix := participantID + ":" + string(flowType) + ":"
+	for dataKey := range m.data {
+		if strings.HasPrefix(dataKey, prefix) {
+			delete(m.data, dataKey)
+		}
+	}
+	return nil
+}
+
 func TestResponseHandler_RegisterHook(t *testing.T) {
 	mockClient := whatsapp.NewMockClient()
 	msgService := NewWhatsAppService(mockClient)
