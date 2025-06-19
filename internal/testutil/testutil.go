@@ -11,7 +11,6 @@ import (
 	"github.com/BTreeMap/PromptPipe/internal/flow"
 	"github.com/BTreeMap/PromptPipe/internal/messaging"
 	"github.com/BTreeMap/PromptPipe/internal/models"
-	"github.com/BTreeMap/PromptPipe/internal/scheduler"
 	"github.com/BTreeMap/PromptPipe/internal/store"
 	"github.com/BTreeMap/PromptPipe/internal/whatsapp"
 )
@@ -30,11 +29,10 @@ type TestingT interface {
 // This centralizes the test server creation logic used across multiple test files.
 func NewTestServer() *api.Server {
 	msgService := messaging.NewWhatsAppService(whatsapp.NewMockClient())
-	sched := scheduler.NewScheduler()
 	st := store.NewInMemoryStore()
 	timer := flow.NewSimpleTimer()
 
-	return api.NewServer(msgService, sched, st, timer, "", nil)
+	return api.NewServer(msgService, st, timer, "", nil)
 }
 
 // AssertHTTPStatus checks the HTTP status code and fails the test if it doesn't match.

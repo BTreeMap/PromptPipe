@@ -1,7 +1,7 @@
 // Package api provides HTTP handlers and the main API server logic for PromptPipe.
 //
 // It exposes RESTful endpoints for scheduling, sending, and tracking WhatsApp prompts.
-// The API integrates with the WhatsApp, scheduler, and store modules.
+// The API integrates with the WhatsApp, timer, and store modules.
 package api
 
 import (
@@ -20,7 +20,6 @@ import (
 	"github.com/BTreeMap/PromptPipe/internal/genai"
 	"github.com/BTreeMap/PromptPipe/internal/messaging"
 	"github.com/BTreeMap/PromptPipe/internal/models"
-	"github.com/BTreeMap/PromptPipe/internal/scheduler"
 	"github.com/BTreeMap/PromptPipe/internal/store"
 	"github.com/BTreeMap/PromptPipe/internal/whatsapp"
 )
@@ -47,7 +46,6 @@ const (
 type Server struct {
 	msgService  messaging.Service
 	respHandler *messaging.ResponseHandler
-	sched       *scheduler.Scheduler
 	st          store.Store
 	timer       models.Timer
 	defaultCron string
@@ -55,14 +53,13 @@ type Server struct {
 }
 
 // NewServer creates a new API server instance with the provided dependencies.
-func NewServer(msgService messaging.Service, sched *scheduler.Scheduler, st store.Store, timer models.Timer, defaultCron string, gaClient *genai.Client) *Server {
+func NewServer(msgService messaging.Service, st store.Store, timer models.Timer, defaultCron string, gaClient *genai.Client) *Server {
 	// Create response handler
 	respHandler := messaging.NewResponseHandler(msgService)
 
 	return &Server{
 		msgService:  msgService,
 		respHandler: respHandler,
-		sched:       sched,
 		st:          st,
 		timer:       timer,
 		defaultCron: defaultCron,
@@ -153,10 +150,6 @@ func createAndConfigureServer(waOpts []whatsapp.Option, storeOpts []store.Option
 	if err := server.initializeStore(storeOpts); err != nil {
 		return nil, "", fmt.Errorf("failed to initialize store: %w", err)
 	}
-
-	// Initialize scheduler
-	server.sched = scheduler.NewScheduler()
-	slog.Debug("Scheduler initialized")
 
 	// Initialize timer
 	server.timer = flow.NewSimpleTimer()
@@ -333,10 +326,10 @@ func (s *Server) gracefulShutdown(srv *http.Server) error {
 		slog.Info("HTTP server shutdown complete")
 	}
 
-	// Stop scheduler
-	slog.Debug("Stopping scheduler")
-	s.sched.Stop()
-	slog.Debug("Scheduler stopped")
+	// Stop timer
+	slog.Debug("Stopping timer")
+	s.timer.Stop()
+	slog.Debug("Timer stopped")
 
 	// Close store to clean up database connections
 	slog.Debug("Closing store")

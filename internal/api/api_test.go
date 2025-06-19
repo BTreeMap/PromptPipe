@@ -10,7 +10,6 @@ import (
 	"github.com/BTreeMap/PromptPipe/internal/flow"
 	"github.com/BTreeMap/PromptPipe/internal/messaging"
 	"github.com/BTreeMap/PromptPipe/internal/models"
-	"github.com/BTreeMap/PromptPipe/internal/scheduler"
 	"github.com/BTreeMap/PromptPipe/internal/store"
 	"github.com/BTreeMap/PromptPipe/internal/whatsapp"
 )
@@ -19,7 +18,6 @@ import (
 func newTestServer() *Server {
 	return NewServer(
 		messaging.NewWhatsAppService(whatsapp.NewMockClient()),
-		scheduler.NewScheduler(),
 		store.NewInMemoryStore(),
 		flow.NewSimpleTimer(),
 		"",
