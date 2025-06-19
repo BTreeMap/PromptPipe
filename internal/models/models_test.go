@@ -8,7 +8,7 @@ import (
 func TestPromptJSONTags(t *testing.T) {
 	p := Prompt{
 		To:            "+1234567890",
-		Cron:          "* * * * *",
+		Cron:          "daily",
 		Type:          PromptTypeStatic,
 		State:         "initial",
 		Body:          "hi",
@@ -16,7 +16,7 @@ func TestPromptJSONTags(t *testing.T) {
 		UserPrompt:    "user",
 		BranchOptions: []BranchOption{{Label: "Option 1", Body: "Branch Body 1"}},
 	}
-	expectedJSON := `{"to":"+1234567890","cron":"* * * * *","type":"static","state":"initial","body":"hi","system_prompt":"system","user_prompt":"user","branch_options":[{"label":"Option 1","body":"Branch Body 1"}]}`
+	expectedJSON := `{"to":"+1234567890","cron":"daily","type":"static","state":"initial","body":"hi","system_prompt":"system","user_prompt":"user","branch_options":[{"label":"Option 1","body":"Branch Body 1"}]}`
 
 	jsonData, err := json.Marshal(p)
 	if err != nil {

@@ -37,7 +37,7 @@ func assertHTTPStatus(t *testing.T, expected, actual int, context string) {
 
 func assertJSONStatus(t *testing.T, rr *httptest.ResponseRecorder, expectedStatus string) {
 	t.Helper()
-	var response map[string]string
+	var response map[string]interface{}
 	if err := json.NewDecoder(rr.Body).Decode(&response); err != nil {
 		t.Fatalf("failed to decode JSON response: %v", err)
 	}
@@ -126,12 +126,12 @@ func TestSendHandler_InvalidPhoneNumber(t *testing.T) {
 func TestScheduleHandler_Success(t *testing.T) {
 	server := newTestServer()
 
-	req := createJSONRequest(t, "POST", "/schedule", `{"to":"+1234567890","cron":"* * * * *","body":"hi"}`)
+	req := createJSONRequest(t, "POST", "/schedule", `{"to":"+1234567890","cron":"daily","body":"hi"}`)
 	rr := httptest.NewRecorder()
 	server.scheduleHandler(rr, req)
 
 	assertHTTPStatus(t, http.StatusCreated, rr.Code, "schedule handler success")
-	assertJSONStatus(t, rr, "scheduled")
+	assertJSONStatus(t, rr, "ok")
 }
 
 func TestScheduleHandler_MethodNotAllowed(t *testing.T) {
@@ -147,7 +147,7 @@ func TestScheduleHandler_MethodNotAllowed(t *testing.T) {
 func TestScheduleHandler_MissingRecipient(t *testing.T) {
 	server := newTestServer()
 
-	req := createJSONRequest(t, "POST", "/schedule", `{"cron":"* * * * *","body":"hi"}`)
+	req := createJSONRequest(t, "POST", "/schedule", `{"cron":"daily","body":"hi"}`)
 	rr := httptest.NewRecorder()
 	server.scheduleHandler(rr, req)
 
@@ -181,7 +181,7 @@ func TestScheduleHandler_InvalidPhoneNumber(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req := createJSONRequest(t, "POST", "/schedule", `{"to":"`+tt.phoneNumber+`","cron":"* * * * *","body":"hi"}`)
+			req := createJSONRequest(t, "POST", "/schedule", `{"to":"`+tt.phoneNumber+`","cron":"daily","body":"hi"}`)
 			rr := httptest.NewRecorder()
 			server.scheduleHandler(rr, req)
 
@@ -423,17 +423,17 @@ func TestScheduleHandler_ValidationErrors(t *testing.T) {
 	}{
 		{
 			name:     "empty recipient",
-			jsonBody: `{"body":"test message","cron":"* * * * *"}`,
+			jsonBody: `{"body":"test message","cron":"daily"}`,
 			wantCode: http.StatusBadRequest,
 		},
 		{
 			name:     "static prompt without body",
-			jsonBody: `{"to":"+1234567890","type":"static","cron":"* * * * *"}`,
+			jsonBody: `{"to":"+1234567890","type":"static","cron":"daily"}`,
 			wantCode: http.StatusBadRequest,
 		},
 		{
 			name:     "branch prompt with empty label",
-			jsonBody: `{"to":"+1234567890","type":"branch","cron":"* * * * *","branch_options":[{"label":"","body":"Option A"},{"label":"B","body":"Option B"}]}`,
+			jsonBody: `{"to":"+1234567890","type":"branch","cron":"daily","branch_options":[{"label":"","body":"Option A"},{"label":"B","body":"Option B"}]}`,
 			wantCode: http.StatusBadRequest,
 		},
 	}

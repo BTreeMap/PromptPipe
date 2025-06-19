@@ -139,7 +139,7 @@ func (s *Server) scheduleHandler(w http.ResponseWriter, r *http.Request) {
 	// Capture prompt locally for closure
 	slog.Debug("scheduleHandler scheduling job", "to", p.To, "cron", p.Cron)
 	job := p
-	if addErr := s.sched.AddJob(p.Cron, func() {
+	timerID, addErr := s.timer.ScheduleCron(p.Cron, func() {
 		slog.Debug("scheduled job triggered", "to", job.To)
 		// Create context with timeout for scheduled job operations
 		ctx, cancel := context.WithTimeout(context.Background(), DefaultScheduledJobTimeout)
@@ -170,14 +170,18 @@ func (s *Server) scheduleHandler(w http.ResponseWriter, r *http.Request) {
 		if recErr != nil {
 			slog.Error("Error adding scheduled receipt", "error", recErr)
 		}
-	}); addErr != nil {
+	})
+	if addErr != nil {
 		slog.Error("Error scheduling job", "error", addErr)
 		writeJSONResponse(w, http.StatusInternalServerError, models.Error("Failed to schedule job"))
 		return
 	}
 	// Job scheduled successfully
-	slog.Info("Job scheduled successfully", "to", p.To, "cron", p.Cron)
-	writeJSONResponse(w, http.StatusCreated, models.Scheduled())
+	slog.Info("Job scheduled successfully", "to", p.To, "cron", p.Cron, "timerID", timerID)
+	writeJSONResponse(w, http.StatusCreated, models.Success(map[string]interface{}{
+		"message": "Scheduled successfully",
+		"timerID": timerID,
+	}))
 }
 
 func (s *Server) receiptsHandler(w http.ResponseWriter, r *http.Request) {
@@ -276,4 +280,28 @@ func (s *Server) statsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	slog.Debug("stats computed", "total_responses", total, "avg_response_length", avgLen)
 	writeJSONResponse(w, http.StatusOK, models.Success(stats))
+}
+
+// timersHandler handles global timer operations (GET /timers)
+func (s *Server) timersHandler(w http.ResponseWriter, r *http.Request) {
+	slog.Debug("timersHandler invoked", "method", r.Method, "path", r.URL.Path)
+	
+	switch r.Method {
+	case http.MethodGet:
+		s.listAllTimersHandler(w, r)
+	default:
+		w.Header().Set("Allow", "GET")
+		writeJSONResponse(w, http.StatusMethodNotAllowed, models.Error("Method not allowed"))
+	}
+}
+
+// listAllTimersHandler returns all active timers in the system
+func (s *Server) listAllTimersHandler(w http.ResponseWriter, r *http.Request) {
+	timers := s.timer.ListActive()
+	
+	slog.Debug("Listed all timers", "count", len(timers))
+	writeJSONResponse(w, http.StatusOK, models.Success(map[string]interface{}{
+		"timers": timers,
+		"count":  len(timers),
+	}))
 }

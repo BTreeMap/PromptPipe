@@ -283,6 +283,9 @@ func startHTTPServer(addr string, server *Server) *http.Server {
 	http.HandleFunc("/responses", server.responsesHandler)
 	http.HandleFunc("/stats", server.statsHandler)
 
+	// Timer management endpoints (global scope)
+	http.HandleFunc("/timers", server.timersHandler)
+
 	// Intervention management endpoints with proper routing
 	http.HandleFunc("/intervention/", server.interventionRouter)
 
@@ -390,8 +393,6 @@ func (s *Server) interventionRouter(w http.ResponseWriter, r *http.Request) {
 		s.triggerWeeklySummaryHandler(w, r)
 	case "stats":
 		s.interventionStatsHandler(w, r)
-	case "timers":
-		s.handleTimerRoutes(w, r, segments[1:])
 	default:
 		http.Error(w, "Unknown intervention endpoint", http.StatusNotFound)
 	}
