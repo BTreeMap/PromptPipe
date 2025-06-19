@@ -15,11 +15,13 @@ All intervention participants use the flow type: `micro_health_intervention`
 ### Participant Management
 
 #### 1. Enroll Participant
+
 `POST /intervention/participants`
 
 Enrolls a new participant in the micro health intervention study.
 
 **Request Body:**
+
 ```json
 {
     "phone_number": "+1234567890",
@@ -30,14 +32,17 @@ Enrolls a new participant in the micro health intervention study.
 ```
 
 **Required Fields:**
+
 - `phone_number`: Valid phone number in international format
 
 **Optional Fields:**
+
 - `name`: Participant's name
 - `timezone`: Timezone for scheduling (defaults to "UTC")
 - `daily_prompt_time`: Time for daily prompts in HH:MM format (defaults to "10:00")
 
 **Response:**
+
 ```json
 {
     "status": "ok",
@@ -57,15 +62,18 @@ Enrolls a new participant in the micro health intervention study.
 ```
 
 **Error Responses:**
+
 - `400 Bad Request`: Invalid request data or phone number already enrolled
 - `409 Conflict`: Participant with this phone number already exists
 
 #### 2. List Participants
+
 `GET /intervention/participants`
 
 Retrieves all enrolled participants.
 
 **Response:**
+
 ```json
 {
     "status": "ok",
@@ -81,11 +89,13 @@ Retrieves all enrolled participants.
 ```
 
 #### 3. Get Participant
+
 `GET /intervention/participants/{id}`
 
 Retrieves details for a specific participant.
 
 **Response:**
+
 ```json
 {
     "status": "ok",
@@ -100,14 +110,17 @@ Retrieves details for a specific participant.
 ```
 
 **Error Responses:**
+
 - `404 Not Found`: Participant does not exist
 
 #### 4. Delete Participant
+
 `DELETE /intervention/participants/{id}`
 
 Removes a participant from the study. This will also delete all their responses and flow state.
 
 **Response:**
+
 ```json
 {
     "status": "ok",
@@ -116,16 +129,19 @@ Removes a participant from the study. This will also delete all their responses 
 ```
 
 **Error Responses:**
+
 - `404 Not Found`: Participant does not exist
 
 ### Response Processing
 
 #### 5. Process Response
+
 `POST /intervention/participants/{id}/responses`
 
 Records a participant's response and processes it according to the intervention flow logic.
 
 **Request Body:**
+
 ```json
 {
     "response_text": "1",
@@ -134,12 +150,15 @@ Records a participant's response and processes it according to the intervention 
 ```
 
 **Required Fields:**
+
 - `response_text`: The participant's actual response
 
 **Optional Fields:**
+
 - `context`: Additional context about how the response was received
 
 **Response:**
+
 ```json
 {
     "status": "ok",
@@ -155,17 +174,20 @@ Records a participant's response and processes it according to the intervention 
 ```
 
 **Error Responses:**
+
 - `400 Bad Request`: Missing response_text
 - `404 Not Found`: Participant does not exist
 
 ### State Management
 
 #### 6. Advance State
+
 `POST /intervention/participants/{id}/advance`
 
 Manually advances a participant to a specific state in the intervention flow.
 
 **Request Body:**
+
 ```json
 {
     "to_state": "FEELING_PROMPT",
@@ -174,12 +196,15 @@ Manually advances a participant to a specific state in the intervention flow.
 ```
 
 **Required Fields:**
+
 - `to_state`: Target state (must be valid intervention state)
 
 **Optional Fields:**
+
 - `reason`: Reason for manual advancement
 
 **Valid States:**
+
 - `ORIENTATION`
 - `COMMITMENT_PROMPT`
 - `FEELING_PROMPT`
@@ -189,6 +214,7 @@ Manually advances a participant to a specific state in the intervention flow.
 - `COMPLETE`
 
 **Response:**
+
 ```json
 {
     "status": "ok",
@@ -203,15 +229,18 @@ Manually advances a participant to a specific state in the intervention flow.
 ```
 
 **Error Responses:**
+
 - `400 Bad Request`: Invalid state or missing to_state
 - `404 Not Found`: Participant does not exist
 
 #### 7. Reset Participant
+
 `POST /intervention/participants/{id}/reset`
 
 Resets a participant's flow state back to the beginning (ORIENTATION).
 
 **Response:**
+
 ```json
 {
     "status": "ok",
@@ -224,16 +253,19 @@ Resets a participant's flow state back to the beginning (ORIENTATION).
 ```
 
 **Error Responses:**
+
 - `404 Not Found`: Participant does not exist
 
 ### History & Analytics
 
 #### 8. Get Participant History
+
 `GET /intervention/participants/{id}/history`
 
 Retrieves a participant's complete history including their current state and all responses.
 
 **Response:**
+
 ```json
 {
     "status": "ok",
@@ -260,14 +292,17 @@ Retrieves a participant's complete history including their current state and all
 ```
 
 **Error Responses:**
+
 - `404 Not Found`: Participant does not exist
 
 #### 9. Weekly Summary Trigger
+
 `POST /intervention/weekly-summary`
 
 Triggers weekly summary processing for all eligible participants.
 
 **Response:**
+
 ```json
 {
     "status": "ok",
@@ -279,11 +314,13 @@ Triggers weekly summary processing for all eligible participants.
 ```
 
 #### 10. Intervention Statistics
+
 `GET /intervention/stats`
 
 Retrieves comprehensive statistics about the intervention study.
 
 **Response:**
+
 ```json
 {
     "status": "ok",
@@ -325,6 +362,7 @@ Retrieves comprehensive statistics about the intervention study.
 ## Response Types
 
 Based on the current state when the response was given:
+
 - `commitment`: Response to commitment prompt
 - `feeling`: Response to feeling check
 - `completion`: Response to habit completion check
@@ -346,6 +384,7 @@ The intervention follows these states in sequence:
 ## Error Handling
 
 All endpoints return standard HTTP status codes:
+
 - `200 OK`: Success
 - `201 Created`: Resource created successfully
 - `400 Bad Request`: Invalid request data
@@ -354,6 +393,7 @@ All endpoints return standard HTTP status codes:
 - `500 Internal Server Error`: Server error
 
 Error responses include a descriptive message:
+
 ```json
 {
     "status": "error",
@@ -373,6 +413,7 @@ These APIs are designed to work with the stateful generation system:
 ## Usage Examples
 
 ### Enrolling a Participant
+
 ```bash
 curl -X POST http://localhost:8080/intervention/participants \
   -H "Content-Type: application/json" \
@@ -385,6 +426,7 @@ curl -X POST http://localhost:8080/intervention/participants \
 ```
 
 ### Processing a Response
+
 ```bash
 curl -X POST http://localhost:8080/intervention/participants/p_1234567890abcdef/responses \
   -H "Content-Type: application/json" \
@@ -395,6 +437,7 @@ curl -X POST http://localhost:8080/intervention/participants/p_1234567890abcdef/
 ```
 
 ### Getting Statistics
+
 ```bash
 curl http://localhost:8080/intervention/stats
 ```
