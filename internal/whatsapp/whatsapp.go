@@ -210,10 +210,20 @@ func (c *Client) GetClient() *whatsmeow.Client {
 // MockClient implements the same interface as Client but does nothing (for tests)
 // In tests, use whatsapp.NewMockClient() instead of NewClient to avoid real WhatsApp connections.
 // Update api_test.go to use MockClient for waClient.
-type MockClient struct{}
+type MockClient struct {
+	SentMessages []SentMessage
+}
+
+// SentMessage represents a message sent via MockClient for testing
+type SentMessage struct {
+	To   string
+	Body string
+}
 
 func NewMockClient() *MockClient {
-	return &MockClient{}
+	return &MockClient{
+		SentMessages: make([]SentMessage, 0),
+	}
 }
 
 func (m *MockClient) SendMessage(ctx context.Context, to string, body string) error {
@@ -224,6 +234,12 @@ func (m *MockClient) SendMessage(ctx context.Context, to string, body string) er
 	if body == "" {
 		return fmt.Errorf("message body cannot be empty")
 	}
+
+	// Track sent message for testing
+	m.SentMessages = append(m.SentMessages, SentMessage{
+		To:   to,
+		Body: body,
+	})
 
 	return nil
 }

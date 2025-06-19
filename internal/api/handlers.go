@@ -67,6 +67,16 @@ func (s *Server) sendHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSONResponse(w, http.StatusInternalServerError, models.Error("Failed to send message"))
 		return
 	}
+	
+	// Auto-register response handler for prompts that expect responses
+	// Set a reasonable timeout for response handlers (24 hours for most prompts)
+	defaultTimeout := 24 * time.Hour
+	if s.respHandler.AutoRegisterResponseHandler(p, defaultTimeout) {
+		// Set auto-cleanup after 48 hours to prevent memory leaks
+		s.respHandler.SetAutoCleanupTimeout(p.To, 48*time.Hour)
+		slog.Debug("Response handler registered for prompt", "type", p.Type, "to", p.To)
+	}
+	
 	slog.Info("Message sent successfully", "to", p.To)
 	writeJSONResponse(w, http.StatusOK, models.Success(nil))
 }
@@ -146,6 +156,15 @@ func (s *Server) scheduleHandler(w http.ResponseWriter, r *http.Request) {
 			slog.Error("Scheduled job send error", "error", sendErr, "to", job.To)
 			return
 		}
+		
+		// Auto-register response handler for scheduled prompts that expect responses
+		defaultTimeout := 24 * time.Hour
+		if s.respHandler.AutoRegisterResponseHandler(job, defaultTimeout) {
+			// Set auto-cleanup after 48 hours to prevent memory leaks
+			s.respHandler.SetAutoCleanupTimeout(job.To, 48*time.Hour)
+			slog.Debug("Response handler registered for scheduled prompt", "type", job.Type, "to", job.To)
+		}
+		
 		// Add receipt
 		recErr := s.st.AddReceipt(models.Receipt{To: job.To, Status: models.MessageStatusSent, Time: time.Now().Unix()})
 		if recErr != nil {

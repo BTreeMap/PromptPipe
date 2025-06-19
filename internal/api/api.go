@@ -37,19 +37,19 @@ const (
 
 // Server holds all dependencies for the API server.
 type Server struct {
-	msgService      messaging.Service
-	respHandler     *messaging.ResponseHandler
-	sched           *scheduler.Scheduler
-	st              store.Store
-	defaultCron     string
-	gaClient        *genai.Client
+	msgService  messaging.Service
+	respHandler *messaging.ResponseHandler
+	sched       *scheduler.Scheduler
+	st          store.Store
+	defaultCron string
+	gaClient    *genai.Client
 }
 
 // NewServer creates a new API server instance with the provided dependencies.
 func NewServer(msgService messaging.Service, sched *scheduler.Scheduler, st store.Store, defaultCron string, gaClient *genai.Client) *Server {
 	// Create response handler
 	respHandler := messaging.NewResponseHandler(msgService)
-	
+
 	return &Server{
 		msgService:  msgService,
 		respHandler: respHandler,
@@ -127,6 +127,10 @@ func createAndConfigureServer(waOpts []whatsapp.Option, storeOpts []store.Option
 	slog.Debug("WhatsApp client created successfully")
 	server.msgService = messaging.NewWhatsAppService(whClient)
 	slog.Debug("Messaging service initialized")
+
+	// Create response handler
+	server.respHandler = messaging.NewResponseHandler(server.msgService)
+	slog.Debug("Response handler initialized")
 
 	// Start messaging service
 	if err := server.msgService.Start(context.Background()); err != nil {
@@ -223,7 +227,7 @@ func (s *Server) startForwardingRoutines() {
 			} else {
 				slog.Debug("Response stored successfully", "from", resp.From)
 			}
-			
+
 			// Process the response through the response handler
 			ctx := context.Background()
 			if err := s.respHandler.ProcessResponse(ctx, resp); err != nil {
