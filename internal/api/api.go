@@ -378,7 +378,7 @@ func (s *Server) handleParticipantRoutes(w http.ResponseWriter, r *http.Request,
 			s.enrollParticipantHandler(w, r)
 		default:
 			w.Header().Set("Allow", "GET, POST")
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			writeJSONResponse(w, http.StatusMethodNotAllowed, models.Error("Method not allowed"))
 		}
 		return
 	}
@@ -399,7 +399,7 @@ func (s *Server) handleParticipantRoutes(w http.ResponseWriter, r *http.Request,
 			s.deleteParticipantHandler(w, r)
 		default:
 			w.Header().Set("Allow", "GET, PUT, DELETE")
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			writeJSONResponse(w, http.StatusMethodNotAllowed, models.Error("Method not allowed"))
 		}
 		return
 	}
@@ -411,30 +411,30 @@ func (s *Server) handleParticipantRoutes(w http.ResponseWriter, r *http.Request,
 			s.processResponseHandler(w, r)
 		} else {
 			w.Header().Set("Allow", "POST")
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			writeJSONResponse(w, http.StatusMethodNotAllowed, models.Error("Method not allowed"))
 		}
 	case "advance":
 		if r.Method == http.MethodPost {
 			s.advanceStateHandler(w, r)
 		} else {
 			w.Header().Set("Allow", "POST")
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			writeJSONResponse(w, http.StatusMethodNotAllowed, models.Error("Method not allowed"))
 		}
 	case "reset":
 		if r.Method == http.MethodPost {
 			s.resetParticipantHandler(w, r)
 		} else {
 			w.Header().Set("Allow", "POST")
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			writeJSONResponse(w, http.StatusMethodNotAllowed, models.Error("Method not allowed"))
 		}
 	case "history":
 		if r.Method == http.MethodGet {
 			s.getParticipantHistoryHandler(w, r)
 		} else {
 			w.Header().Set("Allow", "GET")
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			writeJSONResponse(w, http.StatusMethodNotAllowed, models.Error("Method not allowed"))
 		}
 	default:
-		http.Error(w, "Unknown participant endpoint", http.StatusNotFound)
+		writeJSONResponse(w, http.StatusNotFound, models.Error("Unknown participant endpoint"))
 	}
 }
