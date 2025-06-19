@@ -42,20 +42,24 @@ The micro health intervention system is a stateful conversational flow designed 
 ### Alternative Paths
 
 #### Did Not Complete Intervention
+
 - **DID_YOU_GET_A_CHANCE** → Ask if they attempted (15min timeout)
 - **CONTEXT_QUESTION** → Environment assessment (if yes, 15min timeout)
 - **MOOD_QUESTION** → Mood assessment (15min timeout)
 - **BARRIER_CHECK_AFTER_CONTEXT_MOOD** → Free-text barrier discussion (15min timeout)
 
 #### No Attempt Made
+
 - **BARRIER_REASON_NO_CHANCE** → Structured barrier reasons (15min timeout)
 
 #### Timeout/Ignored Responses
+
 - **IGNORED_PATH** → Handle non-responsive participants
 
 ### Special Features
 
 #### "Ready" Override
+
 - Participants can send "Ready" at any time from END_OF_DAY state
 - Immediately transitions to COMMITMENT_PROMPT for on-demand intervention
 - Case-insensitive and whitespace-tolerant
@@ -67,11 +71,13 @@ The micro health intervention system is a stateful conversational flow designed 
 **Problem**: Inconsistent handling of user input with varying case, whitespace, and formatting.
 
 **Solution**: Implemented `canonicalizeResponse()` function that:
+
 - Trims leading/trailing whitespace (spaces, tabs, newlines)
 - Converts to lowercase for case-insensitive matching
 - Applied consistently across all response processing functions
 
 **Benefits**:
+
 - Robust handling of user input variations
 - Consistent behavior across all flow states
 - Reduces user frustration from formatting issues
@@ -81,6 +87,7 @@ The micro health intervention system is a stateful conversational flow designed 
 **Problem**: Test failures due to missing `ResetState` method in MockStateManager.
 
 **Solution**: Added complete `ResetState` implementation that:
+
 - Removes participant state for specified flow type
 - Cleans up all associated state data
 - Maintains test isolation between test cases
@@ -88,6 +95,7 @@ The micro health intervention system is a stateful conversational flow designed 
 ### 3. Enhanced State Management
 
 **Features**:
+
 - Atomic state transitions with comprehensive logging
 - State data storage for response tracking
 - Timer cancellation to prevent resource leaks
@@ -96,6 +104,7 @@ The micro health intervention system is a stateful conversational flow designed 
 ### 4. Comprehensive Test Coverage
 
 **Added Tests**:
+
 - `TestCanonicalizeResponse`: Validates canonicalization function
 - `TestMicroHealthInterventionCanonicalization`: Tests flow with various input formats
 - Complete MockStateManager implementation for testing
@@ -104,6 +113,7 @@ The micro health intervention system is a stateful conversational flow designed 
 ## Message Structure
 
 ### Structured Branch Messages
+
 The system uses structured `models.Branch` objects that generate formatted messages with numbered options:
 
 ```go
@@ -117,7 +127,9 @@ CommitmentMessage = &models.Branch{
 ```
 
 ### Response Matching
+
 The system accepts both:
+
 - Numeric choices (1, 2, 3, etc.)
 - Full text labels (case-insensitive with canonicalization)
 
@@ -126,6 +138,7 @@ The system accepts both:
 The system collects comprehensive data for research purposes:
 
 ### Response Types
+
 - **Commitment responses**: Willingness to participate
 - **Feeling responses**: Emotional state (1-5 scale)
 - **Completion responses**: Task completion status
@@ -134,6 +147,7 @@ The system collects comprehensive data for research purposes:
 - **Barrier responses**: Free-text obstacle descriptions
 
 ### Metadata
+
 - **Flow assignment**: Immediate vs reflective intervention type
 - **Timer IDs**: For timeout management
 - **Timestamps**: All state transitions logged
@@ -142,16 +156,19 @@ The system collects comprehensive data for research purposes:
 ## Error Handling and Resilience
 
 ### Timeout Management
+
 - Each interactive state has appropriate timeouts
 - Automatic progression prevents stuck participants
 - Timer cleanup prevents resource leaks
 
 ### Invalid Response Handling
+
 - Invalid responses logged but don't break flow
 - Participants can retry without losing progress
 - Clear error messages guide correct input
 
 ### State Recovery
+
 - Graceful handling of missing or corrupted state
 - Default initialization for first-time participants
 - State validation before transitions
@@ -159,16 +176,19 @@ The system collects comprehensive data for research purposes:
 ## Integration Points
 
 ### WhatsApp Messaging
+
 - Seamless integration with WhatsApp service
 - Proper phone number canonicalization
 - Message delivery confirmation tracking
 
 ### Data Storage
+
 - Persistent state management via Store interface
 - Transaction-safe state updates
 - Scalable data storage abstraction
 
 ### API Endpoints
+
 - RESTful intervention management APIs
 - Participant enrollment and status tracking
 - Manual state advancement for research control
@@ -176,11 +196,13 @@ The system collects comprehensive data for research purposes:
 ## Performance Considerations
 
 ### Memory Management
+
 - Efficient state storage with key-value pairs
 - Timer cleanup prevents memory leaks
 - Stateless message generation where possible
 
 ### Scalability
+
 - Store-agnostic state management
 - Concurrent participant handling
 - Minimal resource usage per participant
@@ -188,16 +210,19 @@ The system collects comprehensive data for research purposes:
 ## Research and Analytics Support
 
 ### Data Export
+
 - Comprehensive response tracking
 - State transition logging
 - Timing analysis capabilities
 
 ### Manual Controls
+
 - Administrative state advancement
 - Participant status management
 - Flow assignment override capabilities
 
 ### Statistical Analysis
+
 - Randomized intervention assignment
 - Response timing measurement
 - Completion rate tracking
@@ -205,6 +230,7 @@ The system collects comprehensive data for research purposes:
 ## Future Enhancements
 
 ### Potential Improvements
+
 1. **Dynamic intervention content** based on participant history
 2. **Adaptive timeout** durations based on response patterns
 3. **Multi-language support** with localized canonicalization
@@ -212,7 +238,9 @@ The system collects comprehensive data for research purposes:
 5. **A/B testing framework** for intervention variations
 
 ### Extensibility
+
 The system is designed for easy extension:
+
 - New states can be added to the flow
 - Additional data collection points
 - Custom intervention types
