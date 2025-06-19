@@ -143,7 +143,7 @@ func (s *Server) listParticipantsHandler(w http.ResponseWriter, r *http.Request)
 // getParticipantHandler handles GET /intervention/participants/{id}
 func (s *Server) getParticipantHandler(w http.ResponseWriter, r *http.Request) {
 	participantID := r.Context().Value(ContextKeyParticipantID).(string)
-	slog.Debug("getParticipantHandler invoked", string(ContextKeyParticipantID), participantID)
+	slog.Debug("getParticipantHandler invoked", "participantID", participantID)
 
 	participant, err := s.st.GetInterventionParticipant(participantID)
 	if err != nil {
