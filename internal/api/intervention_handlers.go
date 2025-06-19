@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/BTreeMap/PromptPipe/internal/flow"
+	"github.com/BTreeMap/PromptPipe/internal/messaging"
 	"github.com/BTreeMap/PromptPipe/internal/models"
 )
 
@@ -105,6 +106,15 @@ func (s *Server) enrollParticipantHandler(w http.ResponseWriter, r *http.Request
 	if err := stateManager.SetCurrentState(ctx, participantID, MicroHealthInterventionFlowType, flow.StateOrientation); err != nil {
 		slog.Error("enrollParticipantHandler state init failed", "error", err, "participantID", participantID)
 		// Note: We don't fail the enrollment if state init fails, but we log it
+	}
+
+	// Register response hook for this participant
+	interventionHook := messaging.CreateInterventionHook(participantID, canonicalPhone, stateManager, s.msgService)
+	if err := s.respHandler.RegisterHook(canonicalPhone, interventionHook); err != nil {
+		slog.Error("enrollParticipantHandler hook registration failed", "error", err, "participantID", participantID)
+		// Note: We don't fail the enrollment if hook registration fails, but we log it
+	} else {
+		slog.Debug("Intervention hook registered", "participantID", participantID, "phone", canonicalPhone)
 	}
 
 	// Send immediate welcome message
@@ -274,6 +284,14 @@ func (s *Server) deleteParticipantHandler(w http.ResponseWriter, r *http.Request
 	if err := stateManager.ResetState(ctx, participantID, MicroHealthInterventionFlowType); err != nil {
 		slog.Error("deleteParticipantHandler state cleanup failed", "error", err, "participantID", participantID)
 		// Note: We don't fail the delete if state cleanup fails
+	}
+
+	// Unregister response hook
+	if err := s.respHandler.UnregisterHook(participant.PhoneNumber); err != nil {
+		slog.Error("deleteParticipantHandler hook cleanup failed", "error", err, "participantID", participantID)
+		// Note: We don't fail the delete if hook cleanup fails
+	} else {
+		slog.Debug("Response hook unregistered", "participantID", participantID, "phone", participant.PhoneNumber)
 	}
 
 	slog.Info("Participant deleted successfully", "participantID", participantID)

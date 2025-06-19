@@ -37,17 +37,22 @@ const (
 
 // Server holds all dependencies for the API server.
 type Server struct {
-	msgService  messaging.Service
-	sched       *scheduler.Scheduler
-	st          store.Store
-	defaultCron string
-	gaClient    *genai.Client
+	msgService      messaging.Service
+	respHandler     *messaging.ResponseHandler
+	sched           *scheduler.Scheduler
+	st              store.Store
+	defaultCron     string
+	gaClient        *genai.Client
 }
 
 // NewServer creates a new API server instance with the provided dependencies.
 func NewServer(msgService messaging.Service, sched *scheduler.Scheduler, st store.Store, defaultCron string, gaClient *genai.Client) *Server {
+	// Create response handler
+	respHandler := messaging.NewResponseHandler(msgService)
+	
 	return &Server{
 		msgService:  msgService,
+		respHandler: respHandler,
 		sched:       sched,
 		st:          st,
 		defaultCron: defaultCron,
@@ -193,7 +198,7 @@ func (s *Server) initializeStore(storeOpts []store.Option) error {
 	return nil
 }
 
-// startForwardingRoutines starts background goroutines to forward receipts and responses to store
+// startForwardingRoutines starts background goroutines to forward receipts and handle responses
 func (s *Server) startForwardingRoutines() {
 	go func() {
 		slog.Debug("Starting receipt forwarding routine")
@@ -209,17 +214,24 @@ func (s *Server) startForwardingRoutines() {
 	slog.Debug("Receipt forwarding routine started")
 
 	go func() {
-		slog.Debug("Starting response forwarding routine")
-		defer slog.Debug("Response forwarding routine stopped")
+		slog.Debug("Starting response processing routine")
+		defer slog.Debug("Response processing routine stopped")
 		for resp := range s.msgService.Responses() {
+			// Store the response first
 			if err := s.st.AddResponse(resp); err != nil {
 				slog.Error("Error storing response", "error", err, "from", resp.From)
 			} else {
 				slog.Debug("Response stored successfully", "from", resp.From)
 			}
+			
+			// Process the response through the response handler
+			ctx := context.Background()
+			if err := s.respHandler.ProcessResponse(ctx, resp); err != nil {
+				slog.Error("Error processing response through handler", "error", err, "from", resp.From)
+			}
 		}
 	}()
-	slog.Debug("Response forwarding routine started")
+	slog.Debug("Response processing routine started")
 }
 
 // initializeGenAI sets up the GenAI client if options are provided
