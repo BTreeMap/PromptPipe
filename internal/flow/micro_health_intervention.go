@@ -8,69 +8,51 @@ import (
 	"github.com/BTreeMap/PromptPipe/internal/models"
 )
 
-// FlowType represents a specific type of intervention flow
-type FlowType string
+// Re-export types from models for backward compatibility
+type FlowType = models.FlowType
+type StateType = models.StateType
+type DataKey = models.DataKey
+type FlowAssignment = models.FlowAssignment
+type ResponseValue = models.ResponseValue
 
-// StateType represents a specific state within a flow
-type StateType string
-
-// DataKey represents a key for storing state-specific data
-type DataKey string
-
-// FlowAssignment represents the type of intervention assignment
-type FlowAssignment string
-
-// ResponseValue represents expected response values
-type ResponseValue string
-
-// Flow type constant for micro health intervention.
-const FlowTypeMicroHealthIntervention FlowType = "micro_health_intervention"
-
-// State constants for micro health intervention flow.
+// Re-export constants from models for backward compatibility
 const (
-	StateOrientation                  StateType = "ORIENTATION"
-	StateCommitmentPrompt             StateType = "COMMITMENT_PROMPT"
-	StateFeelingPrompt                StateType = "FEELING_PROMPT"
-	StateRandomAssignment             StateType = "RANDOM_ASSIGNMENT"
-	StateSendInterventionImmediate    StateType = "SEND_INTERVENTION_IMMEDIATE"
-	StateSendInterventionReflective   StateType = "SEND_INTERVENTION_REFLECTIVE"
-	StateReinforcementFollowup        StateType = "REINFORCEMENT_FOLLOWUP"
-	StateDidYouGetAChance             StateType = "DID_YOU_GET_A_CHANCE"
-	StateContextQuestion              StateType = "CONTEXT_QUESTION"
-	StateMoodQuestion                 StateType = "MOOD_QUESTION"
-	StateBarrierCheckAfterContextMood StateType = "BARRIER_CHECK_AFTER_CONTEXT_MOOD"
-	StateBarrierReasonNoChance        StateType = "BARRIER_REASON_NO_CHANCE"
-	StateIgnoredPath                  StateType = "IGNORED_PATH"
-	StateEndOfDay                     StateType = "END_OF_DAY"
-	StateHabitReminder                StateType = "HABIT_REMINDER"
-	StateFollowUp                     StateType = "FOLLOW_UP"
-	StateComplete                     StateType = "COMPLETE"
-)
+	FlowTypeMicroHealthIntervention = models.FlowTypeMicroHealthIntervention
 
-// Data key constants for state data storage.
-const (
-	DataKeyFlowAssignment        DataKey = "flowAssignment"
-	DataKeyFeelingResponse       DataKey = "feelingResponse"
-	DataKeyCompletionResponse    DataKey = "completionResponse"
-	DataKeyGotChanceResponse     DataKey = "gotChanceResponse"
-	DataKeyContextResponse       DataKey = "contextResponse"
-	DataKeyMoodResponse          DataKey = "moodResponse"
-	DataKeyBarrierResponse       DataKey = "barrierResponse"
-	DataKeyBarrierReasonResponse DataKey = "barrierReasonResponse"
-)
+	StateOrientation                  = models.StateOrientation
+	StateCommitmentPrompt             = models.StateCommitmentPrompt
+	StateFeelingPrompt                = models.StateFeelingPrompt
+	StateRandomAssignment             = models.StateRandomAssignment
+	StateSendInterventionImmediate    = models.StateSendInterventionImmediate
+	StateSendInterventionReflective   = models.StateSendInterventionReflective
+	StateReinforcementFollowup        = models.StateReinforcementFollowup
+	StateDidYouGetAChance             = models.StateDidYouGetAChance
+	StateContextQuestion              = models.StateContextQuestion
+	StateMoodQuestion                 = models.StateMoodQuestion
+	StateBarrierCheckAfterContextMood = models.StateBarrierCheckAfterContextMood
+	StateBarrierReasonNoChance        = models.StateBarrierReasonNoChance
+	StateIgnoredPath                  = models.StateIgnoredPath
+	StateEndOfDay                     = models.StateEndOfDay
+	StateHabitReminder                = models.StateHabitReminder
+	StateFollowUp                     = models.StateFollowUp
+	StateComplete                     = models.StateComplete
 
-// Flow assignment values.
-const (
-	FlowAssignmentImmediate  FlowAssignment = "IMMEDIATE"
-	FlowAssignmentReflective FlowAssignment = "REFLECTIVE"
-)
+	DataKeyFlowAssignment        = models.DataKeyFlowAssignment
+	DataKeyFeelingResponse       = models.DataKeyFeelingResponse
+	DataKeyCompletionResponse    = models.DataKeyCompletionResponse
+	DataKeyGotChanceResponse     = models.DataKeyGotChanceResponse
+	DataKeyContextResponse       = models.DataKeyContextResponse
+	DataKeyMoodResponse          = models.DataKeyMoodResponse
+	DataKeyBarrierResponse       = models.DataKeyBarrierResponse
+	DataKeyBarrierReasonResponse = models.DataKeyBarrierReasonResponse
 
-// Response values for completion tracking.
-const (
-	ResponseDone    ResponseValue = "done"
-	ResponseNo      ResponseValue = "no"
-	ResponseNoReply ResponseValue = "no_reply"
-	ResponseReady   ResponseValue = "ready"
+	FlowAssignmentImmediate  = models.FlowAssignmentImmediate
+	FlowAssignmentReflective = models.FlowAssignmentReflective
+
+	ResponseDone    = models.ResponseDone
+	ResponseNo      = models.ResponseNo
+	ResponseNoReply = models.ResponseNoReply
+	ResponseReady   = models.ResponseReady
 )
 
 // Simple message constants for micro health intervention flow.

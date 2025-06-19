@@ -7,8 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"time"
-
-	"github.com/BTreeMap/PromptPipe/internal/flow"
 )
 
 // PromptType defines how the prompt content is determined.
@@ -149,7 +147,7 @@ type Prompt struct {
 	To            string         `json:"to"`
 	Cron          string         `json:"cron,omitempty"`
 	Type          PromptType     `json:"type,omitempty"`
-	State         flow.StateType `json:"state,omitempty"` // current state for custom flows
+	State         StateType      `json:"state,omitempty"` // current state for custom flows
 	Body          string         `json:"body,omitempty"`
 	SystemPrompt  string         `json:"system_prompt,omitempty"`
 	UserPrompt    string         `json:"user_prompt,omitempty"`

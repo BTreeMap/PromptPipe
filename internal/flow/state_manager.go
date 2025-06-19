@@ -23,7 +23,7 @@ func NewStoreBasedStateManager(st store.Store) *StoreBasedStateManager {
 }
 
 // GetCurrentState retrieves the current state for a participant in a flow.
-func (sm *StoreBasedStateManager) GetCurrentState(ctx context.Context, participantID string, flowType FlowType) (StateType, error) {
+func (sm *StoreBasedStateManager) GetCurrentState(ctx context.Context, participantID string, flowType models.FlowType) (models.StateType, error) {
 	slog.Debug("StateManager GetCurrentState", "participantID", participantID, "flowType", flowType)
 
 	flowState, err := sm.store.GetFlowState(participantID, string(flowType))
@@ -38,7 +38,7 @@ func (sm *StoreBasedStateManager) GetCurrentState(ctx context.Context, participa
 	}
 
 	slog.Debug("StateManager GetCurrentState found", "participantID", participantID, "flowType", flowType, "state", flowState.CurrentState)
-	return StateType(flowState.CurrentState), nil
+	return flowState.CurrentState, nil
 }
 
 // SetCurrentState updates the current state for a participant in a flow.
@@ -57,15 +57,15 @@ func (sm *StoreBasedStateManager) SetCurrentState(ctx context.Context, participa
 		// Create new flow state
 		flowState = &models.FlowState{
 			ParticipantID: participantID,
-			FlowType:      string(flowType),
-			CurrentState:  string(state),
-			StateData:     make(map[string]string),
+			FlowType:      flowType,
+			CurrentState:  state,
+			StateData:     make(map[DataKey]string),
 			CreatedAt:     now,
 			UpdatedAt:     now,
 		}
 	} else {
 		// Update existing flow state
-		flowState.CurrentState = string(state)
+		flowState.CurrentState = state
 		flowState.UpdatedAt = now
 	}
 
@@ -94,7 +94,7 @@ func (sm *StoreBasedStateManager) GetStateData(ctx context.Context, participantI
 		return "", nil
 	}
 
-	value, exists := flowState.StateData[string(key)]
+	value, exists := flowState.StateData[key]
 	if !exists {
 		slog.Debug("StateManager GetStateData key not found", "participantID", participantID, "flowType", flowType, "key", key)
 		return "", nil
@@ -120,18 +120,18 @@ func (sm *StoreBasedStateManager) SetStateData(ctx context.Context, participantI
 		// Create new flow state with empty current state
 		flowState = &models.FlowState{
 			ParticipantID: participantID,
-			FlowType:      string(flowType),
+			FlowType:      flowType,
 			CurrentState:  "",
-			StateData:     map[string]string{string(key): value},
+			StateData:     map[DataKey]string{key: value},
 			CreatedAt:     now,
 			UpdatedAt:     now,
 		}
 	} else {
 		// Update existing flow state
 		if flowState.StateData == nil {
-			flowState.StateData = make(map[string]string)
+			flowState.StateData = make(map[DataKey]string)
 		}
-		flowState.StateData[string(key)] = value
+		flowState.StateData[key] = value
 		flowState.UpdatedAt = now
 	}
 
