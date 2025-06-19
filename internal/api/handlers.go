@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/BTreeMap/PromptPipe/internal/flow"
@@ -283,22 +284,100 @@ func (s *Server) statsHandler(w http.ResponseWriter, r *http.Request) {
 func (s *Server) timersHandler(w http.ResponseWriter, r *http.Request) {
 	slog.Debug("timersHandler invoked", "method", r.Method, "path", r.URL.Path)
 
-	switch r.Method {
-	case http.MethodGet:
-		s.listAllTimersHandler(w, r)
-	default:
-		w.Header().Set("Allow", "GET")
-		writeJSONResponse(w, http.StatusMethodNotAllowed, models.Error("Method not allowed"))
+	path := strings.TrimPrefix(r.URL.Path, "/timers")
+
+	// Remove leading slash if present
+	path = strings.TrimPrefix(path, "/")
+
+	// Split path into segments
+	segments := strings.Split(path, "/")
+
+	if len(segments) == 0 || segments[0] == "" {
+		// /intervention/timers
+		switch r.Method {
+		case http.MethodGet:
+			s.listTimersHandler(w, r)
+		default:
+			w.Header().Set("Allow", "GET")
+			writeJSONResponse(w, http.StatusMethodNotAllowed, models.Error("Method not allowed"))
+		}
+		return
 	}
+
+	// Extract timer ID for specific timer operations
+	timerID := segments[0]
+
+	if len(segments) == 1 {
+		// /intervention/timers/{id}
+		switch r.Method {
+		case http.MethodGet:
+			s.getTimerHandler(w, r, timerID)
+		case http.MethodDelete:
+			s.cancelTimerHandler(w, r, timerID)
+		default:
+			w.Header().Set("Allow", "GET, DELETE")
+			writeJSONResponse(w, http.StatusMethodNotAllowed, models.Error("Method not allowed"))
+		}
+		return
+	}
+
+	writeJSONResponse(w, http.StatusNotFound, models.Error("Unknown timer endpoint"))
 }
 
-// listAllTimersHandler returns all active timers in the system
-func (s *Server) listAllTimersHandler(w http.ResponseWriter, r *http.Request) {
+// listTimersHandler handles GET /intervention/timers
+func (s *Server) listTimersHandler(w http.ResponseWriter, r *http.Request) {
+	slog.Debug("listTimersHandler invoked", "method", r.Method, "path", r.URL.Path)
+
 	timers := s.timer.ListActive()
 
-	slog.Debug("Listed all timers", "count", len(timers))
-	writeJSONResponse(w, http.StatusOK, models.Success(map[string]interface{}{
+	slog.Info("listTimersHandler returning timers", "count", len(timers))
+	writeJSONResponse(w, http.StatusOK, map[string]interface{}{
 		"timers": timers,
 		"count":  len(timers),
-	}))
+	})
+}
+
+// getTimerHandler handles GET /intervention/timers/{id}
+func (s *Server) getTimerHandler(w http.ResponseWriter, r *http.Request, timerID string) {
+	slog.Debug("getTimerHandler invoked", "method", r.Method, "path", r.URL.Path, "timerID", timerID)
+
+	timerInfo, err := s.timer.GetTimer(timerID)
+	if err != nil {
+		slog.Warn("getTimerHandler timer not found", "timerID", timerID, "error", err)
+		writeJSONResponse(w, http.StatusNotFound, models.Error("Timer not found: "+err.Error()))
+		return
+	}
+
+	slog.Info("getTimerHandler returning timer info", "timerID", timerID)
+	writeJSONResponse(w, http.StatusOK, timerInfo)
+}
+
+// cancelTimerHandler handles DELETE /intervention/timers/{id}
+func (s *Server) cancelTimerHandler(w http.ResponseWriter, r *http.Request, timerID string) {
+	slog.Debug("cancelTimerHandler invoked", "method", r.Method, "path", r.URL.Path, "timerID", timerID)
+
+	// Check if timer exists first
+	_, err := s.timer.GetTimer(timerID)
+	if err != nil {
+		slog.Warn("cancelTimerHandler timer not found", "timerID", timerID, "error", err)
+		writeJSONResponse(w, http.StatusNotFound, models.Error("Timer not found: "+err.Error()))
+		return
+	}
+
+	// Cancel the timer
+	err = s.timer.Cancel(timerID)
+	if err != nil {
+		slog.Error("cancelTimerHandler failed to cancel timer", "timerID", timerID, "error", err)
+		writeJSONResponse(w, http.StatusInternalServerError, models.Error("Failed to cancel timer"))
+		return
+	}
+
+	response := map[string]interface{}{
+		"message":  "Timer cancelled successfully",
+		"timerID":  timerID,
+		"canceled": true,
+	}
+
+	slog.Info("cancelTimerHandler timer cancelled", "timerID", timerID)
+	writeJSONResponse(w, http.StatusOK, response)
 }

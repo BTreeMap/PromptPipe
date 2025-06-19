@@ -469,37 +469,3 @@ func (s *Server) handleParticipantRoutes(w http.ResponseWriter, r *http.Request,
 		writeJSONResponse(w, http.StatusNotFound, models.Error("Unknown participant endpoint"))
 	}
 }
-
-// handleTimerRoutes handles all timer-related routes
-func (s *Server) handleTimerRoutes(w http.ResponseWriter, r *http.Request, segments []string) {
-	if len(segments) == 0 || segments[0] == "" {
-		// /intervention/timers
-		switch r.Method {
-		case http.MethodGet:
-			s.listTimersHandler(w, r)
-		default:
-			w.Header().Set("Allow", "GET")
-			writeJSONResponse(w, http.StatusMethodNotAllowed, models.Error("Method not allowed"))
-		}
-		return
-	}
-
-	// Extract timer ID for specific timer operations
-	timerID := segments[0]
-
-	if len(segments) == 1 {
-		// /intervention/timers/{id}
-		switch r.Method {
-		case http.MethodGet:
-			s.getTimerHandler(w, r, timerID)
-		case http.MethodDelete:
-			s.cancelTimerHandler(w, r, timerID)
-		default:
-			w.Header().Set("Allow", "GET, DELETE")
-			writeJSONResponse(w, http.StatusMethodNotAllowed, models.Error("Method not allowed"))
-		}
-		return
-	}
-
-	writeJSONResponse(w, http.StatusNotFound, models.Error("Unknown timer endpoint"))
-}
