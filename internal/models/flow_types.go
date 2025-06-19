@@ -50,6 +50,16 @@ const (
 	DataKeyMoodResponse          DataKey = "moodResponse"
 	DataKeyBarrierResponse       DataKey = "barrierResponse"
 	DataKeyBarrierReasonResponse DataKey = "barrierReasonResponse"
+
+	// Timer ID storage keys for managing timeouts
+	DataKeyCommitmentTimerID       DataKey = "commitmentTimerID"
+	DataKeyFeelingTimerID          DataKey = "feelingTimerID"
+	DataKeyCompletionTimerID       DataKey = "completionTimerID"
+	DataKeyDidYouGetAChanceTimerID DataKey = "didYouGetAChanceTimerID"
+	DataKeyContextTimerID          DataKey = "contextTimerID"
+	DataKeyMoodTimerID             DataKey = "moodTimerID"
+	DataKeyBarrierCheckTimerID     DataKey = "barrierCheckTimerID"
+	DataKeyBarrierReasonTimerID    DataKey = "barrierReasonTimerID"
 )
 
 // Flow assignment values.

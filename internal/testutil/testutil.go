@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 
 	"github.com/BTreeMap/PromptPipe/internal/api"
+	"github.com/BTreeMap/PromptPipe/internal/flow"
 	"github.com/BTreeMap/PromptPipe/internal/messaging"
 	"github.com/BTreeMap/PromptPipe/internal/models"
 	"github.com/BTreeMap/PromptPipe/internal/scheduler"
@@ -31,8 +32,9 @@ func NewTestServer() *api.Server {
 	msgService := messaging.NewWhatsAppService(whatsapp.NewMockClient())
 	sched := scheduler.NewScheduler()
 	st := store.NewInMemoryStore()
+	timer := flow.NewSimpleTimer()
 
-	return api.NewServer(msgService, sched, st, "", nil)
+	return api.NewServer(msgService, sched, st, timer, "", nil)
 }
 
 // AssertHTTPStatus checks the HTTP status code and fails the test if it doesn't match.

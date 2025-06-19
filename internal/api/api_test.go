@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/BTreeMap/PromptPipe/internal/flow"
 	"github.com/BTreeMap/PromptPipe/internal/messaging"
 	"github.com/BTreeMap/PromptPipe/internal/models"
 	"github.com/BTreeMap/PromptPipe/internal/scheduler"
@@ -20,6 +21,7 @@ func newTestServer() *Server {
 		messaging.NewWhatsAppService(whatsapp.NewMockClient()),
 		scheduler.NewScheduler(),
 		store.NewInMemoryStore(),
+		flow.NewSimpleTimer(),
 		"",
 		nil,
 	)

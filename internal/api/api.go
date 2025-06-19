@@ -49,12 +49,13 @@ type Server struct {
 	respHandler *messaging.ResponseHandler
 	sched       *scheduler.Scheduler
 	st          store.Store
+	timer       models.Timer
 	defaultCron string
 	gaClient    *genai.Client
 }
 
 // NewServer creates a new API server instance with the provided dependencies.
-func NewServer(msgService messaging.Service, sched *scheduler.Scheduler, st store.Store, defaultCron string, gaClient *genai.Client) *Server {
+func NewServer(msgService messaging.Service, sched *scheduler.Scheduler, st store.Store, timer models.Timer, defaultCron string, gaClient *genai.Client) *Server {
 	// Create response handler
 	respHandler := messaging.NewResponseHandler(msgService)
 
@@ -63,6 +64,7 @@ func NewServer(msgService messaging.Service, sched *scheduler.Scheduler, st stor
 		respHandler: respHandler,
 		sched:       sched,
 		st:          st,
+		timer:       timer,
 		defaultCron: defaultCron,
 		gaClient:    gaClient,
 	}
@@ -155,6 +157,10 @@ func createAndConfigureServer(waOpts []whatsapp.Option, storeOpts []store.Option
 	// Initialize scheduler
 	server.sched = scheduler.NewScheduler()
 	slog.Debug("Scheduler initialized")
+
+	// Initialize timer
+	server.timer = flow.NewSimpleTimer()
+	slog.Debug("Timer initialized")
 
 	// Configure default schedule
 	server.defaultCron = apiCfg.DefaultCron

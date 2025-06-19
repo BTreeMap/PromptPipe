@@ -513,3 +513,18 @@ func IsValidParticipantStatus(status InterventionParticipantStatus) bool {
 		return false
 	}
 }
+
+// Timer defines the interface for scheduling delayed actions.
+type Timer interface {
+	// ScheduleAfter schedules a function to run after a delay and returns a timer ID
+	ScheduleAfter(delay time.Duration, fn func()) (string, error)
+
+	// ScheduleAt schedules a function to run at a specific time and returns a timer ID
+	ScheduleAt(when time.Time, fn func()) (string, error)
+
+	// Cancel cancels a scheduled function by ID
+	Cancel(id string) error
+
+	// Stop cancels all scheduled timers
+	Stop()
+}

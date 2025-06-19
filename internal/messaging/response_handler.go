@@ -207,7 +207,8 @@ func (rh *ResponseHandler) Start(ctx context.Context) {
 
 // CreateInterventionHook creates a specialized hook for intervention participants that
 // processes responses according to the micro health intervention flow logic.
-func CreateInterventionHook(participantID, phoneNumber string, stateManager StateManager, msgService Service) ResponseAction {
+// It includes timer management for timeout-based state transitions.
+func CreateInterventionHook(participantID, phoneNumber string, stateManager StateManager, msgService Service, timer models.Timer) ResponseAction {
 	return func(ctx context.Context, from, responseText string, timestamp int64) (bool, error) {
 		slog.Debug("InterventionHook processing response", "from", from, "responseText", responseText)
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/BTreeMap/PromptPipe/internal/models"
 )
@@ -27,6 +28,18 @@ const (
 	MsgInvalidContextChoice    = "Please reply with '1' through '4' to describe your context."
 	MsgInvalidMoodChoice       = "Please reply with '1' through '3' to describe your mood."
 	MsgInvalidBarrierChoice    = "Please reply with '1' through '4' to indicate the barrier reason."
+)
+
+// Timeout duration constants based on micro health intervention documentation
+const (
+	CommitmentTimeout       = 12 * time.Hour   // COMMITMENT_PROMPT timeout
+	FeelingTimeout          = 15 * time.Minute // FEELING_PROMPT timeout
+	CompletionTimeout       = 30 * time.Minute // SEND_INTERVENTION_* timeout
+	DidYouGetAChanceTimeout = 15 * time.Minute // DID_YOU_GET_A_CHANCE timeout
+	ContextTimeout          = 15 * time.Minute // CONTEXT_QUESTION timeout
+	MoodTimeout             = 15 * time.Minute // MOOD_QUESTION timeout
+	BarrierCheckTimeout     = 15 * time.Minute // BARRIER_CHECK_AFTER_CONTEXT_MOOD timeout
+	BarrierReasonTimeout    = 15 * time.Minute // BARRIER_REASON_NO_CHANCE timeout
 )
 
 // Pre-generated message strings from structured data - initialized in init()
@@ -143,11 +156,11 @@ func init() {
 // MicroHealthInterventionGenerator implements a custom, stateful micro health intervention flow.
 type MicroHealthInterventionGenerator struct {
 	stateManager StateManager
-	timer        Timer
+	timer        models.Timer
 }
 
 // NewMicroHealthInterventionGenerator creates a new generator with dependencies.
-func NewMicroHealthInterventionGenerator(stateManager StateManager, timer Timer) *MicroHealthInterventionGenerator {
+func NewMicroHealthInterventionGenerator(stateManager StateManager, timer models.Timer) *MicroHealthInterventionGenerator {
 	slog.Debug("Creating MicroHealthInterventionGenerator with dependencies")
 	return &MicroHealthInterventionGenerator{
 		stateManager: stateManager,

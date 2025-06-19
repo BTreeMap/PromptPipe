@@ -3,7 +3,6 @@ package flow
 
 import (
 	"context"
-	"time"
 
 	"github.com/BTreeMap/PromptPipe/internal/models"
 )
@@ -29,25 +28,10 @@ type StateManager interface {
 	ResetState(ctx context.Context, participantID string, flowType models.FlowType) error
 }
 
-// Timer defines the interface for scheduling delayed actions.
-type Timer interface {
-	// ScheduleAfter schedules a function to run after a delay and returns a timer ID
-	ScheduleAfter(delay time.Duration, fn func()) (string, error)
-
-	// ScheduleAt schedules a function to run at a specific time and returns a timer ID
-	ScheduleAt(when time.Time, fn func()) (string, error)
-
-	// Cancel cancels a scheduled function by ID
-	Cancel(id string) error
-
-	// Stop cancels all scheduled timers
-	Stop()
-}
-
 // Dependencies holds all dependencies that can be injected into flow generators.
 type Dependencies struct {
 	StateManager StateManager
-	Timer        Timer
+	Timer        models.Timer
 	// Note: Store interface should be accessed through StateManager to avoid circular imports
 }
 

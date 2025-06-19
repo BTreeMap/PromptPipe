@@ -104,7 +104,7 @@ func (s *Server) enrollParticipantHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	// Register response hook for this participant
-	interventionHook := messaging.CreateInterventionHook(participantID, canonicalPhone, stateManager, s.msgService)
+	interventionHook := messaging.CreateInterventionHook(participantID, canonicalPhone, stateManager, s.msgService, s.timer)
 	if err := s.respHandler.RegisterHook(canonicalPhone, interventionHook); err != nil {
 		slog.Error("enrollParticipantHandler hook registration failed", "error", err, "participantID", participantID)
 		// Note: We don't fail the enrollment if hook registration fails, but we log it
