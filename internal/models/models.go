@@ -324,7 +324,7 @@ type InterventionParticipant struct {
 	ID              string                        `json:"id"`
 	PhoneNumber     string                        `json:"phone_number"`
 	Name            string                        `json:"name,omitempty"`
-	Timezone        string                        `json:"timezone,omitempty"`     // e.g., "America/New_York"
+	Timezone        string                        `json:"timezone,omitempty"` // e.g., "America/New_York"
 	Status          InterventionParticipantStatus `json:"status"`
 	EnrolledAt      time.Time                     `json:"enrolled_at"`
 	DailyPromptTime string                        `json:"daily_prompt_time"`      // e.g., "10:00"
@@ -337,9 +337,9 @@ type InterventionParticipant struct {
 type InterventionResponse struct {
 	ID            string    `json:"id"`
 	ParticipantID string    `json:"participant_id"`
-	State         string    `json:"state"`           // Which state they were in when responding
-	ResponseText  string    `json:"response_text"`   // The actual response
-	ResponseType  string    `json:"response_type"`   // e.g., "commitment", "feeling", "completion"
+	State         string    `json:"state"`         // Which state they were in when responding
+	ResponseText  string    `json:"response_text"` // The actual response
+	ResponseType  string    `json:"response_type"` // e.g., "commitment", "feeling", "completion"
 	Timestamp     time.Time `json:"timestamp"`
 }
 
@@ -373,13 +373,13 @@ type InterventionParticipantUpdate struct {
 
 // InterventionStats represents statistics about the intervention.
 type InterventionStats struct {
-	TotalParticipants      int                                   `json:"total_participants"`
-	ParticipantsByStatus   map[InterventionParticipantStatus]int `json:"participants_by_status"`
-	ParticipantsByState    map[string]int                        `json:"participants_by_state"`
-	TotalResponses         int                                   `json:"total_responses"`
-	ResponsesByType        map[string]int                        `json:"responses_by_type"`
-	CompletionRate         float64                               `json:"completion_rate"`
-	AverageResponseTime    float64                               `json:"average_response_time_minutes"`
+	TotalParticipants    int                                   `json:"total_participants"`
+	ParticipantsByStatus map[InterventionParticipantStatus]int `json:"participants_by_status"`
+	ParticipantsByState  map[string]int                        `json:"participants_by_state"`
+	TotalResponses       int                                   `json:"total_responses"`
+	ResponsesByType      map[string]int                        `json:"responses_by_type"`
+	CompletionRate       float64                               `json:"completion_rate"`
+	AverageResponseTime  float64                               `json:"average_response_time_minutes"`
 }
 
 // Validate validates an InterventionEnrollmentRequest.

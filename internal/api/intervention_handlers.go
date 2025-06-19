@@ -222,7 +222,7 @@ func (s *Server) updateParticipantHandler(w http.ResponseWriter, r *http.Request
 	if req.DailyPromptTime != nil && *req.DailyPromptTime != oldDailyPromptTime {
 		ctx := context.Background()
 		notificationMsg := fmt.Sprintf("📅 Your daily prompt time has been updated to %s. You'll receive your next prompt at this new time!", *req.DailyPromptTime)
-		
+
 		if err := s.msgService.SendMessage(ctx, participant.PhoneNumber, notificationMsg); err != nil {
 			slog.Error("updateParticipantHandler notification failed", "error", err, "participantID", participantID)
 			// Don't fail the update if notification fails
@@ -642,13 +642,13 @@ func isValidInterventionState(state string) bool {
 // calculateInterventionStats calculates statistics for the intervention
 func calculateInterventionStats(participants []models.InterventionParticipant, responses []models.InterventionResponse) models.InterventionStats {
 	stats := models.InterventionStats{
-		TotalParticipants:      len(participants),
-		ParticipantsByStatus:   make(map[models.InterventionParticipantStatus]int),
-		ParticipantsByState:    make(map[string]int),
-		TotalResponses:         len(responses),
-		ResponsesByType:        make(map[string]int),
-		CompletionRate:         0.0,
-		AverageResponseTime:    0.0,
+		TotalParticipants:    len(participants),
+		ParticipantsByStatus: make(map[models.InterventionParticipantStatus]int),
+		ParticipantsByState:  make(map[string]int),
+		TotalResponses:       len(responses),
+		ResponsesByType:      make(map[string]int),
+		CompletionRate:       0.0,
+		AverageResponseTime:  0.0,
 	}
 
 	// Count participants by status
