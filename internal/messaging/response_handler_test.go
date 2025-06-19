@@ -54,7 +54,7 @@ func (m *MockStateManager) ResetState(ctx context.Context, participantID string,
 	// Remove state and data for this participant and flow type
 	stateKey := participantID + ":" + string(flowType)
 	delete(m.states, stateKey)
-	
+
 	// Remove all state data for this participant and flow type
 	prefix := participantID + ":" + string(flowType) + ":"
 	for dataKey := range m.data {
