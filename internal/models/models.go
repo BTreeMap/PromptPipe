@@ -483,7 +483,7 @@ func IsValidParticipantStatus(status InterventionParticipantStatus) bool {
 // TimerInfo represents information about a scheduled timer
 type TimerInfo struct {
 	ID          string    `json:"id"`
-	Type        string    `json:"type"`        // "once", "cron"
+	Type        string    `json:"type"` // "once", "cron"
 	ScheduledAt time.Time `json:"scheduled_at"`
 	ExpiresAt   time.Time `json:"expires_at,omitempty"` // For one-time timers
 	CronExpr    string    `json:"cron_expr,omitempty"`  // For cron timers

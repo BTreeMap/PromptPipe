@@ -122,7 +122,7 @@ func (s *Server) enrollParticipantHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	slog.Info("Participant enrolled successfully", "id", participantID, "phone", canonicalPhone)
-	writeJSONResponse(w, http.StatusCreated, models.Success(participant))
+	writeJSONResponse(w, http.StatusCreated, models.SuccessWithMessage("Participant enrolled successfully", participant))
 }
 
 // listParticipantsHandler handles GET /intervention/participants
@@ -244,7 +244,7 @@ func (s *Server) updateParticipantHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	slog.Info("Participant updated successfully", "participantID", participantID, "updatedFields", updatedFields)
-	writeJSONResponse(w, http.StatusOK, models.Success(participant))
+	writeJSONResponse(w, http.StatusOK, models.SuccessWithMessage("Participant updated successfully", participant))
 }
 
 // deleteParticipantHandler handles DELETE /intervention/participants/{id}
@@ -290,7 +290,7 @@ func (s *Server) deleteParticipantHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	slog.Info("Participant deleted successfully", "participantID", participantID)
-	writeJSONResponse(w, http.StatusOK, models.Success(nil))
+	writeJSONResponse(w, http.StatusOK, models.SuccessWithMessage("Participant deleted successfully", nil))
 }
 
 // processResponseHandler handles POST /intervention/participants/{id}/responses

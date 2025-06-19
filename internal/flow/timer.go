@@ -15,12 +15,12 @@ import (
 // timerEntry tracks information about a scheduled timer
 type timerEntry struct {
 	timer       *time.Timer // For both one-time and recurring timers
-	timerType   string      // "once" or "recurring" 
+	timerType   string      // "once" or "recurring"
 	scheduledAt time.Time
-	expiresAt   time.Time   // For one-time timers
+	expiresAt   time.Time     // For one-time timers
 	interval    time.Duration // For recurring timers
-	pattern     string      // Original pattern like "daily", "hourly", etc.
-	nextRun     time.Time   // Next execution time
+	pattern     string        // Original pattern like "daily", "hourly", etc.
+	nextRun     time.Time     // Next execution time
 	description string
 }
 
@@ -110,10 +110,10 @@ func (t *SimpleTimer) ScheduleCron(pattern string, fn func()) (string, error) {
 	var scheduleNext func()
 	scheduleNext = func() {
 		slog.Debug("SimpleTimer executing recurring function", "id", id, "pattern", pattern)
-		
+
 		// Execute the user function
 		fn()
-		
+
 		// Reschedule the next execution
 		t.mu.Lock()
 		if entry, exists := t.timers[id]; exists {
@@ -146,7 +146,7 @@ func (t *SimpleTimer) ScheduleCron(pattern string, fn func()) (string, error) {
 // parseSchedulePattern parses simple schedule patterns into durations
 func parseSchedulePattern(pattern string) (time.Duration, error) {
 	pattern = strings.ToLower(strings.TrimSpace(pattern))
-	
+
 	switch pattern {
 	case "daily":
 		return 24 * time.Hour, nil
@@ -159,15 +159,15 @@ func parseSchedulePattern(pattern string) (time.Duration, error) {
 			if len(timeSpec) < 2 {
 				return 0, fmt.Errorf("invalid time specification: %s", timeSpec)
 			}
-			
+
 			unit := timeSpec[len(timeSpec)-1:]
 			valueStr := timeSpec[:len(timeSpec)-1]
-			
+
 			value, err := strconv.Atoi(valueStr)
 			if err != nil {
 				return 0, fmt.Errorf("invalid numeric value: %s", valueStr)
 			}
-			
+
 			switch unit {
 			case "s":
 				return time.Duration(value) * time.Second, nil
@@ -180,7 +180,7 @@ func parseSchedulePattern(pattern string) (time.Duration, error) {
 			}
 		}
 	}
-	
+
 	return 0, fmt.Errorf("unsupported schedule pattern: %s", pattern)
 }
 

@@ -78,7 +78,7 @@ func (s *Server) sendHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	slog.Info("Message sent successfully", "to", p.To)
-	writeJSONResponse(w, http.StatusOK, models.Success(nil))
+	writeJSONResponse(w, http.StatusOK, models.SuccessWithMessage("Message sent successfully", nil))
 }
 
 func (s *Server) scheduleHandler(w http.ResponseWriter, r *http.Request) {
@@ -225,7 +225,7 @@ func (s *Server) responseHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.Info("Response recorded", "from", resp.From)
-	writeJSONResponse(w, http.StatusCreated, models.Success(nil))
+	writeJSONResponse(w, http.StatusCreated, models.SuccessWithMessage("Response recorded successfully", nil))
 }
 
 // responsesHandler returns all collected responses (GET /responses).
@@ -285,7 +285,7 @@ func (s *Server) statsHandler(w http.ResponseWriter, r *http.Request) {
 // timersHandler handles global timer operations (GET /timers)
 func (s *Server) timersHandler(w http.ResponseWriter, r *http.Request) {
 	slog.Debug("timersHandler invoked", "method", r.Method, "path", r.URL.Path)
-	
+
 	switch r.Method {
 	case http.MethodGet:
 		s.listAllTimersHandler(w, r)
@@ -298,7 +298,7 @@ func (s *Server) timersHandler(w http.ResponseWriter, r *http.Request) {
 // listAllTimersHandler returns all active timers in the system
 func (s *Server) listAllTimersHandler(w http.ResponseWriter, r *http.Request) {
 	timers := s.timer.ListActive()
-	
+
 	slog.Debug("Listed all timers", "count", len(timers))
 	writeJSONResponse(w, http.StatusOK, models.Success(map[string]interface{}{
 		"timers": timers,
