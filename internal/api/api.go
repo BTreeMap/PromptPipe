@@ -393,10 +393,12 @@ func (s *Server) handleParticipantRoutes(w http.ResponseWriter, r *http.Request,
 		switch r.Method {
 		case http.MethodGet:
 			s.getParticipantHandler(w, r)
+		case http.MethodPut:
+			s.updateParticipantHandler(w, r)
 		case http.MethodDelete:
 			s.deleteParticipantHandler(w, r)
 		default:
-			w.Header().Set("Allow", "GET, DELETE")
+			w.Header().Set("Allow", "GET, PUT, DELETE")
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
 		return

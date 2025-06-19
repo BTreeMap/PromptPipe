@@ -363,6 +363,14 @@ type InterventionStateAdvanceRequest struct {
 	Reason  string `json:"reason,omitempty"` // Optional reason for manual advancement
 }
 
+// InterventionParticipantUpdate represents the payload for updating a participant.
+type InterventionParticipantUpdate struct {
+	Name            *string                        `json:"name,omitempty"`
+	Timezone        *string                        `json:"timezone,omitempty"`
+	DailyPromptTime *string                        `json:"daily_prompt_time,omitempty"`
+	Status          *InterventionParticipantStatus `json:"status,omitempty"`
+}
+
 // InterventionStats represents statistics about the intervention.
 type InterventionStats struct {
 	TotalParticipants      int                                   `json:"total_participants"`

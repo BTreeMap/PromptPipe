@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
@@ -106,6 +107,15 @@ func (s *Server) enrollParticipantHandler(w http.ResponseWriter, r *http.Request
 		// Note: We don't fail the enrollment if state init fails, but we log it
 	}
 
+	// Send immediate welcome message
+	welcomeMsg := fmt.Sprintf("🌱 Welcome to our Healthy Habits study! You've been enrolled successfully. You'll receive your daily prompts at %s %s. You can also type 'Ready' anytime to get a prompt immediately. Your participation is valuable!", dailyPromptTime, timezone)
+	if err := s.msgService.SendMessage(ctx, canonicalPhone, welcomeMsg); err != nil {
+		slog.Error("enrollParticipantHandler welcome message failed", "error", err, "participantID", participantID)
+		// Don't fail enrollment if welcome message fails
+	} else {
+		slog.Info("Welcome message sent", "participantID", participantID, "phone", canonicalPhone)
+	}
+
 	slog.Info("Participant enrolled successfully", "id", participantID, "phone", canonicalPhone)
 	writeJSONResponse(w, http.StatusCreated, models.Success(participant))
 }
@@ -144,6 +154,84 @@ func (s *Server) getParticipantHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	slog.Debug("getParticipantHandler succeeded", "participantID", participantID)
+	writeJSONResponse(w, http.StatusOK, models.Success(participant))
+}
+
+// updateParticipantHandler handles PUT /intervention/participants/{id}
+func (s *Server) updateParticipantHandler(w http.ResponseWriter, r *http.Request) {
+	participantID := r.Context().Value("participantID").(string)
+	slog.Debug("updateParticipantHandler invoked", "participantID", participantID)
+
+	var req models.InterventionParticipantUpdate
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		slog.Warn("updateParticipantHandler invalid JSON", "error", err)
+		writeJSONResponse(w, http.StatusBadRequest, models.Error("Invalid JSON format"))
+		return
+	}
+
+	// Check if participant exists
+	participant, err := s.st.GetInterventionParticipant(participantID)
+	if err != nil {
+		slog.Error("updateParticipantHandler check failed", "error", err, "participantID", participantID)
+		writeJSONResponse(w, http.StatusInternalServerError, models.Error("Failed to check participant"))
+		return
+	}
+
+	if participant == nil {
+		slog.Debug("updateParticipantHandler participant not found", "participantID", participantID)
+		writeJSONResponse(w, http.StatusNotFound, models.Error("Participant not found"))
+		return
+	}
+
+	// Track what fields are being updated for notification message
+	var updatedFields []string
+	oldDailyPromptTime := participant.DailyPromptTime
+
+	// Update fields if provided
+	if req.Name != nil {
+		participant.Name = *req.Name
+		updatedFields = append(updatedFields, "name")
+	}
+
+	if req.Timezone != nil {
+		participant.Timezone = *req.Timezone
+		updatedFields = append(updatedFields, "timezone")
+	}
+
+	if req.DailyPromptTime != nil {
+		participant.DailyPromptTime = *req.DailyPromptTime
+		updatedFields = append(updatedFields, "daily_prompt_time")
+	}
+
+	if req.Status != nil {
+		participant.Status = *req.Status
+		updatedFields = append(updatedFields, "status")
+	}
+
+	// Update timestamp
+	participant.UpdatedAt = time.Now()
+
+	// Save updated participant
+	if err := s.st.SaveInterventionParticipant(*participant); err != nil {
+		slog.Error("updateParticipantHandler save failed", "error", err, "participantID", participantID)
+		writeJSONResponse(w, http.StatusInternalServerError, models.Error("Failed to update participant"))
+		return
+	}
+
+	// Send notification message if daily prompt time was updated
+	if req.DailyPromptTime != nil && *req.DailyPromptTime != oldDailyPromptTime {
+		ctx := context.Background()
+		notificationMsg := fmt.Sprintf("📅 Your daily prompt time has been updated to %s. You'll receive your next prompt at this new time!", *req.DailyPromptTime)
+		
+		if err := s.msgService.SendMessage(ctx, participant.PhoneNumber, notificationMsg); err != nil {
+			slog.Error("updateParticipantHandler notification failed", "error", err, "participantID", participantID)
+			// Don't fail the update if notification fails
+		} else {
+			slog.Info("Update notification sent", "participantID", participantID, "newTime", *req.DailyPromptTime)
+		}
+	}
+
+	slog.Info("Participant updated successfully", "participantID", participantID, "updatedFields", updatedFields)
 	writeJSONResponse(w, http.StatusOK, models.Success(participant))
 }
 

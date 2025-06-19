@@ -149,6 +149,35 @@ fi
 # Test 10: Get non-existent participant
 test_endpoint "GET" "/intervention/participants/p_nonexistent123" "" "404" "Get non-existent participant"
 
+# Test 10.5: Update participant details
+if [ -n "$PARTICIPANT_1_ID" ]; then
+    log "Testing participant update..."
+    test_endpoint "PUT" "/intervention/participants/$PARTICIPANT_1_ID" '{
+        "name": "Updated Test Participant",
+        "timezone": "America/Los_Angeles"
+    }' "200" "Update participant details"
+    
+    # Calculate next minute for immediate testing
+    NEXT_MINUTE=$(date -d "+1 minute" +%H:%M)
+    log "Setting daily prompt time to next minute: $NEXT_MINUTE"
+    
+    test_endpoint "PUT" "/intervention/participants/$PARTICIPANT_1_ID" '{
+        "daily_prompt_time": "'$NEXT_MINUTE'",
+        "timezone": "UTC"
+    }' "200" "Update participant prompt time to next minute"
+    
+    log "⏰ Participant $PARTICIPANT_1_ID daily prompt time updated to $NEXT_MINUTE UTC"
+    log "📱 Check $PARTICIPANT_1_PHONE for notification message about schedule change"
+    log "💡 You should receive a prompt at $NEXT_MINUTE UTC (in about 1 minute)"
+else
+    error "Cannot test update participant - no participant ID available"
+fi
+
+# Test 10.6: Update non-existent participant
+test_endpoint "PUT" "/intervention/participants/p_nonexistent123" '{
+    "name": "Non-existent"
+}' "404" "Update non-existent participant"
+
 echo
 echo "=================================================="
 echo "PHASE 3: State Management and Flow Testing"

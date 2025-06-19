@@ -113,7 +113,53 @@ Retrieves details for a specific participant.
 
 - `404 Not Found`: Participant does not exist
 
-#### 4. Delete Participant
+#### 4. Update Participant
+
+`PUT /intervention/participants/{id}`
+
+Updates participant details such as name, timezone, daily prompt time, or status.
+
+**Request Body:**
+
+```json
+{
+    "name": "John Updated",
+    "timezone": "America/Los_Angeles",
+    "daily_prompt_time": "09:30",
+    "status": "active"
+}
+```
+
+**Optional Fields (all fields are optional):**
+
+- `name`: Participant's name
+- `timezone`: Timezone for scheduling
+- `daily_prompt_time`: Time for daily prompts in HH:MM format
+- `status`: Participant status (active, paused, completed, withdrawn)
+
+**Response:**
+
+```json
+{
+    "status": "ok",
+    "result": {
+        "id": "p_1234567890abcdef",
+        "phone_number": "+1234567890",
+        "name": "John Updated",
+        "timezone": "America/Los_Angeles",
+        "status": "active",
+        "daily_prompt_time": "09:30",
+        "updated_at": "2024-01-15T10:15:00Z"
+    }
+}
+```
+
+**Error Responses:**
+
+- `400 Bad Request`: Invalid request data
+- `404 Not Found`: Participant does not exist
+
+#### 5. Delete Participant
 
 `DELETE /intervention/participants/{id}`
 
@@ -134,7 +180,7 @@ Removes a participant from the study. This will also delete all their responses 
 
 ### Response Processing
 
-#### 5. Process Response
+#### 6. Process Response
 
 `POST /intervention/participants/{id}/responses`
 
@@ -180,7 +226,7 @@ Records a participant's response and processes it according to the intervention 
 
 ### State Management
 
-#### 6. Advance State
+#### 7. Advance State
 
 `POST /intervention/participants/{id}/advance`
 
@@ -233,7 +279,7 @@ Manually advances a participant to a specific state in the intervention flow.
 - `400 Bad Request`: Invalid state or missing to_state
 - `404 Not Found`: Participant does not exist
 
-#### 7. Reset Participant
+#### 8. Reset Participant
 
 `POST /intervention/participants/{id}/reset`
 
@@ -258,7 +304,7 @@ Resets a participant's flow state back to the beginning (ORIENTATION).
 
 ### History & Analytics
 
-#### 8. Get Participant History
+#### 9. Get Participant History
 
 `GET /intervention/participants/{id}/history`
 
@@ -295,7 +341,7 @@ Retrieves a participant's complete history including their current state and all
 
 - `404 Not Found`: Participant does not exist
 
-#### 9. Weekly Summary Trigger
+#### 10. Weekly Summary Trigger
 
 `POST /intervention/weekly-summary`
 
@@ -313,7 +359,7 @@ Triggers weekly summary processing for all eligible participants.
 }
 ```
 
-#### 10. Intervention Statistics
+#### 11. Intervention Statistics
 
 `GET /intervention/stats`
 
