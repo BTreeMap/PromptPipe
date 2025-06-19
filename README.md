@@ -164,7 +164,7 @@ Schedules a new prompt to be sent according to a cron expression.
 
 **Request Body:** `Prompt` object (see [Data Models](#prompt)). Supports optional `system_prompt` and `user_prompt` fields for GenAI content.
 
-**Response Body:** `{"status":"scheduled"}`
+**Response Body:** `{"status":"ok"}`
 
 **Responses:**
 
@@ -203,7 +203,7 @@ Collects a participant's response message.
 
 **Request Body:** `Response` object (see [Data Models](#response)).
 
-**Response Body:** `{"status":"recorded"}`
+**Response Body:** `{"status":"ok"}`
 
 **Responses:**
 

@@ -225,7 +225,7 @@ func (s *Server) responseHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.Info("Response recorded", "from", resp.From)
-	writeJSONResponse(w, http.StatusCreated, models.Recorded())
+	writeJSONResponse(w, http.StatusCreated, models.Success(nil))
 }
 
 // responsesHandler returns all collected responses (GET /responses).

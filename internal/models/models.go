@@ -258,10 +258,6 @@ const (
 	APIStatusOK APIStatus = "ok"
 	// APIStatusError indicates an API request failed with an error.
 	APIStatusError APIStatus = "error"
-	// APIStatusScheduled indicates an API request resulted in scheduled content.
-	APIStatusScheduled APIStatus = "scheduled"
-	// APIStatusRecorded indicates data was successfully recorded via API.
-	APIStatusRecorded APIStatus = "recorded"
 )
 
 type Receipt struct {
@@ -344,36 +340,6 @@ func SuccessWithMessage(message string, result interface{}) APIResponse {
 func Error(message string) APIResponse {
 	return NewAPIResponseBuilder().
 		WithStatus(APIStatusError).
-		WithMessage(message).
-		Build()
-}
-
-// Scheduled creates a scheduled API response.
-func Scheduled() APIResponse {
-	return NewAPIResponseBuilder().
-		WithStatus(APIStatusScheduled).
-		Build()
-}
-
-// ScheduledWithMessage creates a scheduled API response with a message.
-func ScheduledWithMessage(message string) APIResponse {
-	return NewAPIResponseBuilder().
-		WithStatus(APIStatusScheduled).
-		WithMessage(message).
-		Build()
-}
-
-// Recorded creates a recorded API response.
-func Recorded() APIResponse {
-	return NewAPIResponseBuilder().
-		WithStatus(APIStatusRecorded).
-		Build()
-}
-
-// RecordedWithMessage creates a recorded API response with a message.
-func RecordedWithMessage(message string) APIResponse {
-	return NewAPIResponseBuilder().
-		WithStatus(APIStatusRecorded).
 		WithMessage(message).
 		Build()
 }

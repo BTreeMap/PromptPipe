@@ -248,7 +248,7 @@ func TestResponseHandler_Success(t *testing.T) {
 		t.Errorf("response not stored correctly: %+v", responses[0])
 	}
 
-	assertJSONStatus(t, rr, "recorded")
+	assertJSONStatus(t, rr, "ok")
 }
 
 func TestResponseHandler_MethodNotAllowed(t *testing.T) {
