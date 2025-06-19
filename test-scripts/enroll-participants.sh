@@ -34,11 +34,11 @@ enroll_participant() {
     
     response=$(curl -s -w "HTTPSTATUS:%{http_code}" -X POST \
         -H "Content-Type: application/json" \
-        -d '{
-            "phone_number": "'$phone'",
-            "name": "'$name'",
-            "timezone": "America/Toronto"
-        }' \
+        -d "{
+            \"phone_number\": \"$phone\",
+            \"name\": \"$name\",
+            \"timezone\": \"America/Toronto\"
+        }" \
         "$API_BASE_URL/intervention/participants")
     
     status=$(echo "$response" | grep -o "HTTPSTATUS:[0-9]*" | cut -d: -f2)
