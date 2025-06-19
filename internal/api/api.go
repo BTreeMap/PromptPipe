@@ -25,6 +25,14 @@ import (
 	"github.com/BTreeMap/PromptPipe/internal/whatsapp"
 )
 
+// ContextKey is a custom type for context keys to avoid collisions
+type ContextKey string
+
+const (
+	// ContextKeyParticipantID is the context key for participant ID
+	ContextKeyParticipantID ContextKey = "participantID"
+)
+
 // Default configuration constants
 const (
 	// DefaultServerAddress is the default HTTP server address
@@ -358,9 +366,7 @@ func (s *Server) interventionRouter(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/intervention")
 
 	// Remove leading slash if present
-	if strings.HasPrefix(path, "/") {
-		path = path[1:]
-	}
+	path = strings.TrimPrefix(path, "/")
 
 	slog.Debug("Intervention router", "method", r.Method, "path", path, "fullPath", r.URL.Path)
 
@@ -401,7 +407,7 @@ func (s *Server) handleParticipantRoutes(w http.ResponseWriter, r *http.Request,
 
 	// Extract participant ID and add to request context for handlers to use
 	participantID := segments[0]
-	ctx := context.WithValue(r.Context(), "participantID", participantID)
+	ctx := context.WithValue(r.Context(), ContextKeyParticipantID, participantID)
 	r = r.WithContext(ctx)
 
 	if len(segments) == 1 {

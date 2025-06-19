@@ -169,25 +169,25 @@ func (g *MicroHealthInterventionGenerator) Generate(ctx context.Context, p model
 	// For simple message generation, dependencies are not required
 	// Dependencies are only needed for stateful operations like state transitions and timers
 	switch p.State {
-	case "", StateOrientation:
+	case "", models.StateOrientation:
 		slog.Debug("MicroHealthIntervention state orientation", "to", p.To)
 		return MsgOrientation, nil
-	case StateCommitmentPrompt:
+	case models.StateCommitmentPrompt:
 		slog.Debug("MicroHealthIntervention state commitment prompt", "to", p.To)
 		return MsgCommitment, nil
-	case StateFeelingPrompt:
+	case models.StateFeelingPrompt:
 		slog.Debug("MicroHealthIntervention state feeling prompt", "to", p.To)
 		return MsgFeeling, nil
-	case StateRandomAssignment:
+	case models.StateRandomAssignment:
 		slog.Debug("MicroHealthIntervention state random assignment", "to", p.To)
 		return MsgRandomAssignment, nil
-	case StateHabitReminder:
+	case models.StateHabitReminder:
 		slog.Debug("MicroHealthIntervention state habit reminder", "to", p.To)
 		return MsgHabitReminder, nil
-	case StateFollowUp:
+	case models.StateFollowUp:
 		slog.Debug("MicroHealthIntervention state follow up", "to", p.To)
 		return MsgFollowUp, nil
-	case StateComplete:
+	case models.StateComplete:
 		slog.Debug("MicroHealthIntervention state complete", "to", p.To)
 		return MsgComplete, nil
 	default:

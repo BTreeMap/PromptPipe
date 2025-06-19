@@ -22,7 +22,7 @@ func TestMicroHealthInterventionGenerator_Generate(t *testing.T) {
 	}
 
 	// Commitment prompt state
-	out, err = g.Generate(ctx, models.Prompt{State: StateCommitmentPrompt})
+	out, err = g.Generate(ctx, models.Prompt{State: models.StateCommitmentPrompt})
 	if err != nil {
 		t.Fatalf("commitment: unexpected error: %v", err)
 	}
@@ -31,7 +31,7 @@ func TestMicroHealthInterventionGenerator_Generate(t *testing.T) {
 	}
 
 	// Feeling prompt state
-	out, err = g.Generate(ctx, models.Prompt{State: StateFeelingPrompt})
+	out, err = g.Generate(ctx, models.Prompt{State: models.StateFeelingPrompt})
 	if err != nil {
 		t.Fatalf("feeling: unexpected error: %v", err)
 	}

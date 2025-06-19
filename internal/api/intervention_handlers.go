@@ -98,7 +98,7 @@ func (s *Server) enrollParticipantHandler(w http.ResponseWriter, r *http.Request
 	// Initialize flow state to ORIENTATION
 	ctx := context.Background()
 	stateManager := flow.NewStoreBasedStateManager(s.st)
-	if err := stateManager.SetCurrentState(ctx, participantID, models.FlowTypeMicroHealthIntervention, flow.StateOrientation); err != nil {
+	if err := stateManager.SetCurrentState(ctx, participantID, models.FlowTypeMicroHealthIntervention, models.StateOrientation); err != nil {
 		slog.Error("enrollParticipantHandler state init failed", "error", err, "participantID", participantID)
 		// Note: We don't fail the enrollment if state init fails, but we log it
 	}
@@ -142,8 +142,8 @@ func (s *Server) listParticipantsHandler(w http.ResponseWriter, r *http.Request)
 
 // getParticipantHandler handles GET /intervention/participants/{id}
 func (s *Server) getParticipantHandler(w http.ResponseWriter, r *http.Request) {
-	participantID := r.Context().Value("participantID").(string)
-	slog.Debug("getParticipantHandler invoked", "participantID", participantID)
+	participantID := r.Context().Value(ContextKeyParticipantID).(string)
+	slog.Debug("getParticipantHandler invoked", string(ContextKeyParticipantID), participantID)
 
 	participant, err := s.st.GetInterventionParticipant(participantID)
 	if err != nil {
@@ -164,7 +164,7 @@ func (s *Server) getParticipantHandler(w http.ResponseWriter, r *http.Request) {
 
 // updateParticipantHandler handles PUT /intervention/participants/{id}
 func (s *Server) updateParticipantHandler(w http.ResponseWriter, r *http.Request) {
-	participantID := r.Context().Value("participantID").(string)
+	participantID := r.Context().Value(ContextKeyParticipantID).(string)
 	slog.Debug("updateParticipantHandler invoked", "participantID", participantID)
 
 	var req models.InterventionParticipantUpdate
@@ -249,7 +249,7 @@ func (s *Server) updateParticipantHandler(w http.ResponseWriter, r *http.Request
 
 // deleteParticipantHandler handles DELETE /intervention/participants/{id}
 func (s *Server) deleteParticipantHandler(w http.ResponseWriter, r *http.Request) {
-	participantID := r.Context().Value("participantID").(string)
+	participantID := r.Context().Value(ContextKeyParticipantID).(string)
 	slog.Debug("deleteParticipantHandler invoked", "participantID", participantID)
 
 	// Check if participant exists
@@ -295,7 +295,7 @@ func (s *Server) deleteParticipantHandler(w http.ResponseWriter, r *http.Request
 
 // processResponseHandler handles POST /intervention/participants/{id}/responses
 func (s *Server) processResponseHandler(w http.ResponseWriter, r *http.Request) {
-	participantID := r.Context().Value("participantID").(string)
+	participantID := r.Context().Value(ContextKeyParticipantID).(string)
 	slog.Debug("processResponseHandler invoked", "participantID", participantID)
 
 	var req models.InterventionResponseRequest
@@ -372,7 +372,7 @@ func (s *Server) processResponseHandler(w http.ResponseWriter, r *http.Request) 
 
 // advanceStateHandler handles POST /intervention/participants/{id}/advance
 func (s *Server) advanceStateHandler(w http.ResponseWriter, r *http.Request) {
-	participantID := r.Context().Value("participantID").(string)
+	participantID := r.Context().Value(ContextKeyParticipantID).(string)
 	slog.Debug("advanceStateHandler invoked", "participantID", participantID)
 
 	var req models.InterventionStateAdvanceRequest
@@ -440,7 +440,7 @@ func (s *Server) advanceStateHandler(w http.ResponseWriter, r *http.Request) {
 
 // resetParticipantHandler handles POST /intervention/participants/{id}/reset
 func (s *Server) resetParticipantHandler(w http.ResponseWriter, r *http.Request) {
-	participantID := r.Context().Value("participantID").(string)
+	participantID := r.Context().Value(ContextKeyParticipantID).(string)
 	slog.Debug("resetParticipantHandler invoked", "participantID", participantID)
 
 	// Check if participant exists
@@ -467,7 +467,7 @@ func (s *Server) resetParticipantHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Set back to ORIENTATION
-	if err := stateManager.SetCurrentState(ctx, participantID, models.FlowTypeMicroHealthIntervention, flow.StateOrientation); err != nil {
+	if err := stateManager.SetCurrentState(ctx, participantID, models.FlowTypeMicroHealthIntervention, models.StateOrientation); err != nil {
 		slog.Error("resetParticipantHandler set orientation failed", "error", err, "participantID", participantID)
 		writeJSONResponse(w, http.StatusInternalServerError, models.Error("Failed to set orientation state"))
 		return
@@ -475,7 +475,7 @@ func (s *Server) resetParticipantHandler(w http.ResponseWriter, r *http.Request)
 
 	result := map[string]interface{}{
 		"participant_id": participantID,
-		"reset_to":       flow.StateOrientation,
+		"reset_to":       models.StateOrientation,
 		"reset_at":       time.Now(),
 	}
 
@@ -485,7 +485,7 @@ func (s *Server) resetParticipantHandler(w http.ResponseWriter, r *http.Request)
 
 // getParticipantHistoryHandler handles GET /intervention/participants/{id}/history
 func (s *Server) getParticipantHistoryHandler(w http.ResponseWriter, r *http.Request) {
-	participantID := r.Context().Value("participantID").(string)
+	participantID := r.Context().Value(ContextKeyParticipantID).(string)
 	slog.Debug("getParticipantHistoryHandler invoked", "participantID", participantID)
 
 	// Check if participant exists
@@ -642,13 +642,13 @@ func generateResponseID() (string, error) {
 // determineResponseType determines the response type based on the current state
 func determineResponseType(state models.StateType) string {
 	switch state {
-	case flow.StateCommitmentPrompt:
+	case models.StateCommitmentPrompt:
 		return "commitment"
-	case flow.StateFeelingPrompt:
+	case models.StateFeelingPrompt:
 		return "feeling"
-	case flow.StateHabitReminder:
+	case models.StateHabitReminder:
 		return "completion"
-	case flow.StateFollowUp:
+	case models.StateFollowUp:
 		return "followup"
 	default:
 		return "general"
@@ -658,13 +658,13 @@ func determineResponseType(state models.StateType) string {
 // isValidInterventionState checks if a state is valid for the micro health intervention
 func isValidInterventionState(state string) bool {
 	validStates := []models.StateType{
-		flow.StateOrientation,
-		flow.StateCommitmentPrompt,
-		flow.StateFeelingPrompt,
-		flow.StateRandomAssignment,
-		flow.StateHabitReminder,
-		flow.StateFollowUp,
-		flow.StateComplete,
+		models.StateOrientation,
+		models.StateCommitmentPrompt,
+		models.StateFeelingPrompt,
+		models.StateRandomAssignment,
+		models.StateHabitReminder,
+		models.StateFollowUp,
+		models.StateComplete,
 	}
 
 	for _, validState := range validStates {

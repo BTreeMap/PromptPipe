@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/BTreeMap/PromptPipe/internal/flow"
 	"github.com/BTreeMap/PromptPipe/internal/models"
 	"github.com/BTreeMap/PromptPipe/internal/whatsapp"
 )
@@ -221,7 +220,7 @@ func TestCreateInterventionHook_ReadyOverride(t *testing.T) {
 	phoneNumber := "+1234567890"
 
 	// Set initial state to END_OF_DAY
-	stateManager.SetCurrentState(context.Background(), participantID, models.FlowTypeMicroHealthIntervention, flow.StateEndOfDay)
+	stateManager.SetCurrentState(context.Background(), participantID, models.FlowTypeMicroHealthIntervention, models.StateEndOfDay)
 
 	// Create intervention hook
 	hook := CreateInterventionHook(participantID, phoneNumber, stateManager, msgService)
@@ -240,8 +239,8 @@ func TestCreateInterventionHook_ReadyOverride(t *testing.T) {
 
 	// Verify state transition
 	newState, _ := stateManager.GetCurrentState(ctx, participantID, models.FlowTypeMicroHealthIntervention)
-	if newState != flow.StateCommitmentPrompt {
-		t.Errorf("Expected state %s, got %s", flow.StateCommitmentPrompt, newState)
+	if newState != models.StateCommitmentPrompt {
+		t.Errorf("Expected state %s, got %s", models.StateCommitmentPrompt, newState)
 	}
 }
 
@@ -254,7 +253,7 @@ func TestCreateInterventionHook_CommitmentResponse(t *testing.T) {
 	phoneNumber := "+1234567890"
 
 	// Set state to COMMITMENT_PROMPT
-	stateManager.SetCurrentState(context.Background(), participantID, models.FlowTypeMicroHealthIntervention, flow.StateCommitmentPrompt)
+	stateManager.SetCurrentState(context.Background(), participantID, models.FlowTypeMicroHealthIntervention, models.StateCommitmentPrompt)
 
 	// Create intervention hook
 	hook := CreateInterventionHook(participantID, phoneNumber, stateManager, msgService)
@@ -273,8 +272,8 @@ func TestCreateInterventionHook_CommitmentResponse(t *testing.T) {
 
 	// Verify state transition
 	newState, _ := stateManager.GetCurrentState(ctx, participantID, models.FlowTypeMicroHealthIntervention)
-	if newState != flow.StateFeelingPrompt {
-		t.Errorf("Expected state %s, got %s", flow.StateFeelingPrompt, newState)
+	if newState != models.StateFeelingPrompt {
+		t.Errorf("Expected state %s, got %s", models.StateFeelingPrompt, newState)
 	}
 }
 
@@ -287,7 +286,7 @@ func TestCreateInterventionHook_FeelingResponse(t *testing.T) {
 	phoneNumber := "+1234567890"
 
 	// Set state to FEELING_PROMPT
-	stateManager.SetCurrentState(context.Background(), participantID, models.FlowTypeMicroHealthIntervention, flow.StateFeelingPrompt)
+	stateManager.SetCurrentState(context.Background(), participantID, models.FlowTypeMicroHealthIntervention, models.StateFeelingPrompt)
 
 	// Create intervention hook
 	hook := CreateInterventionHook(participantID, phoneNumber, stateManager, msgService)
@@ -306,8 +305,8 @@ func TestCreateInterventionHook_FeelingResponse(t *testing.T) {
 
 	// Verify state transition - should be one of the intervention states
 	newState, _ := stateManager.GetCurrentState(ctx, participantID, models.FlowTypeMicroHealthIntervention)
-	if newState != flow.StateSendInterventionImmediate && newState != flow.StateSendInterventionReflective {
-		t.Errorf("Expected state %s or %s, got %s", flow.StateSendInterventionImmediate, flow.StateSendInterventionReflective, newState)
+	if newState != models.StateSendInterventionImmediate && newState != models.StateSendInterventionReflective {
+		t.Errorf("Expected state %s or %s, got %s", models.StateSendInterventionImmediate, models.StateSendInterventionReflective, newState)
 	}
 
 	// Verify feeling response was stored
@@ -545,7 +544,7 @@ func TestResponseHandler_TimeoutWrapper(t *testing.T) {
 	}
 
 	// Wrap with very short timeout
-	wrappedHandler := handler.createTimeoutWrapper(slowHandler, "1234567890", 10*time.Millisecond)
+	wrappedHandler := handler.createTimeoutWrapper(slowHandler, 10*time.Millisecond)
 
 	ctx := context.Background()
 	handled, err := wrappedHandler(ctx, "1234567890", "test response", time.Now().Unix())
