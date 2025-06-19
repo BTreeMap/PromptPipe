@@ -234,14 +234,15 @@ func (t *SimpleTimer) ListActive() []models.TimerInfo {
 			Description: entry.description,
 		}
 
-		if entry.timerType == "once" {
+		switch entry.timerType {
+		case "once":
 			remaining := entry.expiresAt.Sub(now)
 			if remaining < 0 {
 				remaining = 0
 			}
 			info.ExpiresAt = entry.expiresAt
 			info.Remaining = remaining.String()
-		} else if entry.timerType == "recurring" {
+		case "recurring":
 			info.CronExpr = entry.pattern
 			info.NextRun = entry.nextRun
 			remaining := entry.nextRun.Sub(now)
@@ -276,14 +277,15 @@ func (t *SimpleTimer) GetTimer(id string) (*models.TimerInfo, error) {
 		Description: entry.description,
 	}
 
-	if entry.timerType == "once" {
+	switch entry.timerType {
+	case "once":
 		remaining := entry.expiresAt.Sub(now)
 		if remaining < 0 {
 			remaining = 0
 		}
 		info.ExpiresAt = entry.expiresAt
 		info.Remaining = remaining.String()
-	} else if entry.timerType == "recurring" {
+	case "recurring":
 		info.CronExpr = entry.pattern
 		info.NextRun = entry.nextRun
 		remaining := entry.nextRun.Sub(now)
