@@ -371,6 +371,32 @@ type InterventionParticipantUpdate struct {
 	Status          *InterventionParticipantStatus `json:"status,omitempty"`
 }
 
+// Validate validates an InterventionParticipantUpdate request.
+func (u *InterventionParticipantUpdate) Validate() error {
+	// Validate timezone if provided
+	if u.Timezone != nil && *u.Timezone != "" {
+		if _, err := time.LoadLocation(*u.Timezone); err != nil {
+			return errors.New("invalid timezone")
+		}
+	}
+
+	// Validate daily prompt time format if provided
+	if u.DailyPromptTime != nil && *u.DailyPromptTime != "" {
+		if _, err := time.Parse("15:04", *u.DailyPromptTime); err != nil {
+			return errors.New("daily_prompt_time must be in HH:MM format")
+		}
+	}
+
+	// Validate status if provided
+	if u.Status != nil {
+		if !IsValidParticipantStatus(*u.Status) {
+			return errors.New("invalid participant status")
+		}
+	}
+
+	return nil
+}
+
 // InterventionStats represents statistics about the intervention.
 type InterventionStats struct {
 	TotalParticipants    int                                   `json:"total_participants"`

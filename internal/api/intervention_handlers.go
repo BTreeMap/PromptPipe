@@ -169,6 +169,13 @@ func (s *Server) updateParticipantHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// Validate request
+	if err := req.Validate(); err != nil {
+		slog.Warn("updateParticipantHandler validation failed", "error", err)
+		writeJSONResponse(w, http.StatusBadRequest, models.Error(err.Error()))
+		return
+	}
+
 	// Check if participant exists
 	participant, err := s.st.GetInterventionParticipant(participantID)
 	if err != nil {
