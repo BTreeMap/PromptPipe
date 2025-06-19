@@ -16,9 +16,9 @@ echo "Testing Stateful Micro Health Intervention API"
 echo "========================================================================"
 
 # Test variables
-PARTICIPANT_1_PHONE="+1555100001"
-PARTICIPANT_2_PHONE="+1555100002"
-PARTICIPANT_3_PHONE="+1555100003"
+PARTICIPANT_1_PHONE="${PARTICIPANT_1_PHONE:-+1555100001}"
+PARTICIPANT_2_PHONE="${PARTICIPANT_2_PHONE:-+1555100002}"
+PARTICIPANT_3_PHONE="${PARTICIPANT_3_PHONE:-+1555100003}"
 CURRENT_TIME=$(date +%s)
 
 # Global variables for participant IDs (extracted from responses)
