@@ -16,11 +16,6 @@ import (
 	"github.com/BTreeMap/PromptPipe/internal/models"
 )
 
-// Flow type constant for micro health intervention
-const (
-	MicroHealthInterventionFlowType = "micro_health_intervention"
-)
-
 // enrollParticipantHandler handles POST /intervention/participants
 func (s *Server) enrollParticipantHandler(w http.ResponseWriter, r *http.Request) {
 	slog.Debug("enrollParticipantHandler invoked", "method", r.Method, "path", r.URL.Path)
@@ -103,7 +98,7 @@ func (s *Server) enrollParticipantHandler(w http.ResponseWriter, r *http.Request
 	// Initialize flow state to ORIENTATION
 	ctx := context.Background()
 	stateManager := flow.NewStoreBasedStateManager(s.st)
-	if err := stateManager.SetCurrentState(ctx, participantID, MicroHealthInterventionFlowType, flow.StateOrientation); err != nil {
+	if err := stateManager.SetCurrentState(ctx, participantID, flow.FlowTypeMicroHealthIntervention, flow.StateOrientation); err != nil {
 		slog.Error("enrollParticipantHandler state init failed", "error", err, "participantID", participantID)
 		// Note: We don't fail the enrollment if state init fails, but we log it
 	}
@@ -281,7 +276,7 @@ func (s *Server) deleteParticipantHandler(w http.ResponseWriter, r *http.Request
 	// Also clean up their flow state
 	ctx := context.Background()
 	stateManager := flow.NewStoreBasedStateManager(s.st)
-	if err := stateManager.ResetState(ctx, participantID, MicroHealthInterventionFlowType); err != nil {
+	if err := stateManager.ResetState(ctx, participantID, flow.FlowTypeMicroHealthIntervention); err != nil {
 		slog.Error("deleteParticipantHandler state cleanup failed", "error", err, "participantID", participantID)
 		// Note: We don't fail the delete if state cleanup fails
 	}
@@ -333,7 +328,7 @@ func (s *Server) processResponseHandler(w http.ResponseWriter, r *http.Request) 
 	// Get current state
 	ctx := context.Background()
 	stateManager := flow.NewStoreBasedStateManager(s.st)
-	currentState, err := stateManager.GetCurrentState(ctx, participantID, MicroHealthInterventionFlowType)
+	currentState, err := stateManager.GetCurrentState(ctx, participantID, flow.FlowTypeMicroHealthIntervention)
 	if err != nil {
 		slog.Error("processResponseHandler get state failed", "error", err, "participantID", participantID)
 		writeJSONResponse(w, http.StatusInternalServerError, models.Error("Failed to get participant state"))
@@ -355,7 +350,7 @@ func (s *Server) processResponseHandler(w http.ResponseWriter, r *http.Request) 
 	response := models.InterventionResponse{
 		ID:            responseID,
 		ParticipantID: participantID,
-		State:         currentState,
+		State:         string(currentState),
 		ResponseText:  req.ResponseText,
 		ResponseType:  responseType,
 		Timestamp:     time.Now(),
@@ -417,7 +412,7 @@ func (s *Server) advanceStateHandler(w http.ResponseWriter, r *http.Request) {
 	// Get current state
 	ctx := context.Background()
 	stateManager := flow.NewStoreBasedStateManager(s.st)
-	currentState, err := stateManager.GetCurrentState(ctx, participantID, MicroHealthInterventionFlowType)
+	currentState, err := stateManager.GetCurrentState(ctx, participantID, flow.FlowTypeMicroHealthIntervention)
 	if err != nil {
 		slog.Error("advanceStateHandler get state failed", "error", err, "participantID", participantID)
 		writeJSONResponse(w, http.StatusInternalServerError, models.Error("Failed to get participant state"))
@@ -425,7 +420,7 @@ func (s *Server) advanceStateHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Advance state
-	if err := stateManager.SetCurrentState(ctx, participantID, MicroHealthInterventionFlowType, req.ToState); err != nil {
+	if err := stateManager.SetCurrentState(ctx, participantID, flow.FlowTypeMicroHealthIntervention, flow.StateType(req.ToState)); err != nil {
 		slog.Error("advanceStateHandler set state failed", "error", err, "participantID", participantID, "toState", req.ToState)
 		writeJSONResponse(w, http.StatusInternalServerError, models.Error("Failed to advance state"))
 		return
@@ -433,7 +428,7 @@ func (s *Server) advanceStateHandler(w http.ResponseWriter, r *http.Request) {
 
 	result := map[string]interface{}{
 		"participant_id": participantID,
-		"from_state":     currentState,
+		"from_state":     string(currentState),
 		"to_state":       req.ToState,
 		"reason":         req.Reason,
 		"advanced_at":    time.Now(),
@@ -465,14 +460,14 @@ func (s *Server) resetParticipantHandler(w http.ResponseWriter, r *http.Request)
 	// Reset flow state to ORIENTATION
 	ctx := context.Background()
 	stateManager := flow.NewStoreBasedStateManager(s.st)
-	if err := stateManager.ResetState(ctx, participantID, MicroHealthInterventionFlowType); err != nil {
+	if err := stateManager.ResetState(ctx, participantID, flow.FlowTypeMicroHealthIntervention); err != nil {
 		slog.Error("resetParticipantHandler reset failed", "error", err, "participantID", participantID)
 		writeJSONResponse(w, http.StatusInternalServerError, models.Error("Failed to reset participant state"))
 		return
 	}
 
 	// Set back to ORIENTATION
-	if err := stateManager.SetCurrentState(ctx, participantID, MicroHealthInterventionFlowType, flow.StateOrientation); err != nil {
+	if err := stateManager.SetCurrentState(ctx, participantID, flow.FlowTypeMicroHealthIntervention, flow.StateOrientation); err != nil {
 		slog.Error("resetParticipantHandler set orientation failed", "error", err, "participantID", participantID)
 		writeJSONResponse(w, http.StatusInternalServerError, models.Error("Failed to set orientation state"))
 		return
@@ -518,7 +513,7 @@ func (s *Server) getParticipantHistoryHandler(w http.ResponseWriter, r *http.Req
 	// Get current flow state
 	ctx := context.Background()
 	stateManager := flow.NewStoreBasedStateManager(s.st)
-	currentState, err := stateManager.GetCurrentState(ctx, participantID, MicroHealthInterventionFlowType)
+	currentState, err := stateManager.GetCurrentState(ctx, participantID, flow.FlowTypeMicroHealthIntervention)
 	if err != nil {
 		slog.Error("getParticipantHistoryHandler get state failed", "error", err, "participantID", participantID)
 		// Don't fail if we can't get current state
@@ -645,7 +640,7 @@ func generateResponseID() (string, error) {
 }
 
 // determineResponseType determines the response type based on the current state
-func determineResponseType(state string) string {
+func determineResponseType(state flow.StateType) string {
 	switch state {
 	case flow.StateCommitmentPrompt:
 		return "commitment"
@@ -662,7 +657,7 @@ func determineResponseType(state string) string {
 
 // isValidInterventionState checks if a state is valid for the micro health intervention
 func isValidInterventionState(state string) bool {
-	validStates := []string{
+	validStates := []flow.StateType{
 		flow.StateOrientation,
 		flow.StateCommitmentPrompt,
 		flow.StateFeelingPrompt,
@@ -673,7 +668,7 @@ func isValidInterventionState(state string) bool {
 	}
 
 	for _, validState := range validStates {
-		if state == validState {
+		if state == string(validState) {
 			return true
 		}
 	}

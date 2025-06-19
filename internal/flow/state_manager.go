@@ -23,10 +23,10 @@ func NewStoreBasedStateManager(st store.Store) *StoreBasedStateManager {
 }
 
 // GetCurrentState retrieves the current state for a participant in a flow.
-func (sm *StoreBasedStateManager) GetCurrentState(ctx context.Context, participantID, flowType string) (string, error) {
+func (sm *StoreBasedStateManager) GetCurrentState(ctx context.Context, participantID string, flowType FlowType) (StateType, error) {
 	slog.Debug("StateManager GetCurrentState", "participantID", participantID, "flowType", flowType)
 
-	flowState, err := sm.store.GetFlowState(participantID, flowType)
+	flowState, err := sm.store.GetFlowState(participantID, string(flowType))
 	if err != nil {
 		slog.Error("StateManager GetCurrentState error", "error", err, "participantID", participantID, "flowType", flowType)
 		return "", err
@@ -38,15 +38,15 @@ func (sm *StoreBasedStateManager) GetCurrentState(ctx context.Context, participa
 	}
 
 	slog.Debug("StateManager GetCurrentState found", "participantID", participantID, "flowType", flowType, "state", flowState.CurrentState)
-	return flowState.CurrentState, nil
+	return StateType(flowState.CurrentState), nil
 }
 
 // SetCurrentState updates the current state for a participant in a flow.
-func (sm *StoreBasedStateManager) SetCurrentState(ctx context.Context, participantID, flowType, state string) error {
+func (sm *StoreBasedStateManager) SetCurrentState(ctx context.Context, participantID string, flowType FlowType, state StateType) error {
 	slog.Debug("StateManager SetCurrentState", "participantID", participantID, "flowType", flowType, "state", state)
 
 	// Get existing state or create new one
-	flowState, err := sm.store.GetFlowState(participantID, flowType)
+	flowState, err := sm.store.GetFlowState(participantID, string(flowType))
 	if err != nil {
 		slog.Error("StateManager SetCurrentState get error", "error", err, "participantID", participantID, "flowType", flowType)
 		return err
@@ -57,15 +57,15 @@ func (sm *StoreBasedStateManager) SetCurrentState(ctx context.Context, participa
 		// Create new flow state
 		flowState = &models.FlowState{
 			ParticipantID: participantID,
-			FlowType:      flowType,
-			CurrentState:  state,
+			FlowType:      string(flowType),
+			CurrentState:  string(state),
 			StateData:     make(map[string]string),
 			CreatedAt:     now,
 			UpdatedAt:     now,
 		}
 	} else {
 		// Update existing flow state
-		flowState.CurrentState = state
+		flowState.CurrentState = string(state)
 		flowState.UpdatedAt = now
 	}
 
@@ -80,10 +80,10 @@ func (sm *StoreBasedStateManager) SetCurrentState(ctx context.Context, participa
 }
 
 // GetStateData retrieves additional data associated with the participant's state.
-func (sm *StoreBasedStateManager) GetStateData(ctx context.Context, participantID, flowType, key string) (string, error) {
+func (sm *StoreBasedStateManager) GetStateData(ctx context.Context, participantID string, flowType FlowType, key DataKey) (string, error) {
 	slog.Debug("StateManager GetStateData", "participantID", participantID, "flowType", flowType, "key", key)
 
-	flowState, err := sm.store.GetFlowState(participantID, flowType)
+	flowState, err := sm.store.GetFlowState(participantID, string(flowType))
 	if err != nil {
 		slog.Error("StateManager GetStateData error", "error", err, "participantID", participantID, "flowType", flowType, "key", key)
 		return "", err
@@ -94,7 +94,7 @@ func (sm *StoreBasedStateManager) GetStateData(ctx context.Context, participantI
 		return "", nil
 	}
 
-	value, exists := flowState.StateData[key]
+	value, exists := flowState.StateData[string(key)]
 	if !exists {
 		slog.Debug("StateManager GetStateData key not found", "participantID", participantID, "flowType", flowType, "key", key)
 		return "", nil
@@ -105,11 +105,11 @@ func (sm *StoreBasedStateManager) GetStateData(ctx context.Context, participantI
 }
 
 // SetStateData stores additional data associated with the participant's state.
-func (sm *StoreBasedStateManager) SetStateData(ctx context.Context, participantID, flowType, key, value string) error {
+func (sm *StoreBasedStateManager) SetStateData(ctx context.Context, participantID string, flowType FlowType, key DataKey, value string) error {
 	slog.Debug("StateManager SetStateData", "participantID", participantID, "flowType", flowType, "key", key)
 
 	// Get existing state or create new one
-	flowState, err := sm.store.GetFlowState(participantID, flowType)
+	flowState, err := sm.store.GetFlowState(participantID, string(flowType))
 	if err != nil {
 		slog.Error("StateManager SetStateData get error", "error", err, "participantID", participantID, "flowType", flowType, "key", key)
 		return err
@@ -120,9 +120,9 @@ func (sm *StoreBasedStateManager) SetStateData(ctx context.Context, participantI
 		// Create new flow state with empty current state
 		flowState = &models.FlowState{
 			ParticipantID: participantID,
-			FlowType:      flowType,
+			FlowType:      string(flowType),
 			CurrentState:  "",
-			StateData:     map[string]string{key: value},
+			StateData:     map[string]string{string(key): value},
 			CreatedAt:     now,
 			UpdatedAt:     now,
 		}
@@ -131,7 +131,7 @@ func (sm *StoreBasedStateManager) SetStateData(ctx context.Context, participantI
 		if flowState.StateData == nil {
 			flowState.StateData = make(map[string]string)
 		}
-		flowState.StateData[key] = value
+		flowState.StateData[string(key)] = value
 		flowState.UpdatedAt = now
 	}
 
@@ -146,7 +146,7 @@ func (sm *StoreBasedStateManager) SetStateData(ctx context.Context, participantI
 }
 
 // TransitionState transitions from one state to another.
-func (sm *StoreBasedStateManager) TransitionState(ctx context.Context, participantID, flowType, fromState, toState string) error {
+func (sm *StoreBasedStateManager) TransitionState(ctx context.Context, participantID string, flowType FlowType, fromState, toState StateType) error {
 	slog.Debug("StateManager TransitionState", "participantID", participantID, "flowType", flowType, "from", fromState, "to", toState)
 
 	// Verify current state matches expected fromState
@@ -174,10 +174,10 @@ func (sm *StoreBasedStateManager) TransitionState(ctx context.Context, participa
 }
 
 // ResetState removes all state data for a participant in a flow.
-func (sm *StoreBasedStateManager) ResetState(ctx context.Context, participantID, flowType string) error {
+func (sm *StoreBasedStateManager) ResetState(ctx context.Context, participantID string, flowType FlowType) error {
 	slog.Debug("StateManager ResetState", "participantID", participantID, "flowType", flowType)
 
-	err := sm.store.DeleteFlowState(participantID, flowType)
+	err := sm.store.DeleteFlowState(participantID, string(flowType))
 	if err != nil {
 		slog.Error("StateManager ResetState error", "error", err, "participantID", participantID, "flowType", flowType)
 		return err

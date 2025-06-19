@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/BTreeMap/PromptPipe/internal/flow"
 	"github.com/BTreeMap/PromptPipe/internal/models"
 	"github.com/BTreeMap/PromptPipe/internal/whatsapp"
 )
@@ -23,29 +24,29 @@ func NewMockStateManager() *MockStateManager {
 	}
 }
 
-func (m *MockStateManager) GetCurrentState(ctx context.Context, participantID, flowType string) (string, error) {
-	key := participantID + ":" + flowType
-	return m.states[key], nil
+func (m *MockStateManager) GetCurrentState(ctx context.Context, participantID string, flowType flow.FlowType) (flow.StateType, error) {
+	key := participantID + ":" + string(flowType)
+	return flow.StateType(m.states[key]), nil
 }
 
-func (m *MockStateManager) SetCurrentState(ctx context.Context, participantID, flowType, state string) error {
-	key := participantID + ":" + flowType
-	m.states[key] = state
+func (m *MockStateManager) SetCurrentState(ctx context.Context, participantID string, flowType flow.FlowType, state flow.StateType) error {
+	key := participantID + ":" + string(flowType)
+	m.states[key] = string(state)
 	return nil
 }
 
-func (m *MockStateManager) GetStateData(ctx context.Context, participantID, flowType, key string) (string, error) {
-	dataKey := participantID + ":" + flowType + ":" + key
+func (m *MockStateManager) GetStateData(ctx context.Context, participantID string, flowType flow.FlowType, key flow.DataKey) (string, error) {
+	dataKey := participantID + ":" + string(flowType) + ":" + string(key)
 	return m.data[dataKey], nil
 }
 
-func (m *MockStateManager) SetStateData(ctx context.Context, participantID, flowType, key, value string) error {
-	dataKey := participantID + ":" + flowType + ":" + key
+func (m *MockStateManager) SetStateData(ctx context.Context, participantID string, flowType flow.FlowType, key flow.DataKey, value string) error {
+	dataKey := participantID + ":" + string(flowType) + ":" + string(key)
 	m.data[dataKey] = value
 	return nil
 }
 
-func (m *MockStateManager) TransitionState(ctx context.Context, participantID, flowType, fromState, toState string) error {
+func (m *MockStateManager) TransitionState(ctx context.Context, participantID string, flowType flow.FlowType, fromState, toState flow.StateType) error {
 	return m.SetCurrentState(ctx, participantID, flowType, toState)
 }
 
@@ -220,7 +221,7 @@ func TestCreateInterventionHook_ReadyOverride(t *testing.T) {
 	phoneNumber := "+1234567890"
 
 	// Set initial state to END_OF_DAY
-	stateManager.SetCurrentState(context.Background(), participantID, "micro_health_intervention", "END_OF_DAY")
+	stateManager.SetCurrentState(context.Background(), participantID, flow.FlowTypeMicroHealthIntervention, flow.StateEndOfDay)
 
 	// Create intervention hook
 	hook := CreateInterventionHook(participantID, phoneNumber, stateManager, msgService)
@@ -238,9 +239,9 @@ func TestCreateInterventionHook_ReadyOverride(t *testing.T) {
 	}
 
 	// Verify state transition
-	newState, _ := stateManager.GetCurrentState(ctx, participantID, "micro_health_intervention")
-	if newState != "COMMITMENT_PROMPT" {
-		t.Errorf("Expected state COMMITMENT_PROMPT, got %s", newState)
+	newState, _ := stateManager.GetCurrentState(ctx, participantID, flow.FlowTypeMicroHealthIntervention)
+	if newState != flow.StateCommitmentPrompt {
+		t.Errorf("Expected state %s, got %s", flow.StateCommitmentPrompt, newState)
 	}
 }
 
@@ -253,7 +254,7 @@ func TestCreateInterventionHook_CommitmentResponse(t *testing.T) {
 	phoneNumber := "+1234567890"
 
 	// Set state to COMMITMENT_PROMPT
-	stateManager.SetCurrentState(context.Background(), participantID, "micro_health_intervention", "COMMITMENT_PROMPT")
+	stateManager.SetCurrentState(context.Background(), participantID, flow.FlowTypeMicroHealthIntervention, flow.StateCommitmentPrompt)
 
 	// Create intervention hook
 	hook := CreateInterventionHook(participantID, phoneNumber, stateManager, msgService)
@@ -271,9 +272,9 @@ func TestCreateInterventionHook_CommitmentResponse(t *testing.T) {
 	}
 
 	// Verify state transition
-	newState, _ := stateManager.GetCurrentState(ctx, participantID, "micro_health_intervention")
-	if newState != "FEELING_PROMPT" {
-		t.Errorf("Expected state FEELING_PROMPT, got %s", newState)
+	newState, _ := stateManager.GetCurrentState(ctx, participantID, flow.FlowTypeMicroHealthIntervention)
+	if newState != flow.StateFeelingPrompt {
+		t.Errorf("Expected state %s, got %s", flow.StateFeelingPrompt, newState)
 	}
 }
 
@@ -286,7 +287,7 @@ func TestCreateInterventionHook_FeelingResponse(t *testing.T) {
 	phoneNumber := "+1234567890"
 
 	// Set state to FEELING_PROMPT
-	stateManager.SetCurrentState(context.Background(), participantID, "micro_health_intervention", "FEELING_PROMPT")
+	stateManager.SetCurrentState(context.Background(), participantID, flow.FlowTypeMicroHealthIntervention, flow.StateFeelingPrompt)
 
 	// Create intervention hook
 	hook := CreateInterventionHook(participantID, phoneNumber, stateManager, msgService)
@@ -304,21 +305,21 @@ func TestCreateInterventionHook_FeelingResponse(t *testing.T) {
 	}
 
 	// Verify state transition - should be one of the intervention states
-	newState, _ := stateManager.GetCurrentState(ctx, participantID, "micro_health_intervention")
-	if newState != "SEND_INTERVENTION_IMMEDIATE" && newState != "SEND_INTERVENTION_REFLECTIVE" {
-		t.Errorf("Expected state SEND_INTERVENTION_IMMEDIATE or SEND_INTERVENTION_REFLECTIVE, got %s", newState)
+	newState, _ := stateManager.GetCurrentState(ctx, participantID, flow.FlowTypeMicroHealthIntervention)
+	if newState != flow.StateSendInterventionImmediate && newState != flow.StateSendInterventionReflective {
+		t.Errorf("Expected state %s or %s, got %s", flow.StateSendInterventionImmediate, flow.StateSendInterventionReflective, newState)
 	}
 
 	// Verify feeling response was stored
-	feelingResponse, _ := stateManager.GetStateData(ctx, participantID, "micro_health_intervention", "feelingResponse")
+	feelingResponse, _ := stateManager.GetStateData(ctx, participantID, flow.FlowTypeMicroHealthIntervention, flow.DataKeyFeelingResponse)
 	if feelingResponse != "3" {
 		t.Errorf("Expected feeling response 3, got %s", feelingResponse)
 	}
 
 	// Verify flow assignment was stored
-	flowAssignment, _ := stateManager.GetStateData(ctx, participantID, "micro_health_intervention", "flowAssignment")
-	if flowAssignment != "IMMEDIATE" && flowAssignment != "REFLECTIVE" {
-		t.Errorf("Expected flow assignment IMMEDIATE or REFLECTIVE, got %s", flowAssignment)
+	flowAssignment, _ := stateManager.GetStateData(ctx, participantID, flow.FlowTypeMicroHealthIntervention, flow.DataKeyFlowAssignment)
+	if flowAssignment != string(flow.FlowAssignmentImmediate) && flowAssignment != string(flow.FlowAssignmentReflective) {
+		t.Errorf("Expected flow assignment %s or %s, got %s", flow.FlowAssignmentImmediate, flow.FlowAssignmentReflective, flowAssignment)
 	}
 }
 

@@ -9,22 +9,22 @@ import (
 // StateManager defines the interface for managing flow state.
 type StateManager interface {
 	// GetCurrentState retrieves the current state for a participant in a flow
-	GetCurrentState(ctx context.Context, participantID, flowType string) (string, error)
+	GetCurrentState(ctx context.Context, participantID string, flowType FlowType) (StateType, error)
 
 	// SetCurrentState updates the current state for a participant in a flow
-	SetCurrentState(ctx context.Context, participantID, flowType, state string) error
+	SetCurrentState(ctx context.Context, participantID string, flowType FlowType, state StateType) error
 
 	// GetStateData retrieves additional data associated with the participant's state
-	GetStateData(ctx context.Context, participantID, flowType, key string) (string, error)
+	GetStateData(ctx context.Context, participantID string, flowType FlowType, key DataKey) (string, error)
 
 	// SetStateData stores additional data associated with the participant's state
-	SetStateData(ctx context.Context, participantID, flowType, key, value string) error
+	SetStateData(ctx context.Context, participantID string, flowType FlowType, key DataKey, value string) error
 
 	// TransitionState transitions from one state to another
-	TransitionState(ctx context.Context, participantID, flowType, fromState, toState string) error
+	TransitionState(ctx context.Context, participantID string, flowType FlowType, fromState, toState StateType) error
 
 	// ResetState removes all state data for a participant in a flow
-	ResetState(ctx context.Context, participantID, flowType string) error
+	ResetState(ctx context.Context, participantID string, flowType FlowType) error
 }
 
 // Timer defines the interface for scheduling delayed actions.

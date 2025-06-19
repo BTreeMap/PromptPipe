@@ -215,7 +215,7 @@ func CreateInterventionHook(participantID, phoneNumber string, stateManager Stat
 		// Only look up the participant from store when we need additional participant data.
 
 		// Get current state using the participantID from hook creation
-		currentState, err := stateManager.GetCurrentState(ctx, participantID, "micro_health_intervention")
+		currentState, err := stateManager.GetCurrentState(ctx, participantID, flow.FlowTypeMicroHealthIntervention)
 		if err != nil {
 			slog.Error("InterventionHook failed to get current state", "error", err, "participantID", participantID)
 			return false, fmt.Errorf("failed to get current state: %w", err)
@@ -223,13 +223,13 @@ func CreateInterventionHook(participantID, phoneNumber string, stateManager Stat
 
 		// Handle "Ready" override at any time (except during active flows)
 		responseTextLower := strings.ToLower(strings.TrimSpace(responseText))
-		if responseTextLower == "ready" {
+		if responseTextLower == string(flow.ResponseReady) {
 			// Check if we're in END_OF_DAY state or orientation (can accept "Ready")
-			if currentState == "ORIENTATION" || currentState == "END_OF_DAY" || currentState == "" {
+			if currentState == flow.StateOrientation || currentState == flow.StateEndOfDay || currentState == "" {
 				slog.Info("InterventionHook handling Ready override", "participantID", participantID)
 
 				// Transition to COMMITMENT_PROMPT immediately
-				if err := stateManager.SetCurrentState(ctx, participantID, "micro_health_intervention", "COMMITMENT_PROMPT"); err != nil {
+				if err := stateManager.SetCurrentState(ctx, participantID, flow.FlowTypeMicroHealthIntervention, flow.StateCommitmentPrompt); err != nil {
 					slog.Error("InterventionHook failed to transition to COMMITMENT_PROMPT", "error", err, "participantID", participantID)
 					return false, fmt.Errorf("failed to transition state: %w", err)
 				}
@@ -246,23 +246,23 @@ func CreateInterventionHook(participantID, phoneNumber string, stateManager Stat
 
 		// Handle responses based on current state
 		switch currentState {
-		case "COMMITMENT_PROMPT":
+		case flow.StateCommitmentPrompt:
 			return handleCommitmentResponse(ctx, participantID, from, responseText, stateManager, msgService)
-		case "FEELING_PROMPT":
+		case flow.StateFeelingPrompt:
 			return handleFeelingResponse(ctx, participantID, from, responseText, stateManager, msgService)
-		case "SEND_INTERVENTION_IMMEDIATE", "SEND_INTERVENTION_REFLECTIVE":
+		case flow.StateSendInterventionImmediate, flow.StateSendInterventionReflective:
 			return handleCompletionResponse(ctx, participantID, from, responseText, stateManager, msgService)
-		case "DID_YOU_GET_A_CHANCE":
+		case flow.StateDidYouGetAChance:
 			return handleDidYouGetAChanceResponse(ctx, participantID, from, responseText, stateManager, msgService)
-		case "CONTEXT_QUESTION":
+		case flow.StateContextQuestion:
 			return handleContextResponse(ctx, participantID, from, responseText, stateManager, msgService)
-		case "MOOD_QUESTION":
+		case flow.StateMoodQuestion:
 			return handleMoodResponse(ctx, participantID, from, responseText, stateManager, msgService)
-		case "BARRIER_CHECK_AFTER_CONTEXT_MOOD":
+		case flow.StateBarrierCheckAfterContextMood:
 			return handleBarrierResponse(ctx, participantID, from, responseText, stateManager, msgService)
-		case "BARRIER_REASON_NO_CHANCE":
+		case flow.StateBarrierReasonNoChance:
 			return handleBarrierReasonResponse(ctx, participantID, from, responseText, stateManager, msgService)
-		case "END_OF_DAY":
+		case flow.StateEndOfDay:
 			// In END_OF_DAY, only "Ready" is handled (already processed above)
 			// Send polite message for other responses
 			endMsg := "We're all set for today; we'll be back tomorrow with your daily prompt."
@@ -487,11 +487,11 @@ func (rh *ResponseHandler) SetAutoCleanupTimeout(recipient string, duration time
 
 // StateManager interface for state operations (to avoid circular imports)
 type StateManager interface {
-	GetCurrentState(ctx context.Context, participantID, flowType string) (string, error)
-	SetCurrentState(ctx context.Context, participantID, flowType, state string) error
-	GetStateData(ctx context.Context, participantID, flowType, key string) (string, error)
-	SetStateData(ctx context.Context, participantID, flowType, key, value string) error
-	TransitionState(ctx context.Context, participantID, flowType, fromState, toState string) error
+	GetCurrentState(ctx context.Context, participantID string, flowType flow.FlowType) (flow.StateType, error)
+	SetCurrentState(ctx context.Context, participantID string, flowType flow.FlowType, state flow.StateType) error
+	GetStateData(ctx context.Context, participantID string, flowType flow.FlowType, key flow.DataKey) (string, error)
+	SetStateData(ctx context.Context, participantID string, flowType flow.FlowType, key flow.DataKey, value string) error
+	TransitionState(ctx context.Context, participantID string, flowType flow.FlowType, fromState, toState flow.StateType) error
 }
 
 // Helper functions for handling specific intervention state responses
@@ -502,7 +502,7 @@ func handleCommitmentResponse(ctx context.Context, participantID, from, response
 	switch responseText {
 	case "1":
 		// User chose "Let's do it!" - proceed to feeling prompt
-		if err := stateManager.SetCurrentState(ctx, participantID, "micro_health_intervention", "FEELING_PROMPT"); err != nil {
+		if err := stateManager.SetCurrentState(ctx, participantID, flow.FlowTypeMicroHealthIntervention, flow.StateFeelingPrompt); err != nil {
 			return false, err
 		}
 
@@ -515,7 +515,7 @@ func handleCommitmentResponse(ctx context.Context, participantID, from, response
 		return true, nil
 	case "2":
 		// User chose "Not yet" - end for today
-		if err := stateManager.SetCurrentState(ctx, participantID, "micro_health_intervention", "END_OF_DAY"); err != nil {
+		if err := stateManager.SetCurrentState(ctx, participantID, flow.FlowTypeMicroHealthIntervention, flow.StateEndOfDay); err != nil {
 			return false, err
 		}
 
@@ -540,12 +540,12 @@ func handleFeelingResponse(ctx context.Context, participantID, from, responseTex
 	// Check if it's a valid feeling response (1-5)
 	if responseText >= "1" && responseText <= "5" {
 		// Store the feeling response
-		if err := stateManager.SetStateData(ctx, participantID, "micro_health_intervention", "feelingResponse", responseText); err != nil {
+		if err := stateManager.SetStateData(ctx, participantID, flow.FlowTypeMicroHealthIntervention, flow.DataKeyFeelingResponse, responseText); err != nil {
 			return false, err
 		}
 
 		// Transition to random assignment
-		if err := stateManager.SetCurrentState(ctx, participantID, "micro_health_intervention", "RANDOM_ASSIGNMENT"); err != nil {
+		if err := stateManager.SetCurrentState(ctx, participantID, flow.FlowTypeMicroHealthIntervention, flow.StateRandomAssignment); err != nil {
 			return false, err
 		}
 
@@ -565,25 +565,26 @@ func performRandomAssignmentAndSendIntervention(ctx context.Context, participant
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	isImmediate := rng.Float64() < 0.5
 
-	var nextState, interventionMsg string
+	var nextState flow.StateType
+	var interventionMsg string
 	if isImmediate {
-		nextState = "SEND_INTERVENTION_IMMEDIATE"
+		nextState = flow.StateSendInterventionImmediate
 		interventionMsg = flow.MsgImmediateIntervention
 		// Store assignment for tracking
-		if err := stateManager.SetStateData(ctx, participantID, "micro_health_intervention", "flowAssignment", "IMMEDIATE"); err != nil {
+		if err := stateManager.SetStateData(ctx, participantID, flow.FlowTypeMicroHealthIntervention, flow.DataKeyFlowAssignment, string(flow.FlowAssignmentImmediate)); err != nil {
 			return false, err
 		}
 	} else {
-		nextState = "SEND_INTERVENTION_REFLECTIVE"
+		nextState = flow.StateSendInterventionReflective
 		interventionMsg = flow.MsgReflectiveIntervention
 		// Store assignment for tracking
-		if err := stateManager.SetStateData(ctx, participantID, "micro_health_intervention", "flowAssignment", "REFLECTIVE"); err != nil {
+		if err := stateManager.SetStateData(ctx, participantID, flow.FlowTypeMicroHealthIntervention, flow.DataKeyFlowAssignment, string(flow.FlowAssignmentReflective)); err != nil {
 			return false, err
 		}
 	}
 
 	// Transition to intervention state
-	if err := stateManager.SetCurrentState(ctx, participantID, "micro_health_intervention", nextState); err != nil {
+	if err := stateManager.SetCurrentState(ctx, participantID, flow.FlowTypeMicroHealthIntervention, nextState); err != nil {
 		return false, err
 	}
 
@@ -600,9 +601,9 @@ func handleCompletionResponse(ctx context.Context, participantID, from, response
 	responseText = strings.ToLower(strings.TrimSpace(responseText))
 
 	switch responseText {
-	case "done":
+	case string(flow.ResponseDone):
 		// User completed the habit - send reinforcement
-		if err := stateManager.SetCurrentState(ctx, participantID, "micro_health_intervention", "REINFORCEMENT_FOLLOWUP"); err != nil {
+		if err := stateManager.SetCurrentState(ctx, participantID, flow.FlowTypeMicroHealthIntervention, flow.StateReinforcementFollowup); err != nil {
 			return false, err
 		}
 
@@ -613,14 +614,14 @@ func handleCompletionResponse(ctx context.Context, participantID, from, response
 		}
 
 		// Transition to end of day after reinforcement
-		if err := stateManager.SetCurrentState(ctx, participantID, "micro_health_intervention", "END_OF_DAY"); err != nil {
+		if err := stateManager.SetCurrentState(ctx, participantID, flow.FlowTypeMicroHealthIntervention, flow.StateEndOfDay); err != nil {
 			slog.Error("Failed to transition to END_OF_DAY after reinforcement", "error", err, "participantID", participantID)
 		}
 
 		return true, nil
-	case "no":
+	case string(flow.ResponseNo):
 		// User explicitly said no - ask if they got a chance
-		if err := stateManager.SetCurrentState(ctx, participantID, "micro_health_intervention", "DID_YOU_GET_A_CHANCE"); err != nil {
+		if err := stateManager.SetCurrentState(ctx, participantID, flow.FlowTypeMicroHealthIntervention, flow.StateDidYouGetAChance); err != nil {
 			return false, err
 		}
 
@@ -647,7 +648,7 @@ func handleDidYouGetAChanceResponse(ctx context.Context, participantID, from, re
 	switch responseText {
 	case "1":
 		// Yes, they got a chance - ask context question
-		if err := stateManager.SetCurrentState(ctx, participantID, "micro_health_intervention", "CONTEXT_QUESTION"); err != nil {
+		if err := stateManager.SetCurrentState(ctx, participantID, flow.FlowTypeMicroHealthIntervention, flow.StateContextQuestion); err != nil {
 			return false, err
 		}
 
@@ -660,7 +661,7 @@ func handleDidYouGetAChanceResponse(ctx context.Context, participantID, from, re
 		return true, nil
 	case "2":
 		// No, they didn't get a chance - ask barrier reason
-		if err := stateManager.SetCurrentState(ctx, participantID, "micro_health_intervention", "BARRIER_REASON_NO_CHANCE"); err != nil {
+		if err := stateManager.SetCurrentState(ctx, participantID, flow.FlowTypeMicroHealthIntervention, flow.StateBarrierReasonNoChance); err != nil {
 			return false, err
 		}
 
@@ -685,11 +686,11 @@ func handleContextResponse(ctx context.Context, participantID, from, responseTex
 
 	if responseText >= "1" && responseText <= "4" {
 		// Valid context response - store it and move to mood question
-		if err := stateManager.SetStateData(ctx, participantID, "micro_health_intervention", "contextResponse", responseText); err != nil {
+		if err := stateManager.SetStateData(ctx, participantID, flow.FlowTypeMicroHealthIntervention, flow.DataKeyContextResponse, responseText); err != nil {
 			return false, err
 		}
 
-		if err := stateManager.SetCurrentState(ctx, participantID, "micro_health_intervention", "MOOD_QUESTION"); err != nil {
+		if err := stateManager.SetCurrentState(ctx, participantID, flow.FlowTypeMicroHealthIntervention, flow.StateMoodQuestion); err != nil {
 			return false, err
 		}
 
@@ -714,11 +715,11 @@ func handleMoodResponse(ctx context.Context, participantID, from, responseText s
 
 	if responseText >= "1" && responseText <= "3" {
 		// Valid mood response - store it and move to barrier check
-		if err := stateManager.SetStateData(ctx, participantID, "micro_health_intervention", "moodResponse", responseText); err != nil {
+		if err := stateManager.SetStateData(ctx, participantID, flow.FlowTypeMicroHealthIntervention, flow.DataKeyMoodResponse, responseText); err != nil {
 			return false, err
 		}
 
-		if err := stateManager.SetCurrentState(ctx, participantID, "micro_health_intervention", "BARRIER_CHECK_AFTER_CONTEXT_MOOD"); err != nil {
+		if err := stateManager.SetCurrentState(ctx, participantID, flow.FlowTypeMicroHealthIntervention, flow.StateBarrierCheckAfterContextMood); err != nil {
 			return false, err
 		}
 
@@ -740,11 +741,11 @@ func handleMoodResponse(ctx context.Context, participantID, from, responseText s
 
 func handleBarrierResponse(ctx context.Context, participantID, from, responseText string, stateManager StateManager, msgService Service) (bool, error) {
 	// Any text response is valid for barrier details - store and end
-	if err := stateManager.SetStateData(ctx, participantID, "micro_health_intervention", "barrierResponse", responseText); err != nil {
+	if err := stateManager.SetStateData(ctx, participantID, flow.FlowTypeMicroHealthIntervention, flow.DataKeyBarrierResponse, responseText); err != nil {
 		return false, err
 	}
 
-	if err := stateManager.SetCurrentState(ctx, participantID, "micro_health_intervention", "END_OF_DAY"); err != nil {
+	if err := stateManager.SetCurrentState(ctx, participantID, flow.FlowTypeMicroHealthIntervention, flow.StateEndOfDay); err != nil {
 		return false, err
 	}
 
@@ -762,11 +763,11 @@ func handleBarrierReasonResponse(ctx context.Context, participantID, from, respo
 
 	if responseText >= "1" && responseText <= "4" {
 		// Valid barrier reason response - store and end
-		if err := stateManager.SetStateData(ctx, participantID, "micro_health_intervention", "barrierReasonResponse", responseText); err != nil {
+		if err := stateManager.SetStateData(ctx, participantID, flow.FlowTypeMicroHealthIntervention, flow.DataKeyBarrierReasonResponse, responseText); err != nil {
 			return false, err
 		}
 
-		if err := stateManager.SetCurrentState(ctx, participantID, "micro_health_intervention", "END_OF_DAY"); err != nil {
+		if err := stateManager.SetCurrentState(ctx, participantID, flow.FlowTypeMicroHealthIntervention, flow.StateEndOfDay); err != nil {
 			return false, err
 		}
 
