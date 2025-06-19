@@ -117,12 +117,12 @@ func ExtractDirFromSQLiteDSN(dsn string) (string, error) {
 // InMemoryStore is a simple in-memory implementation of the Store interface.
 // Data is stored in memory and will be lost when the application restarts.
 type InMemoryStore struct {
-	receipts                   []models.Receipt
-	responses                  []models.Response
-	flowStates                 map[string]models.FlowState                // key: participantID_flowType
-	interventionParticipants   map[string]models.InterventionParticipant  // key: participant ID
-	interventionResponses      []models.InterventionResponse              // chronological list
-	mu                         sync.RWMutex
+	receipts                 []models.Receipt
+	responses                []models.Response
+	flowStates               map[string]models.FlowState               // key: participantID_flowType
+	interventionParticipants map[string]models.InterventionParticipant // key: participant ID
+	interventionResponses    []models.InterventionResponse             // chronological list
+	mu                       sync.RWMutex
 }
 
 // NewInMemoryStore creates a new in-memory store.

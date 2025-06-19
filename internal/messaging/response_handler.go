@@ -276,55 +276,55 @@ func CreateInterventionHook(participantID, phoneNumber string, stateManager Stat
 func CreateBranchHook(branchOptions []models.BranchOption, msgService Service) ResponseAction {
 	return func(ctx context.Context, from, responseText string, timestamp int64) (bool, error) {
 		slog.Debug("BranchHook processing response", "from", from, "responseText", responseText)
-		
+
 		responseText = strings.TrimSpace(responseText)
-		
+
 		// Try to parse as a number (1, 2, 3, etc.)
 		if len(responseText) == 1 && responseText >= "1" && responseText <= "9" {
 			optionIndex := int(responseText[0] - '1') // Convert '1' to 0, '2' to 1, etc.
-			
+
 			if optionIndex >= 0 && optionIndex < len(branchOptions) {
 				selectedOption := branchOptions[optionIndex]
-				
+
 				// Send confirmation message with the selected option
-				confirmationMsg := fmt.Sprintf("✅ You selected: %s\n\n%s", 
+				confirmationMsg := fmt.Sprintf("✅ You selected: %s\n\n%s",
 					selectedOption.Label, selectedOption.Body)
-				
+
 				if err := msgService.SendMessage(ctx, from, confirmationMsg); err != nil {
 					slog.Error("BranchHook failed to send confirmation", "error", err, "from", from)
 					return false, fmt.Errorf("failed to send confirmation: %w", err)
 				}
-				
+
 				slog.Info("BranchHook handled valid selection", "from", from, "selection", optionIndex+1, "label", selectedOption.Label)
 				return true, nil
 			}
 		}
-		
+
 		// Invalid selection - provide guidance
 		var optionsText strings.Builder
 		optionsText.WriteString("❓ Please select a valid option by replying with the number:\n\n")
 		for i, option := range branchOptions {
 			optionsText.WriteString(fmt.Sprintf("%d. %s\n", i+1, option.Label))
 		}
-		
+
 		if err := msgService.SendMessage(ctx, from, optionsText.String()); err != nil {
 			slog.Error("BranchHook failed to send guidance", "error", err, "from", from)
 		}
-		
+
 		slog.Debug("BranchHook handled invalid selection", "from", from, "responseText", responseText)
 		return true, nil // We handled it, even though it was invalid
 	}
 }
 
-// CreateGenAIHook creates a response handler for GenAI-generated prompts that 
+// CreateGenAIHook creates a response handler for GenAI-generated prompts that
 // acknowledges responses and can optionally trigger follow-up generation.
 func CreateGenAIHook(originalPrompt models.Prompt, msgService Service) ResponseAction {
 	return func(ctx context.Context, from, responseText string, timestamp int64) (bool, error) {
 		slog.Debug("GenAIHook processing response", "from", from, "responseText_length", len(responseText))
-		
+
 		// For GenAI prompts, we provide a thoughtful acknowledgment
 		var responseMsg string
-		
+
 		// Categorize the response type and provide appropriate feedback
 		responseLen := len(strings.TrimSpace(responseText))
 		if responseLen == 0 {
@@ -336,12 +336,12 @@ func CreateGenAIHook(originalPrompt models.Prompt, msgService Service) ResponseA
 		} else {
 			responseMsg = "📚 Wow, thank you for such a detailed response! Your insights are really helpful."
 		}
-		
+
 		if err := msgService.SendMessage(ctx, from, responseMsg); err != nil {
 			slog.Error("GenAIHook failed to send acknowledgment", "error", err, "from", from)
 			return false, fmt.Errorf("failed to send acknowledgment: %w", err)
 		}
-		
+
 		slog.Info("GenAIHook handled response", "from", from, "response_length", responseLen)
 		return true, nil
 	}
@@ -352,15 +352,15 @@ func CreateGenAIHook(originalPrompt models.Prompt, msgService Service) ResponseA
 func CreateStaticHook(msgService Service) ResponseAction {
 	return func(ctx context.Context, from, responseText string, timestamp int64) (bool, error) {
 		slog.Debug("StaticHook processing response", "from", from, "responseText_length", len(responseText))
-		
+
 		// Simple acknowledgment for static prompts
 		ackMsg := "👍 Thanks for your response! We've recorded your message."
-		
+
 		if err := msgService.SendMessage(ctx, from, ackMsg); err != nil {
 			slog.Error("StaticHook failed to send acknowledgment", "error", err, "from", from)
 			return false, fmt.Errorf("failed to send acknowledgment: %w", err)
 		}
-		
+
 		slog.Info("StaticHook handled response", "from", from)
 		return true, nil
 	}
@@ -391,10 +391,10 @@ func (f *ResponseHandlerFactory) CreateHandlerForPrompt(prompt models.Prompt) Re
 		return CreateGenAIHook(prompt, f.msgService)
 	case models.PromptTypeStatic:
 		// Only create a handler for static prompts if they seem to expect a response
-		if strings.Contains(strings.ToLower(prompt.Body), "reply") || 
-		   strings.Contains(strings.ToLower(prompt.Body), "respond") ||
-		   strings.Contains(strings.ToLower(prompt.Body), "answer") ||
-		   strings.Contains(prompt.Body, "?") {
+		if strings.Contains(strings.ToLower(prompt.Body), "reply") ||
+			strings.Contains(strings.ToLower(prompt.Body), "respond") ||
+			strings.Contains(strings.ToLower(prompt.Body), "answer") ||
+			strings.Contains(prompt.Body, "?") {
 			return CreateStaticHook(f.msgService)
 		}
 		return nil
@@ -412,22 +412,22 @@ func (f *ResponseHandlerFactory) CreateHandlerForPrompt(prompt models.Prompt) Re
 func (rh *ResponseHandler) AutoRegisterResponseHandler(prompt models.Prompt, timeoutDuration time.Duration) bool {
 	factory := NewResponseHandlerFactory(rh.msgService)
 	handler := factory.CreateHandlerForPrompt(prompt)
-	
+
 	if handler == nil {
 		slog.Debug("No response handler needed for prompt type", "type", prompt.Type, "to", prompt.To)
 		return false
 	}
-	
+
 	// Wrap the handler with timeout logic if specified
 	if timeoutDuration > 0 {
 		handler = rh.createTimeoutWrapper(handler, prompt.To, timeoutDuration)
 	}
-	
+
 	if err := rh.RegisterHook(prompt.To, handler); err != nil {
 		slog.Error("Failed to auto-register response handler", "error", err, "type", prompt.Type, "to", prompt.To)
 		return false
 	}
-	
+
 	slog.Info("Auto-registered response handler", "type", prompt.Type, "to", prompt.To, "timeout", timeoutDuration)
 	return true
 }
@@ -438,29 +438,29 @@ func (rh *ResponseHandler) createTimeoutWrapper(handler ResponseAction, recipien
 		// Create a context with timeout
 		timeoutCtx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
-		
+
 		// Run the handler with timeout
 		done := make(chan struct{})
 		var result bool
 		var err error
-		
+
 		go func() {
 			defer close(done)
 			result, err = handler(timeoutCtx, from, responseText, timestamp)
 		}()
-		
+
 		select {
 		case <-done:
 			return result, err
 		case <-timeoutCtx.Done():
 			slog.Warn("Response handler timed out", "from", from, "timeout", timeout)
-			
+
 			// Send timeout message
 			timeoutMsg := "⏰ Response processing timed out. Please try again or contact support if this continues."
 			if sendErr := rh.msgService.SendMessage(ctx, from, timeoutMsg); sendErr != nil {
 				slog.Error("Failed to send timeout message", "error", sendErr, "from", from)
 			}
-			
+
 			return false, fmt.Errorf("response handler timed out after %v", timeout)
 		}
 	}
