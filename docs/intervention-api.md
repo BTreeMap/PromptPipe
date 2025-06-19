@@ -447,6 +447,91 @@ Error responses include a descriptive message:
 }
 ```
 
+### Timer Management
+
+The intervention system uses timers to manage timeout-based state transitions. These endpoints allow you to monitor and manage active timers.
+
+#### 12. List Active Timers
+
+`GET /intervention/timers`
+
+Retrieves information about all currently active timers in the system.
+
+**Response:**
+
+```json
+{
+    "timers": [
+        {
+            "id": "timer_1",
+            "scheduled_at": "2025-06-19T10:00:00Z",
+            "expires_at": "2025-06-19T10:15:00Z",
+            "remaining": "14m30s",
+            "description": "Timer scheduled for 15m0s"
+        },
+        {
+            "id": "timer_2",
+            "scheduled_at": "2025-06-19T10:05:00Z",
+            "expires_at": "2025-06-19T10:35:00Z",
+            "remaining": "29m45s",
+            "description": "Timer scheduled for 30m0s"
+        }
+    ],
+    "count": 2
+}
+```
+
+#### 13. Get Timer Details
+
+`GET /intervention/timers/{id}`
+
+Retrieves detailed information about a specific timer.
+
+**Path Parameters:**
+
+- `id`: Timer ID
+
+**Response:**
+
+```json
+{
+    "id": "timer_1",
+    "scheduled_at": "2025-06-19T10:00:00Z",
+    "expires_at": "2025-06-19T10:15:00Z",
+    "remaining": "14m30s",
+    "description": "Timer scheduled for 15m0s"
+}
+```
+
+#### 14. Cancel Timer
+
+`DELETE /intervention/timers/{id}`
+
+Cancels an active timer by its ID.
+
+**Path Parameters:**
+
+- `id`: Timer ID
+
+**Response:**
+
+```json
+{
+    "message": "Timer cancelled successfully",
+    "timerID": "timer_1",
+    "canceled": true
+}
+```
+
+**Error Response (Timer Not Found):**
+
+```json
+{
+    "status": "error",
+    "message": "Timer not found: timer with ID timer_123 not found"
+}
+```
+
 ## Integration with Stateful Generation
 
 These APIs are designed to work with the stateful generation system:

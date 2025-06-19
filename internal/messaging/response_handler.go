@@ -514,14 +514,14 @@ func cancelExistingTimer(ctx context.Context, participantID string, stateManager
 func scheduleTimeout(ctx context.Context, participantID string, from string, duration time.Duration, timeoutAction func(), stateManager StateManager, timer models.Timer, timerKey models.DataKey) error {
 	// Cancel any existing timer first
 	cancelExistingTimer(ctx, participantID, stateManager, timer, timerKey)
-	
+
 	// Schedule new timer
 	timerID, err := timer.ScheduleAfter(duration, timeoutAction)
 	if err != nil {
 		slog.Error("Failed to schedule timeout", "error", err, "participantID", participantID, "duration", duration)
 		return err
 	}
-	
+
 	// Store timer ID in state
 	if err := stateManager.SetStateData(ctx, participantID, models.FlowTypeMicroHealthIntervention, timerKey, timerID); err != nil {
 		slog.Error("Failed to store timer ID", "error", err, "participantID", participantID, "timerID", timerID)
@@ -529,7 +529,7 @@ func scheduleTimeout(ctx context.Context, participantID string, from string, dur
 		timer.Cancel(timerID)
 		return err
 	}
-	
+
 	slog.Debug("Scheduled timeout", "participantID", participantID, "duration", duration, "timerID", timerID)
 	return nil
 }
@@ -539,14 +539,14 @@ func scheduleTimeout(ctx context.Context, participantID string, from string, dur
 // handleFeelingTimeout handles timeout when user doesn't respond to feeling prompt within 15 minutes
 func handleFeelingTimeout(ctx context.Context, participantID, from string, stateManager StateManager, msgService Service, timer models.Timer) {
 	slog.Debug("Feeling prompt timeout occurred", "participantID", participantID)
-	
+
 	// Clear the timer ID from state
 	stateManager.SetStateData(ctx, participantID, models.FlowTypeMicroHealthIntervention, models.DataKeyFeelingTimerID, "")
-	
+
 	// Set feeling response to "timed_out" and proceed to random assignment
 	stateManager.SetStateData(ctx, participantID, models.FlowTypeMicroHealthIntervention, models.DataKeyFeelingResponse, "timed_out")
 	stateManager.SetCurrentState(ctx, participantID, models.FlowTypeMicroHealthIntervention, models.StateRandomAssignment)
-	
+
 	// Perform random assignment and send intervention
 	performRandomAssignmentAndSendIntervention(ctx, participantID, from, stateManager, msgService, timer)
 }
@@ -554,20 +554,20 @@ func handleFeelingTimeout(ctx context.Context, participantID, from string, state
 // handleCompletionTimeout handles timeout when user doesn't respond to intervention completion within 30 minutes
 func handleCompletionTimeout(ctx context.Context, participantID, from string, stateManager StateManager, msgService Service, timer models.Timer) {
 	slog.Debug("Completion timeout occurred", "participantID", participantID)
-	
+
 	// Clear the timer ID from state
 	stateManager.SetStateData(ctx, participantID, models.FlowTypeMicroHealthIntervention, models.DataKeyCompletionTimerID, "")
-	
+
 	// Set completion response to "no_reply" and move to "did you get a chance"
 	stateManager.SetStateData(ctx, participantID, models.FlowTypeMicroHealthIntervention, models.DataKeyCompletionResponse, "no_reply")
 	stateManager.SetCurrentState(ctx, participantID, models.FlowTypeMicroHealthIntervention, models.StateDidYouGetAChance)
-	
+
 	// Send "did you get a chance" message and schedule timeout
 	if err := msgService.SendMessage(ctx, from, flow.MsgDidYouGetAChance); err != nil {
 		slog.Error("Failed to send 'did you get a chance' message after timeout", "error", err, "participantID", participantID)
 		return
 	}
-	
+
 	scheduleTimeout(ctx, participantID, from, flow.DidYouGetAChanceTimeout, func() {
 		handleDidYouGetAChanceTimeout(ctx, participantID, from, stateManager, msgService, timer)
 	}, stateManager, timer, models.DataKeyDidYouGetAChanceTimerID)
@@ -576,19 +576,19 @@ func handleCompletionTimeout(ctx context.Context, participantID, from string, st
 // handleDidYouGetAChanceTimeout handles timeout when user doesn't respond to "did you get a chance" within 15 minutes
 func handleDidYouGetAChanceTimeout(ctx context.Context, participantID, from string, stateManager StateManager, msgService Service, timer models.Timer) {
 	slog.Debug("Did you get a chance timeout occurred", "participantID", participantID)
-	
+
 	// Clear the timer ID from state
 	stateManager.SetStateData(ctx, participantID, models.FlowTypeMicroHealthIntervention, models.DataKeyDidYouGetAChanceTimerID, "")
-	
+
 	// Set response to "no_reply" and transition to IGNORED_PATH
 	stateManager.SetStateData(ctx, participantID, models.FlowTypeMicroHealthIntervention, models.DataKeyGotChanceResponse, "no_reply")
 	stateManager.SetCurrentState(ctx, participantID, models.FlowTypeMicroHealthIntervention, models.StateIgnoredPath)
-	
+
 	// Send ignored path messages
 	if err := msgService.SendMessage(ctx, from, flow.MsgIgnoredPath); err != nil {
 		slog.Error("Failed to send ignored path message", "error", err, "participantID", participantID)
 	}
-	
+
 	// Transition to END_OF_DAY
 	stateManager.SetCurrentState(ctx, participantID, models.FlowTypeMicroHealthIntervention, models.StateEndOfDay)
 }
@@ -596,10 +596,10 @@ func handleDidYouGetAChanceTimeout(ctx context.Context, participantID, from stri
 // handleContextTimeout handles timeout when user doesn't respond to context question within 15 minutes
 func handleContextTimeout(ctx context.Context, participantID, from string, stateManager StateManager, msgService Service, timer models.Timer) {
 	slog.Debug("Context timeout occurred", "participantID", participantID)
-	
+
 	// Clear the timer ID from state
 	stateManager.SetStateData(ctx, participantID, models.FlowTypeMicroHealthIntervention, models.DataKeyContextTimerID, "")
-	
+
 	// Skip to END_OF_DAY
 	stateManager.SetCurrentState(ctx, participantID, models.FlowTypeMicroHealthIntervention, models.StateEndOfDay)
 }
@@ -607,10 +607,10 @@ func handleContextTimeout(ctx context.Context, participantID, from string, state
 // handleMoodTimeout handles timeout when user doesn't respond to mood question within 15 minutes
 func handleMoodTimeout(ctx context.Context, participantID, from string, stateManager StateManager, msgService Service, timer models.Timer) {
 	slog.Debug("Mood timeout occurred", "participantID", participantID)
-	
+
 	// Clear the timer ID from state
 	stateManager.SetStateData(ctx, participantID, models.FlowTypeMicroHealthIntervention, models.DataKeyMoodTimerID, "")
-	
+
 	// Skip to END_OF_DAY
 	stateManager.SetCurrentState(ctx, participantID, models.FlowTypeMicroHealthIntervention, models.StateEndOfDay)
 }
@@ -618,10 +618,10 @@ func handleMoodTimeout(ctx context.Context, participantID, from string, stateMan
 // handleBarrierCheckTimeout handles timeout when user doesn't respond to barrier detail question within 30 minutes
 func handleBarrierCheckTimeout(ctx context.Context, participantID, from string, stateManager StateManager, msgService Service, timer models.Timer) {
 	slog.Debug("Barrier check timeout occurred", "participantID", participantID)
-	
+
 	// Clear the timer ID from state
 	stateManager.SetStateData(ctx, participantID, models.FlowTypeMicroHealthIntervention, models.DataKeyBarrierCheckTimerID, "")
-	
+
 	// Transition to END_OF_DAY
 	stateManager.SetCurrentState(ctx, participantID, models.FlowTypeMicroHealthIntervention, models.StateEndOfDay)
 }
@@ -629,10 +629,10 @@ func handleBarrierCheckTimeout(ctx context.Context, participantID, from string, 
 // handleBarrierReasonTimeout handles timeout when user doesn't respond to barrier reason question within 30 minutes
 func handleBarrierReasonTimeout(ctx context.Context, participantID, from string, stateManager StateManager, msgService Service, timer models.Timer) {
 	slog.Debug("Barrier reason timeout occurred", "participantID", participantID)
-	
+
 	// Clear the timer ID from state
 	stateManager.SetStateData(ctx, participantID, models.FlowTypeMicroHealthIntervention, models.DataKeyBarrierReasonTimerID, "")
-	
+
 	// Transition to END_OF_DAY
 	stateManager.SetCurrentState(ctx, participantID, models.FlowTypeMicroHealthIntervention, models.StateEndOfDay)
 }

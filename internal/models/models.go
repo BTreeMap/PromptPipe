@@ -514,6 +514,15 @@ func IsValidParticipantStatus(status InterventionParticipantStatus) bool {
 	}
 }
 
+// TimerInfo represents information about a scheduled timer
+type TimerInfo struct {
+	ID          string    `json:"id"`
+	ScheduledAt time.Time `json:"scheduled_at"`
+	ExpiresAt   time.Time `json:"expires_at"`
+	Remaining   string    `json:"remaining"`
+	Description string    `json:"description,omitempty"`
+}
+
 // Timer defines the interface for scheduling delayed actions.
 type Timer interface {
 	// ScheduleAfter schedules a function to run after a delay and returns a timer ID
@@ -527,4 +536,10 @@ type Timer interface {
 
 	// Stop cancels all scheduled timers
 	Stop()
+
+	// ListActive returns information about all active timers
+	ListActive() []TimerInfo
+
+	// GetTimer returns information about a specific timer by ID
+	GetTimer(id string) (*TimerInfo, error)
 }
