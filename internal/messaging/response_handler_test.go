@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/BTreeMap/PromptPipe/internal/flow"
 	"github.com/BTreeMap/PromptPipe/internal/models"
 	"github.com/BTreeMap/PromptPipe/internal/whatsapp"
 )
@@ -223,7 +224,8 @@ func TestCreateInterventionHook_ReadyOverride(t *testing.T) {
 	stateManager.SetCurrentState(context.Background(), participantID, models.FlowTypeMicroHealthIntervention, models.StateEndOfDay)
 
 	// Create intervention hook
-	hook := CreateInterventionHook(participantID, phoneNumber, stateManager, msgService)
+	timer := flow.NewSimpleTimer()
+	hook := CreateInterventionHook(participantID, phoneNumber, stateManager, msgService, timer)
 
 	// Test "Ready" response
 	ctx := context.Background()
@@ -256,7 +258,8 @@ func TestCreateInterventionHook_CommitmentResponse(t *testing.T) {
 	stateManager.SetCurrentState(context.Background(), participantID, models.FlowTypeMicroHealthIntervention, models.StateCommitmentPrompt)
 
 	// Create intervention hook
-	hook := CreateInterventionHook(participantID, phoneNumber, stateManager, msgService)
+	timer := flow.NewSimpleTimer()
+	hook := CreateInterventionHook(participantID, phoneNumber, stateManager, msgService, timer)
 
 	// Test "1" response (Let's do it!)
 	ctx := context.Background()
@@ -289,7 +292,8 @@ func TestCreateInterventionHook_FeelingResponse(t *testing.T) {
 	stateManager.SetCurrentState(context.Background(), participantID, models.FlowTypeMicroHealthIntervention, models.StateFeelingPrompt)
 
 	// Create intervention hook
-	hook := CreateInterventionHook(participantID, phoneNumber, stateManager, msgService)
+	timer := flow.NewSimpleTimer()
+	hook := CreateInterventionHook(participantID, phoneNumber, stateManager, msgService, timer)
 
 	// Test "3" response (Motivated)
 	ctx := context.Background()
