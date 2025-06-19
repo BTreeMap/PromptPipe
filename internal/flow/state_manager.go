@@ -42,7 +42,7 @@ func (sm *StoreBasedStateManager) GetCurrentState(ctx context.Context, participa
 }
 
 // SetCurrentState updates the current state for a participant in a flow.
-func (sm *StoreBasedStateManager) SetCurrentState(ctx context.Context, participantID string, flowType FlowType, state StateType) error {
+func (sm *StoreBasedStateManager) SetCurrentState(ctx context.Context, participantID string, flowType models.FlowType, state models.StateType) error {
 	slog.Debug("StateManager SetCurrentState", "participantID", participantID, "flowType", flowType, "state", state)
 
 	// Get existing state or create new one
@@ -59,7 +59,7 @@ func (sm *StoreBasedStateManager) SetCurrentState(ctx context.Context, participa
 			ParticipantID: participantID,
 			FlowType:      flowType,
 			CurrentState:  state,
-			StateData:     make(map[DataKey]string),
+			StateData:     make(map[models.DataKey]string),
 			CreatedAt:     now,
 			UpdatedAt:     now,
 		}
@@ -80,7 +80,7 @@ func (sm *StoreBasedStateManager) SetCurrentState(ctx context.Context, participa
 }
 
 // GetStateData retrieves additional data associated with the participant's state.
-func (sm *StoreBasedStateManager) GetStateData(ctx context.Context, participantID string, flowType FlowType, key DataKey) (string, error) {
+func (sm *StoreBasedStateManager) GetStateData(ctx context.Context, participantID string, flowType models.FlowType, key models.DataKey) (string, error) {
 	slog.Debug("StateManager GetStateData", "participantID", participantID, "flowType", flowType, "key", key)
 
 	flowState, err := sm.store.GetFlowState(participantID, string(flowType))
@@ -105,7 +105,7 @@ func (sm *StoreBasedStateManager) GetStateData(ctx context.Context, participantI
 }
 
 // SetStateData stores additional data associated with the participant's state.
-func (sm *StoreBasedStateManager) SetStateData(ctx context.Context, participantID string, flowType FlowType, key DataKey, value string) error {
+func (sm *StoreBasedStateManager) SetStateData(ctx context.Context, participantID string, flowType models.FlowType, key models.DataKey, value string) error {
 	slog.Debug("StateManager SetStateData", "participantID", participantID, "flowType", flowType, "key", key)
 
 	// Get existing state or create new one
@@ -122,14 +122,14 @@ func (sm *StoreBasedStateManager) SetStateData(ctx context.Context, participantI
 			ParticipantID: participantID,
 			FlowType:      flowType,
 			CurrentState:  "",
-			StateData:     map[DataKey]string{key: value},
+			StateData:     map[models.DataKey]string{key: value},
 			CreatedAt:     now,
 			UpdatedAt:     now,
 		}
 	} else {
 		// Update existing flow state
 		if flowState.StateData == nil {
-			flowState.StateData = make(map[DataKey]string)
+			flowState.StateData = make(map[models.DataKey]string)
 		}
 		flowState.StateData[key] = value
 		flowState.UpdatedAt = now
@@ -146,7 +146,7 @@ func (sm *StoreBasedStateManager) SetStateData(ctx context.Context, participantI
 }
 
 // TransitionState transitions from one state to another.
-func (sm *StoreBasedStateManager) TransitionState(ctx context.Context, participantID string, flowType FlowType, fromState, toState StateType) error {
+func (sm *StoreBasedStateManager) TransitionState(ctx context.Context, participantID string, flowType models.FlowType, fromState, toState models.StateType) error {
 	slog.Debug("StateManager TransitionState", "participantID", participantID, "flowType", flowType, "from", fromState, "to", toState)
 
 	// Verify current state matches expected fromState
@@ -174,7 +174,7 @@ func (sm *StoreBasedStateManager) TransitionState(ctx context.Context, participa
 }
 
 // ResetState removes all state data for a participant in a flow.
-func (sm *StoreBasedStateManager) ResetState(ctx context.Context, participantID string, flowType FlowType) error {
+func (sm *StoreBasedStateManager) ResetState(ctx context.Context, participantID string, flowType models.FlowType) error {
 	slog.Debug("StateManager ResetState", "participantID", participantID, "flowType", flowType)
 
 	err := sm.store.DeleteFlowState(participantID, string(flowType))

@@ -8,53 +8,6 @@ import (
 	"github.com/BTreeMap/PromptPipe/internal/models"
 )
 
-// Re-export types from models for backward compatibility
-type FlowType = models.FlowType
-type StateType = models.StateType
-type DataKey = models.DataKey
-type FlowAssignment = models.FlowAssignment
-type ResponseValue = models.ResponseValue
-
-// Re-export constants from models for backward compatibility
-const (
-	FlowTypeMicroHealthIntervention = models.FlowTypeMicroHealthIntervention
-
-	StateOrientation                  = models.StateOrientation
-	StateCommitmentPrompt             = models.StateCommitmentPrompt
-	StateFeelingPrompt                = models.StateFeelingPrompt
-	StateRandomAssignment             = models.StateRandomAssignment
-	StateSendInterventionImmediate    = models.StateSendInterventionImmediate
-	StateSendInterventionReflective   = models.StateSendInterventionReflective
-	StateReinforcementFollowup        = models.StateReinforcementFollowup
-	StateDidYouGetAChance             = models.StateDidYouGetAChance
-	StateContextQuestion              = models.StateContextQuestion
-	StateMoodQuestion                 = models.StateMoodQuestion
-	StateBarrierCheckAfterContextMood = models.StateBarrierCheckAfterContextMood
-	StateBarrierReasonNoChance        = models.StateBarrierReasonNoChance
-	StateIgnoredPath                  = models.StateIgnoredPath
-	StateEndOfDay                     = models.StateEndOfDay
-	StateHabitReminder                = models.StateHabitReminder
-	StateFollowUp                     = models.StateFollowUp
-	StateComplete                     = models.StateComplete
-
-	DataKeyFlowAssignment        = models.DataKeyFlowAssignment
-	DataKeyFeelingResponse       = models.DataKeyFeelingResponse
-	DataKeyCompletionResponse    = models.DataKeyCompletionResponse
-	DataKeyGotChanceResponse     = models.DataKeyGotChanceResponse
-	DataKeyContextResponse       = models.DataKeyContextResponse
-	DataKeyMoodResponse          = models.DataKeyMoodResponse
-	DataKeyBarrierResponse       = models.DataKeyBarrierResponse
-	DataKeyBarrierReasonResponse = models.DataKeyBarrierReasonResponse
-
-	FlowAssignmentImmediate  = models.FlowAssignmentImmediate
-	FlowAssignmentReflective = models.FlowAssignmentReflective
-
-	ResponseDone    = models.ResponseDone
-	ResponseNo      = models.ResponseNo
-	ResponseNoReply = models.ResponseNoReply
-	ResponseReady   = models.ResponseReady
-)
-
 // Simple message constants for micro health intervention flow.
 const (
 	MsgOrientation      = "Hi! 🌱 Welcome to our Healthy Habits study!\nHere's how it works: You will receive messages on a schedule, or type 'Ready' anytime to get a prompt. Your input is important."
