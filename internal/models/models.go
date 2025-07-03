@@ -21,6 +21,8 @@ const (
 	PromptTypeBranch PromptType = "branch"
 	// PromptTypeCustom allows pluggable custom flow generators
 	PromptTypeCustom PromptType = "custom"
+	// PromptTypeConversation enables persistent conversation flows
+	PromptTypeConversation PromptType = "conversation"
 )
 
 // Validation constants for input validation
@@ -57,7 +59,7 @@ var (
 // IsValidPromptType checks if the given prompt type is supported.
 func IsValidPromptType(pt PromptType) bool {
 	switch pt {
-	case PromptTypeStatic, PromptTypeGenAI, PromptTypeBranch, PromptTypeCustom:
+	case PromptTypeStatic, PromptTypeGenAI, PromptTypeBranch, PromptTypeCustom, PromptTypeConversation:
 		return true
 	default:
 		return false
@@ -177,6 +179,8 @@ func (p *Prompt) Validate() error {
 	case PromptTypeCustom:
 		// Custom types may have different validation requirements
 		return nil
+	case PromptTypeConversation:
+		return p.validateConversation()
 	}
 
 	return nil
@@ -231,6 +235,15 @@ func (p *Prompt) validateBranch() error {
 		}
 	}
 
+	return nil
+}
+
+// validateConversation validates conversation prompt requirements.
+func (p *Prompt) validateConversation() error {
+	// Conversation prompts require a user prompt but system prompt can be loaded from file
+	if p.UserPrompt == "" {
+		return ErrMissingUserPrompt
+	}
 	return nil
 }
 

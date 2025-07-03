@@ -164,6 +164,11 @@ func createAndConfigureServer(waOpts []whatsapp.Option, storeOpts []store.Option
 		return nil, "", fmt.Errorf("failed to initialize GenAI: %w", err)
 	}
 
+	// Initialize conversation flow
+	if err := server.initializeConversationFlow(); err != nil {
+		return nil, "", fmt.Errorf("failed to initialize conversation flow: %w", err)
+	}
+
 	return server, addr, nil
 }
 
@@ -261,6 +266,32 @@ func (s *Server) initializeGenAI(genaiOpts []genai.Option) error {
 	} else {
 		s.gaClient = nil
 	}
+	return nil
+}
+
+// initializeConversationFlow sets up the conversation flow with system prompt loading
+func (s *Server) initializeConversationFlow() error {
+	// Get system prompt file path
+	systemPromptFile := flow.GetSystemPromptPath()
+
+	// Create default system prompt file if it doesn't exist
+	if err := flow.CreateDefaultSystemPromptFile(systemPromptFile); err != nil {
+		slog.Warn("Failed to create default system prompt file", "error", err, "path", systemPromptFile)
+	}
+
+	// Create conversation flow with dependencies
+	stateManager := flow.NewStoreBasedStateManager(s.st)
+	conversationFlow := flow.NewConversationFlow(stateManager, s.gaClient, systemPromptFile)
+
+	// Load system prompt
+	if err := conversationFlow.LoadSystemPrompt(); err != nil {
+		slog.Warn("Failed to load system prompt, using default", "error", err)
+	}
+
+	// Register conversation flow generator
+	flow.Register(models.PromptTypeConversation, conversationFlow)
+	slog.Debug("Conversation flow initialized and registered", "systemPromptFile", systemPromptFile)
+
 	return nil
 }
 

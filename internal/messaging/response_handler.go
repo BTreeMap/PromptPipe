@@ -379,6 +379,8 @@ func (f *ResponseHandlerFactory) CreateHandlerForPrompt(prompt models.Prompt) Re
 			return CreateStaticHook(f.msgService)
 		}
 		return nil
+	case models.PromptTypeConversation:
+		return CreateConversationHook(prompt, f.msgService)
 	case models.PromptTypeCustom:
 		// Custom prompts should register their own handlers
 		// The micro health intervention already does this
@@ -468,4 +470,59 @@ type StateManager interface {
 	SetStateData(ctx context.Context, participantID string, flowType models.FlowType, key models.DataKey, value string) error
 	TransitionState(ctx context.Context, participantID string, flowType models.FlowType, fromState, toState models.StateType) error
 	ResetState(ctx context.Context, participantID string, flowType models.FlowType) error
+}
+
+// CreateConversationHook creates a specialized hook for conversation prompts that
+// processes responses according to the conversation flow logic and maintains history.
+func CreateConversationHook(prompt models.Prompt, msgService Service) ResponseAction {
+	return func(ctx context.Context, from, responseText string, timestamp int64) (bool, error) {
+		slog.Debug("ConversationHook processing response", "from", from, "responseText", responseText)
+
+		// Get the conversation flow generator from the flow registry
+		generator, exists := flow.Get(models.PromptTypeConversation)
+		if !exists {
+			slog.Error("ConversationHook: conversation flow generator not registered")
+			return false, fmt.Errorf("conversation flow generator not registered")
+		}
+
+		// Cast to conversation flow
+		conversationFlow, ok := generator.(*flow.ConversationFlow)
+		if !ok {
+			slog.Error("ConversationHook: invalid generator type for conversation flow")
+			return false, fmt.Errorf("invalid generator type for conversation flow")
+		}
+
+		// Normalize participant ID from phone number
+		participantID := normalizePhoneNumber(from)
+
+		// Process the response through the conversation flow
+		// The conversation flow handles generating the AI response and returns it
+		aiResponse, err := conversationFlow.ProcessResponse(ctx, participantID, responseText)
+		if err != nil {
+			slog.Error("ConversationHook flow processing failed", "error", err, "participantID", participantID)
+			return false, fmt.Errorf("failed to process response through conversation flow: %w", err)
+		}
+
+		// Send the AI response to the user
+		if aiResponse != "" {
+			if err := msgService.SendMessage(ctx, from, aiResponse); err != nil {
+				slog.Error("ConversationHook failed to send AI response", "error", err, "participantID", participantID)
+				return false, fmt.Errorf("failed to send AI response: %w", err)
+			}
+			slog.Info("ConversationHook sent AI response", "participantID", participantID, "responseLength", len(aiResponse))
+		}
+
+		return true, nil
+	}
+}
+
+// normalizePhoneNumber normalizes phone numbers for consistent participant IDs.
+func normalizePhoneNumber(phone string) string {
+	// Remove common prefixes and formatting
+	normalized := strings.ReplaceAll(phone, "+", "")
+	normalized = strings.ReplaceAll(normalized, "-", "")
+	normalized = strings.ReplaceAll(normalized, " ", "")
+	normalized = strings.ReplaceAll(normalized, "(", "")
+	normalized = strings.ReplaceAll(normalized, ")", "")
+	return normalized
 }

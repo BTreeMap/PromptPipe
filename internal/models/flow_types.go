@@ -16,8 +16,11 @@ type FlowAssignment string
 // ResponseValue represents expected response values
 type ResponseValue string
 
-// Flow type constant for micro health intervention.
-const FlowTypeMicroHealthIntervention FlowType = "micro_health_intervention"
+// Flow type constants.
+const (
+	FlowTypeMicroHealthIntervention FlowType = "micro_health_intervention"
+	FlowTypeConversation            FlowType = "conversation"
+)
 
 // State constants for micro health intervention flow.
 const (
@@ -40,6 +43,11 @@ const (
 	StateComplete                     StateType = "COMPLETE"
 )
 
+// State constants for conversation flow.
+const (
+	StateConversationActive StateType = "CONVERSATION_ACTIVE"
+)
+
 // Data key constants for state data storage.
 const (
 	DataKeyFlowAssignment        DataKey = "flowAssignment"
@@ -60,6 +68,12 @@ const (
 	DataKeyMoodTimerID             DataKey = "moodTimerID"
 	DataKeyBarrierCheckTimerID     DataKey = "barrierCheckTimerID"
 	DataKeyBarrierReasonTimerID    DataKey = "barrierReasonTimerID"
+)
+
+// Data key constants for conversation flow.
+const (
+	DataKeyConversationHistory DataKey = "conversationHistory"
+	DataKeySystemPrompt        DataKey = "systemPrompt"
 )
 
 // Flow assignment values.
