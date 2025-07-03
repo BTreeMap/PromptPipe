@@ -106,14 +106,8 @@ func (s *Server) enrollConversationParticipantHandler(w http.ResponseWriter, r *
 		slog.Debug("No participant background information to store", "participantID", participantID)
 	}
 
-	// Register response hook for this participant
-	conversationPrompt := models.Prompt{
-		To:         canonicalPhone,
-		Type:       models.PromptTypeConversation,
-		UserPrompt: "", // Will be set when processing responses
-		State:      models.StateConversationActive,
-	}
-	conversationHook := messaging.CreateConversationHook(conversationPrompt, s.msgService)
+	// Register response hook for this participant using the actual participant ID
+	conversationHook := messaging.CreateConversationHook(participantID, s.msgService)
 	if err := s.respHandler.RegisterHook(canonicalPhone, conversationHook); err != nil {
 		slog.Error("enrollConversationParticipantHandler hook registration failed", "error", err, "participantID", participantID)
 		// Note: We don't fail the enrollment if hook registration fails, but we log it

@@ -380,7 +380,9 @@ func (f *ResponseHandlerFactory) CreateHandlerForPrompt(prompt models.Prompt) Re
 		}
 		return nil
 	case models.PromptTypeConversation:
-		return CreateConversationHook(prompt, f.msgService)
+		// Conversation prompts register their own handlers during participant enrollment
+		// Return nil since no automatic handler registration is needed
+		return nil
 	case models.PromptTypeCustom:
 		// Custom prompts should register their own handlers
 		// The micro health intervention already does this
@@ -474,9 +476,9 @@ type StateManager interface {
 
 // CreateConversationHook creates a specialized hook for conversation prompts that
 // processes responses according to the conversation flow logic and maintains history.
-func CreateConversationHook(prompt models.Prompt, msgService Service) ResponseAction {
+func CreateConversationHook(participantID string, msgService Service) ResponseAction {
 	return func(ctx context.Context, from, responseText string, timestamp int64) (bool, error) {
-		slog.Debug("ConversationHook processing response", "from", from, "responseText", responseText)
+		slog.Debug("ConversationHook processing response", "from", from, "responseText", responseText, "participantID", participantID)
 
 		// Get the conversation flow generator from the flow registry
 		generator, exists := flow.Get(models.PromptTypeConversation)
@@ -492,8 +494,8 @@ func CreateConversationHook(prompt models.Prompt, msgService Service) ResponseAc
 			return false, fmt.Errorf("invalid generator type for conversation flow")
 		}
 
-		// Normalize participant ID from phone number
-		participantID := normalizePhoneNumber(from)
+		// Use the actual participant ID passed in (not normalized phone number)
+		// This ensures consistency with how background info was stored during enrollment
 
 		// Process the response through the conversation flow
 		// The conversation flow handles generating the AI response and returns it
@@ -514,15 +516,4 @@ func CreateConversationHook(prompt models.Prompt, msgService Service) ResponseAc
 
 		return true, nil
 	}
-}
-
-// normalizePhoneNumber normalizes phone numbers for consistent participant IDs.
-func normalizePhoneNumber(phone string) string {
-	// Remove common prefixes and formatting
-	normalized := strings.ReplaceAll(phone, "+", "")
-	normalized = strings.ReplaceAll(normalized, "-", "")
-	normalized = strings.ReplaceAll(normalized, " ", "")
-	normalized = strings.ReplaceAll(normalized, "(", "")
-	normalized = strings.ReplaceAll(normalized, ")", "")
-	return normalized
 }
