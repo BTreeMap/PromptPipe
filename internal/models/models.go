@@ -493,6 +493,98 @@ func IsValidParticipantStatus(status InterventionParticipantStatus) bool {
 	}
 }
 
+// ConversationParticipantStatus represents the enrollment status of a conversation participant.
+type ConversationParticipantStatus string
+
+const (
+	// ConversationStatusActive indicates the participant is actively engaged in conversations.
+	ConversationStatusActive ConversationParticipantStatus = "active"
+	// ConversationStatusPaused indicates the participant has temporarily paused conversations.
+	ConversationStatusPaused ConversationParticipantStatus = "paused"
+	// ConversationStatusCompleted indicates the participant has completed their conversation session.
+	ConversationStatusCompleted ConversationParticipantStatus = "completed"
+	// ConversationStatusWithdrawn indicates the participant has withdrawn from conversations.
+	ConversationStatusWithdrawn ConversationParticipantStatus = "withdrawn"
+)
+
+// ConversationParticipant represents a participant in the conversation flow.
+type ConversationParticipant struct {
+	ID          string                        `json:"id"`
+	PhoneNumber string                        `json:"phone_number"`
+	Name        string                        `json:"name,omitempty"`
+	Gender      string                        `json:"gender,omitempty"`     // Optional demographic info
+	Ethnicity   string                        `json:"ethnicity,omitempty"`  // Optional demographic info
+	Background  string                        `json:"background,omitempty"` // Optional cultural/mental health background
+	Timezone    string                        `json:"timezone,omitempty"`   // e.g., "America/New_York"
+	Status      ConversationParticipantStatus `json:"status"`
+	EnrolledAt  time.Time                     `json:"enrolled_at"`
+	CreatedAt   time.Time                     `json:"created_at"`
+	UpdatedAt   time.Time                     `json:"updated_at"`
+}
+
+// ConversationEnrollmentRequest represents the payload for enrolling a conversation participant.
+type ConversationEnrollmentRequest struct {
+	PhoneNumber string `json:"phone_number" validate:"required"`
+	Name        string `json:"name,omitempty"`
+	Gender      string `json:"gender,omitempty"`     // Optional: e.g., "male", "female", "non-binary", "prefer not to say"
+	Ethnicity   string `json:"ethnicity,omitempty"`  // Optional: user's ethnic background
+	Background  string `json:"background,omitempty"` // Optional: cultural/mental health background for context
+	Timezone    string `json:"timezone,omitempty"`
+}
+
+// ConversationParticipantUpdate represents the payload for updating a conversation participant.
+type ConversationParticipantUpdate struct {
+	Name       *string                        `json:"name,omitempty"`
+	Gender     *string                        `json:"gender,omitempty"`
+	Ethnicity  *string                        `json:"ethnicity,omitempty"`
+	Background *string                        `json:"background,omitempty"`
+	Timezone   *string                        `json:"timezone,omitempty"`
+	Status     *ConversationParticipantStatus `json:"status,omitempty"`
+}
+
+// Validate validates a ConversationEnrollmentRequest.
+func (r *ConversationEnrollmentRequest) Validate() error {
+	if r.PhoneNumber == "" {
+		return errors.New("phone_number is required")
+	}
+
+	// Validate timezone if provided
+	if r.Timezone != "" {
+		if _, err := time.LoadLocation(r.Timezone); err != nil {
+			return errors.New("invalid timezone")
+		}
+	}
+
+	return nil
+}
+
+// Validate validates a ConversationParticipantUpdate request.
+func (u *ConversationParticipantUpdate) Validate() error {
+	// Validate timezone if provided
+	if u.Timezone != nil && *u.Timezone != "" {
+		if _, err := time.LoadLocation(*u.Timezone); err != nil {
+			return errors.New("invalid timezone")
+		}
+	}
+
+	// Validate status if provided
+	if u.Status != nil && !IsValidConversationParticipantStatus(*u.Status) {
+		return errors.New("invalid participant status")
+	}
+
+	return nil
+}
+
+// IsValidConversationParticipantStatus checks if the given conversation participant status is valid.
+func IsValidConversationParticipantStatus(status ConversationParticipantStatus) bool {
+	switch status {
+	case ConversationStatusActive, ConversationStatusPaused, ConversationStatusCompleted, ConversationStatusWithdrawn:
+		return true
+	default:
+		return false
+	}
+}
+
 // TimerInfo represents information about a scheduled timer
 type TimerInfo struct {
 	ID          string    `json:"id"`

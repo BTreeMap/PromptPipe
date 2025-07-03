@@ -482,3 +482,137 @@ func (s *PostgresStore) ListAllInterventionResponses() ([]models.InterventionRes
 	slog.Debug("PostgresStore ListAllInterventionResponses succeeded", "count", len(responses))
 	return responses, nil
 }
+
+// Conversation participant management methods - PostgreSQL implementation
+
+// SaveConversationParticipant stores or updates a conversation participant.
+func (s *PostgresStore) SaveConversationParticipant(participant models.ConversationParticipant) error {
+	query := `
+		INSERT INTO conversation_participants (id, phone_number, name, gender, ethnicity, background, status, enrolled_at, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		ON CONFLICT (id) DO UPDATE SET
+			phone_number = EXCLUDED.phone_number,
+			name = EXCLUDED.name,
+			gender = EXCLUDED.gender,
+			ethnicity = EXCLUDED.ethnicity,
+			background = EXCLUDED.background,
+			status = EXCLUDED.status,
+			enrolled_at = EXCLUDED.enrolled_at,
+			updated_at = EXCLUDED.updated_at`
+
+	_, err := s.db.Exec(query, participant.ID, participant.PhoneNumber, participant.Name, participant.Gender,
+		participant.Ethnicity, participant.Background, string(participant.Status), participant.EnrolledAt,
+		participant.CreatedAt, participant.UpdatedAt)
+	if err != nil {
+		slog.Error("PostgresStore SaveConversationParticipant failed", "error", err, "id", participant.ID)
+		return err
+	}
+	slog.Debug("PostgresStore SaveConversationParticipant succeeded", "id", participant.ID, "phone", participant.PhoneNumber)
+	return nil
+}
+
+// GetConversationParticipant retrieves a conversation participant by ID.
+func (s *PostgresStore) GetConversationParticipant(id string) (*models.ConversationParticipant, error) {
+	query := `SELECT id, phone_number, name, gender, ethnicity, background, status, enrolled_at, created_at, updated_at 
+			  FROM conversation_participants WHERE id = $1`
+
+	var participant models.ConversationParticipant
+	var status string
+
+	err := s.db.QueryRow(query, id).Scan(
+		&participant.ID, &participant.PhoneNumber, &participant.Name, &participant.Gender,
+		&participant.Ethnicity, &participant.Background, &status, &participant.EnrolledAt,
+		&participant.CreatedAt, &participant.UpdatedAt)
+
+	if err == sql.ErrNoRows {
+		slog.Debug("PostgresStore GetConversationParticipant not found", "id", id)
+		return nil, nil
+	}
+	if err != nil {
+		slog.Error("PostgresStore GetConversationParticipant failed", "error", err, "id", id)
+		return nil, err
+	}
+
+	participant.Status = models.ConversationParticipantStatus(status)
+	slog.Debug("PostgresStore GetConversationParticipant found", "id", id)
+	return &participant, nil
+}
+
+// GetConversationParticipantByPhone retrieves a conversation participant by phone number.
+func (s *PostgresStore) GetConversationParticipantByPhone(phoneNumber string) (*models.ConversationParticipant, error) {
+	query := `SELECT id, phone_number, name, gender, ethnicity, background, status, enrolled_at, created_at, updated_at 
+			  FROM conversation_participants WHERE phone_number = $1`
+
+	var participant models.ConversationParticipant
+	var status string
+
+	err := s.db.QueryRow(query, phoneNumber).Scan(
+		&participant.ID, &participant.PhoneNumber, &participant.Name, &participant.Gender,
+		&participant.Ethnicity, &participant.Background, &status, &participant.EnrolledAt,
+		&participant.CreatedAt, &participant.UpdatedAt)
+
+	if err == sql.ErrNoRows {
+		slog.Debug("PostgresStore GetConversationParticipantByPhone not found", "phone", phoneNumber)
+		return nil, nil
+	}
+	if err != nil {
+		slog.Error("PostgresStore GetConversationParticipantByPhone failed", "error", err, "phone", phoneNumber)
+		return nil, err
+	}
+
+	participant.Status = models.ConversationParticipantStatus(status)
+	slog.Debug("PostgresStore GetConversationParticipantByPhone found", "phone", phoneNumber, "id", participant.ID)
+	return &participant, nil
+}
+
+// ListConversationParticipants retrieves all conversation participants.
+func (s *PostgresStore) ListConversationParticipants() ([]models.ConversationParticipant, error) {
+	query := `SELECT id, phone_number, name, gender, ethnicity, background, status, enrolled_at, created_at, updated_at 
+			  FROM conversation_participants ORDER BY created_at DESC`
+
+	rows, err := s.db.Query(query)
+	if err != nil {
+		slog.Error("PostgresStore ListConversationParticipants failed", "error", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	var participants []models.ConversationParticipant
+	for rows.Next() {
+		var participant models.ConversationParticipant
+		var status string
+
+		err := rows.Scan(
+			&participant.ID, &participant.PhoneNumber, &participant.Name, &participant.Gender,
+			&participant.Ethnicity, &participant.Background, &status, &participant.EnrolledAt,
+			&participant.CreatedAt, &participant.UpdatedAt)
+		if err != nil {
+			slog.Error("PostgresStore ListConversationParticipants scan failed", "error", err)
+			return nil, err
+		}
+
+		participant.Status = models.ConversationParticipantStatus(status)
+		participants = append(participants, participant)
+	}
+
+	if err := rows.Err(); err != nil {
+		slog.Error("PostgresStore ListConversationParticipants rows error", "error", err)
+		return nil, err
+	}
+
+	slog.Debug("PostgresStore ListConversationParticipants succeeded", "count", len(participants))
+	return participants, nil
+}
+
+// DeleteConversationParticipant removes a conversation participant.
+func (s *PostgresStore) DeleteConversationParticipant(id string) error {
+	query := `DELETE FROM conversation_participants WHERE id = $1`
+
+	_, err := s.db.Exec(query, id)
+	if err != nil {
+		slog.Error("PostgresStore DeleteConversationParticipant failed", "error", err, "id", id)
+		return err
+	}
+	slog.Debug("PostgresStore DeleteConversationParticipant succeeded", "id", id)
+	return nil
+}

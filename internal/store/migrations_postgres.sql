@@ -58,3 +58,21 @@ CREATE TABLE IF NOT EXISTS intervention_responses (
 -- Index for participant response lookups
 CREATE INDEX IF NOT EXISTS idx_intervention_responses_participant ON intervention_responses(participant_id);
 CREATE INDEX IF NOT EXISTS idx_intervention_responses_timestamp ON intervention_responses(timestamp);
+
+-- SQL migration for conversation participants
+CREATE TABLE IF NOT EXISTS conversation_participants (
+    id TEXT PRIMARY KEY,
+    phone_number TEXT NOT NULL UNIQUE,
+    name TEXT,
+    gender TEXT,
+    ethnicity TEXT,
+    background TEXT,
+    status TEXT NOT NULL,
+    enrolled_at TIMESTAMP NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+-- Index for conversation participant lookups
+CREATE INDEX IF NOT EXISTS idx_conversation_participants_phone ON conversation_participants(phone_number);
+CREATE INDEX IF NOT EXISTS idx_conversation_participants_status ON conversation_participants(status);

@@ -37,6 +37,12 @@ type Store interface {
 	SaveInterventionResponse(response models.InterventionResponse) error
 	GetInterventionResponses(participantID string) ([]models.InterventionResponse, error)
 	ListAllInterventionResponses() ([]models.InterventionResponse, error)
+	// Conversation participant management
+	SaveConversationParticipant(participant models.ConversationParticipant) error
+	GetConversationParticipant(id string) (*models.ConversationParticipant, error)
+	GetConversationParticipantByPhone(phoneNumber string) (*models.ConversationParticipant, error)
+	ListConversationParticipants() ([]models.ConversationParticipant, error)
+	DeleteConversationParticipant(id string) error
 }
 
 // Opts holds configuration options for store implementations.
@@ -121,6 +127,7 @@ type InMemoryStore struct {
 	responses                []models.Response
 	flowStates               map[string]models.FlowState               // key: participantID_flowType
 	interventionParticipants map[string]models.InterventionParticipant // key: participant ID
+	conversationParticipants map[string]models.ConversationParticipant // key: participant ID
 	interventionResponses    []models.InterventionResponse             // chronological list
 	mu                       sync.RWMutex
 }
@@ -133,6 +140,7 @@ func NewInMemoryStore() *InMemoryStore {
 		responses:                make([]models.Response, 0),
 		flowStates:               make(map[string]models.FlowState),
 		interventionParticipants: make(map[string]models.InterventionParticipant),
+		conversationParticipants: make(map[string]models.ConversationParticipant),
 		interventionResponses:    make([]models.InterventionResponse, 0),
 	}
 }
@@ -330,4 +338,66 @@ func (s *InMemoryStore) ListAllInterventionResponses() ([]models.InterventionRes
 	copy(result, s.interventionResponses)
 	slog.Debug("InMemoryStore ListAllInterventionResponses succeeded", "count", len(result))
 	return result, nil
+}
+
+// Conversation participant management methods - InMemory implementation
+
+// SaveConversationParticipant stores or updates a conversation participant.
+func (s *InMemoryStore) SaveConversationParticipant(participant models.ConversationParticipant) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.conversationParticipants[participant.ID] = participant
+	slog.Debug("InMemoryStore SaveConversationParticipant succeeded", "id", participant.ID, "phone", participant.PhoneNumber)
+	return nil
+}
+
+// GetConversationParticipant retrieves a conversation participant by ID.
+func (s *InMemoryStore) GetConversationParticipant(id string) (*models.ConversationParticipant, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if participant, exists := s.conversationParticipants[id]; exists {
+		slog.Debug("InMemoryStore GetConversationParticipant found", "id", id)
+		// Return a copy to prevent external modifications
+		participantCopy := participant
+		return &participantCopy, nil
+	}
+	slog.Debug("InMemoryStore GetConversationParticipant not found", "id", id)
+	return nil, nil
+}
+
+// GetConversationParticipantByPhone retrieves a conversation participant by phone number.
+func (s *InMemoryStore) GetConversationParticipantByPhone(phoneNumber string) (*models.ConversationParticipant, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, participant := range s.conversationParticipants {
+		if participant.PhoneNumber == phoneNumber {
+			slog.Debug("InMemoryStore GetConversationParticipantByPhone found", "phone", phoneNumber, "id", participant.ID)
+			// Return a copy to prevent external modifications
+			participantCopy := participant
+			return &participantCopy, nil
+		}
+	}
+	slog.Debug("InMemoryStore GetConversationParticipantByPhone not found", "phone", phoneNumber)
+	return nil, nil
+}
+
+// ListConversationParticipants retrieves all conversation participants.
+func (s *InMemoryStore) ListConversationParticipants() ([]models.ConversationParticipant, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	result := make([]models.ConversationParticipant, 0, len(s.conversationParticipants))
+	for _, participant := range s.conversationParticipants {
+		result = append(result, participant)
+	}
+	slog.Debug("InMemoryStore ListConversationParticipants succeeded", "count", len(result))
+	return result, nil
+}
+
+// DeleteConversationParticipant removes a conversation participant.
+func (s *InMemoryStore) DeleteConversationParticipant(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.conversationParticipants, id)
+	slog.Debug("InMemoryStore DeleteConversationParticipant succeeded", "id", id)
+	return nil
 }

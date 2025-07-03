@@ -486,3 +486,128 @@ func (s *SQLiteStore) ListAllInterventionResponses() ([]models.InterventionRespo
 	slog.Debug("SQLiteStore ListAllInterventionResponses succeeded", "count", len(responses))
 	return responses, nil
 }
+
+// Conversation participant management methods - SQLite implementation
+
+// SaveConversationParticipant stores or updates a conversation participant.
+func (s *SQLiteStore) SaveConversationParticipant(participant models.ConversationParticipant) error {
+	query := `
+		INSERT OR REPLACE INTO conversation_participants (id, phone_number, name, gender, ethnicity, background, status, enrolled_at, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+
+	_, err := s.db.Exec(query, participant.ID, participant.PhoneNumber, participant.Name, participant.Gender,
+		participant.Ethnicity, participant.Background, string(participant.Status), participant.EnrolledAt,
+		participant.CreatedAt, participant.UpdatedAt)
+	if err != nil {
+		slog.Error("SQLiteStore SaveConversationParticipant failed", "error", err, "id", participant.ID)
+		return err
+	}
+	slog.Debug("SQLiteStore SaveConversationParticipant succeeded", "id", participant.ID, "phone", participant.PhoneNumber)
+	return nil
+}
+
+// GetConversationParticipant retrieves a conversation participant by ID.
+func (s *SQLiteStore) GetConversationParticipant(id string) (*models.ConversationParticipant, error) {
+	query := `SELECT id, phone_number, name, gender, ethnicity, background, status, enrolled_at, created_at, updated_at 
+			  FROM conversation_participants WHERE id = ?`
+
+	var participant models.ConversationParticipant
+	var status string
+
+	err := s.db.QueryRow(query, id).Scan(
+		&participant.ID, &participant.PhoneNumber, &participant.Name, &participant.Gender,
+		&participant.Ethnicity, &participant.Background, &status, &participant.EnrolledAt,
+		&participant.CreatedAt, &participant.UpdatedAt)
+
+	if err == sql.ErrNoRows {
+		slog.Debug("SQLiteStore GetConversationParticipant not found", "id", id)
+		return nil, nil
+	}
+	if err != nil {
+		slog.Error("SQLiteStore GetConversationParticipant failed", "error", err, "id", id)
+		return nil, err
+	}
+
+	participant.Status = models.ConversationParticipantStatus(status)
+	slog.Debug("SQLiteStore GetConversationParticipant found", "id", id)
+	return &participant, nil
+}
+
+// GetConversationParticipantByPhone retrieves a conversation participant by phone number.
+func (s *SQLiteStore) GetConversationParticipantByPhone(phoneNumber string) (*models.ConversationParticipant, error) {
+	query := `SELECT id, phone_number, name, gender, ethnicity, background, status, enrolled_at, created_at, updated_at 
+			  FROM conversation_participants WHERE phone_number = ?`
+
+	var participant models.ConversationParticipant
+	var status string
+
+	err := s.db.QueryRow(query, phoneNumber).Scan(
+		&participant.ID, &participant.PhoneNumber, &participant.Name, &participant.Gender,
+		&participant.Ethnicity, &participant.Background, &status, &participant.EnrolledAt,
+		&participant.CreatedAt, &participant.UpdatedAt)
+
+	if err == sql.ErrNoRows {
+		slog.Debug("SQLiteStore GetConversationParticipantByPhone not found", "phone", phoneNumber)
+		return nil, nil
+	}
+	if err != nil {
+		slog.Error("SQLiteStore GetConversationParticipantByPhone failed", "error", err, "phone", phoneNumber)
+		return nil, err
+	}
+
+	participant.Status = models.ConversationParticipantStatus(status)
+	slog.Debug("SQLiteStore GetConversationParticipantByPhone found", "phone", phoneNumber, "id", participant.ID)
+	return &participant, nil
+}
+
+// ListConversationParticipants retrieves all conversation participants.
+func (s *SQLiteStore) ListConversationParticipants() ([]models.ConversationParticipant, error) {
+	query := `SELECT id, phone_number, name, gender, ethnicity, background, status, enrolled_at, created_at, updated_at 
+			  FROM conversation_participants ORDER BY created_at DESC`
+
+	rows, err := s.db.Query(query)
+	if err != nil {
+		slog.Error("SQLiteStore ListConversationParticipants failed", "error", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	var participants []models.ConversationParticipant
+	for rows.Next() {
+		var participant models.ConversationParticipant
+		var status string
+
+		err := rows.Scan(
+			&participant.ID, &participant.PhoneNumber, &participant.Name, &participant.Gender,
+			&participant.Ethnicity, &participant.Background, &status, &participant.EnrolledAt,
+			&participant.CreatedAt, &participant.UpdatedAt)
+		if err != nil {
+			slog.Error("SQLiteStore ListConversationParticipants scan failed", "error", err)
+			return nil, err
+		}
+
+		participant.Status = models.ConversationParticipantStatus(status)
+		participants = append(participants, participant)
+	}
+
+	if err := rows.Err(); err != nil {
+		slog.Error("SQLiteStore ListConversationParticipants rows error", "error", err)
+		return nil, err
+	}
+
+	slog.Debug("SQLiteStore ListConversationParticipants succeeded", "count", len(participants))
+	return participants, nil
+}
+
+// DeleteConversationParticipant removes a conversation participant.
+func (s *SQLiteStore) DeleteConversationParticipant(id string) error {
+	query := `DELETE FROM conversation_participants WHERE id = ?`
+
+	_, err := s.db.Exec(query, id)
+	if err != nil {
+		slog.Error("SQLiteStore DeleteConversationParticipant failed", "error", err, "id", id)
+		return err
+	}
+	slog.Debug("SQLiteStore DeleteConversationParticipant succeeded", "id", id)
+	return nil
+}

@@ -313,6 +313,9 @@ func startHTTPServer(addr string, server *Server) *http.Server {
 	// Intervention management endpoints with proper routing
 	http.HandleFunc("/intervention/", server.interventionRouter)
 
+	// Conversation management endpoints with proper routing
+	http.HandleFunc("/conversation/", server.conversationRouter)
+
 	slog.Debug("HTTP handlers registered")
 
 	// Start HTTP server with graceful shutdown
@@ -492,4 +495,70 @@ func (s *Server) handleParticipantRoutes(w http.ResponseWriter, r *http.Request,
 	default:
 		writeJSONResponse(w, http.StatusNotFound, models.Error("Unknown participant endpoint"))
 	}
+}
+
+// conversationRouter handles all conversation-related endpoints with proper RESTful routing
+func (s *Server) conversationRouter(w http.ResponseWriter, r *http.Request) {
+	path := strings.TrimPrefix(r.URL.Path, "/conversation")
+
+	// Remove leading slash if present
+	path = strings.TrimPrefix(path, "/")
+
+	slog.Debug("Conversation router", "method", r.Method, "path", path, "fullPath", r.URL.Path)
+
+	// Split path into segments
+	segments := strings.Split(path, "/")
+	if len(segments) == 0 || segments[0] == "" {
+		http.Error(w, "Invalid conversation endpoint", http.StatusNotFound)
+		return
+	}
+
+	switch segments[0] {
+	case "participants":
+		s.handleConversationParticipantRoutes(w, r, segments[1:])
+	default:
+		http.Error(w, "Unknown conversation endpoint", http.StatusNotFound)
+	}
+}
+
+// handleConversationParticipantRoutes handles all conversation participant-related routes
+func (s *Server) handleConversationParticipantRoutes(w http.ResponseWriter, r *http.Request, segments []string) {
+	if len(segments) == 0 || segments[0] == "" {
+		// /conversation/participants
+		switch r.Method {
+		case http.MethodGet:
+			s.listConversationParticipantsHandler(w, r)
+		case http.MethodPost:
+			s.enrollConversationParticipantHandler(w, r)
+		default:
+			w.Header().Set("Allow", "GET, POST")
+			writeJSONResponse(w, http.StatusMethodNotAllowed, models.Error("Method not allowed"))
+		}
+		return
+	}
+
+	// Extract participant ID and add to request context for handlers to use
+	participantID := segments[0]
+	ctx := context.WithValue(r.Context(), ContextKeyParticipantID, participantID)
+	r = r.WithContext(ctx)
+
+	if len(segments) == 1 {
+		// /conversation/participants/{id}
+		switch r.Method {
+		case http.MethodGet:
+			s.getConversationParticipantHandler(w, r)
+		case http.MethodPut:
+			s.updateConversationParticipantHandler(w, r)
+		case http.MethodDelete:
+			s.deleteConversationParticipantHandler(w, r)
+		default:
+			w.Header().Set("Allow", "GET, PUT, DELETE")
+			writeJSONResponse(w, http.StatusMethodNotAllowed, models.Error("Method not allowed"))
+		}
+		return
+	}
+
+	// For now, we don't have sub-routes like intervention has
+	// But we can add them later (e.g., /conversation/participants/{id}/history)
+	writeJSONResponse(w, http.StatusNotFound, models.Error("Unknown conversation participant endpoint"))
 }
