@@ -251,41 +251,6 @@ func (f *ConversationFlow) saveConversationHistory(ctx context.Context, particip
 	return nil
 }
 
-// buildConversationContext creates a formatted context string from conversation history.
-func (f *ConversationFlow) buildConversationContext(history *ConversationHistory) string {
-	if len(history.Messages) == 0 {
-		return ""
-	}
-
-	var contextBuilder strings.Builder
-	contextBuilder.WriteString("Previous conversation:\n\n")
-
-	// Include recent conversation history (last 10 exchanges)
-	start := 0
-	if len(history.Messages) > 20 { // 10 exchanges = 20 messages
-		start = len(history.Messages) - 20
-	}
-
-	for i := start; i < len(history.Messages)-1; i++ { // -1 to exclude the current user message
-		msg := history.Messages[i]
-		if msg.Role == "user" {
-			contextBuilder.WriteString(fmt.Sprintf("User: %s\n", msg.Content))
-		} else {
-			contextBuilder.WriteString(fmt.Sprintf("Assistant: %s\n", msg.Content))
-		}
-	}
-
-	// Add the current user message
-	if len(history.Messages) > 0 {
-		lastMsg := history.Messages[len(history.Messages)-1]
-		if lastMsg.Role == "user" {
-			contextBuilder.WriteString(fmt.Sprintf("\nCurrent user message: %s", lastMsg.Content))
-		}
-	}
-
-	return contextBuilder.String()
-}
-
 // buildOpenAIMessages creates OpenAI message array with system prompt, participant background, and conversation history.
 // Follows the structure: system prompt + user background (as system message) + conversation history + current instruction
 func (f *ConversationFlow) buildOpenAIMessages(ctx context.Context, participantID string, history *ConversationHistory) ([]openai.ChatCompletionMessageParamUnion, error) {
@@ -296,12 +261,15 @@ func (f *ConversationFlow) buildOpenAIMessages(ctx context.Context, participantI
 		messages = append(messages, openai.SystemMessage(f.systemPrompt))
 	}
 
-	// 2. Get and add participant background as system message (part of stored "history")
+	// 2. Get and add participant background as system message
 	participantBackground, err := f.getParticipantBackground(ctx, participantID)
 	if err != nil {
 		slog.Warn("Failed to get participant background", "error", err, "participantID", participantID)
 	} else if participantBackground != "" {
 		messages = append(messages, openai.SystemMessage(participantBackground))
+		slog.Debug("Added participant background to messages", "participantID", participantID, "backgroundLength", len(participantBackground))
+	} else {
+		slog.Debug("No participant background found", "participantID", participantID)
 	}
 
 	// 3. Add conversation history (part of stored "history")
@@ -331,15 +299,20 @@ func (f *ConversationFlow) getParticipantBackground(ctx context.Context, partici
 	// Try to get participant background from state data
 	background, err := f.stateManager.GetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyParticipantBackground)
 	if err != nil {
+		slog.Debug("Error retrieving participant background", "error", err, "participantID", participantID)
 		return "", fmt.Errorf("failed to get participant background: %w", err)
 	}
+
+	slog.Debug("Retrieved participant background from state", "participantID", participantID, "backgroundLength", len(background), "isEmpty", background == "")
 
 	if background == "" {
 		return "", nil
 	}
 
 	// Format as a system message
-	return fmt.Sprintf("PARTICIPANT BACKGROUND:\n%s", background), nil
+	formatted := fmt.Sprintf("PARTICIPANT BACKGROUND:\n%s", background)
+	slog.Debug("Formatted participant background", "participantID", participantID, "formattedLength", len(formatted))
+	return formatted, nil
 }
 
 // GetSystemPromptPath returns the default system prompt file path.

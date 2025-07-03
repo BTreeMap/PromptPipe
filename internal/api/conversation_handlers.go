@@ -95,10 +95,15 @@ func (s *Server) enrollConversationParticipantHandler(w http.ResponseWriter, r *
 	// Store participant background information for conversation context
 	if participant.Name != "" || participant.Gender != "" || participant.Ethnicity != "" || participant.Background != "" {
 		backgroundInfo := buildParticipantBackgroundInfo(participant)
+		slog.Debug("Storing participant background", "participantID", participantID, "backgroundInfo", backgroundInfo, "length", len(backgroundInfo))
 		if err := stateManager.SetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyParticipantBackground, backgroundInfo); err != nil {
 			slog.Warn("Failed to store participant background", "error", err, "participantID", participantID)
 			// Continue enrollment even if background storage fails
+		} else {
+			slog.Debug("Successfully stored participant background", "participantID", participantID)
 		}
+	} else {
+		slog.Debug("No participant background information to store", "participantID", participantID)
 	}
 
 	// Register response hook for this participant
@@ -151,11 +156,11 @@ func (s *Server) generateFirstConversationMessage(ctx context.Context, participa
 		return "", fmt.Errorf("invalid generator type for conversation flow")
 	}
 
-	// For the first message, we use a special instruction to generate a welcome message
-	// The ProcessResponse will handle creating the proper multi-message structure
-	firstInstruction := "Generate a warm, personalized welcome message to start the conversation. Make it natural and engaging, and reference relevant aspects of the participant's background if provided."
+	// For the first message, we simulate the user starting the conversation
+	// This allows the AI to respond naturally with a greeting instead of following an instruction
+	simulatedUserGreeting := "Hi!"
 
-	response, err := conversationFlow.ProcessResponse(ctx, participantID, firstInstruction)
+	response, err := conversationFlow.ProcessResponse(ctx, participantID, simulatedUserGreeting)
 	if err != nil {
 		slog.Error("generateFirstConversationMessage ProcessResponse failed", "error", err, "participantID", participantID)
 		return "", err
