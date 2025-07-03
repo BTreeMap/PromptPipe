@@ -162,3 +162,32 @@ func (c *Client) GeneratePromptWithContext(ctx context.Context, system, user str
 	slog.Debug("GeneratePrompt succeeded", "length", len(content), "model", c.model)
 	return content, nil
 }
+
+// GenerateWithMessages generates content using OpenAI's native multi-message format.
+// This method supports full conversation history with proper role separation.
+func (c *Client) GenerateWithMessages(ctx context.Context, messages []openai.ChatCompletionMessageParamUnion) (string, error) {
+	slog.Debug("GenerateWithMessages invoked", "messageCount", len(messages), "model", c.model)
+
+	// Prepare chat completion parameters with configured options
+	params := openai.ChatCompletionNewParams{
+		Model:       c.model,
+		Messages:    messages,
+		Temperature: openai.Float(c.temperature),
+		MaxTokens:   openai.Int(int64(c.maxTokens)),
+	}
+
+	resp, err := c.chat.Create(ctx, params)
+	if err != nil {
+		slog.Error("GenAI GenerateWithMessages failed", "error", err, "model", c.model)
+		return "", fmt.Errorf("failed to create chat completion: %w", err)
+	}
+
+	if len(resp.Choices) == 0 {
+		slog.Warn("GenerateWithMessages no choices returned", "model", c.model)
+		return "", ErrNoChoicesReturned
+	}
+
+	content := resp.Choices[0].Message.Content
+	slog.Debug("GenerateWithMessages succeeded", "length", len(content), "model", c.model)
+	return content, nil
+}

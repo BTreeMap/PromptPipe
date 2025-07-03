@@ -72,8 +72,9 @@ const (
 
 // Data key constants for conversation flow.
 const (
-	DataKeyConversationHistory DataKey = "conversationHistory"
-	DataKeySystemPrompt        DataKey = "systemPrompt"
+	DataKeyConversationHistory   DataKey = "conversationHistory"
+	DataKeySystemPrompt          DataKey = "systemPrompt"
+	DataKeyParticipantBackground DataKey = "participantBackground"
 )
 
 // Flow assignment values.

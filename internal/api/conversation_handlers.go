@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/BTreeMap/PromptPipe/internal/flow"
@@ -91,6 +92,15 @@ func (s *Server) enrollConversationParticipantHandler(w http.ResponseWriter, r *
 		// Note: We don't fail the enrollment if state init fails, but we log it
 	}
 
+	// Store participant background information for conversation context
+	if participant.Name != "" || participant.Gender != "" || participant.Ethnicity != "" || participant.Background != "" {
+		backgroundInfo := buildParticipantBackgroundInfo(participant)
+		if err := stateManager.SetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyParticipantBackground, backgroundInfo); err != nil {
+			slog.Warn("Failed to store participant background", "error", err, "participantID", participantID)
+			// Continue enrollment even if background storage fails
+		}
+	}
+
 	// Register response hook for this participant
 	conversationPrompt := models.Prompt{
 		To:         canonicalPhone,
@@ -141,43 +151,17 @@ func (s *Server) generateFirstConversationMessage(ctx context.Context, participa
 		return "", fmt.Errorf("invalid generator type for conversation flow")
 	}
 
-	// Build a context-aware system prompt that incorporates participant background
-	contextPrompt := buildWelcomePrompt(participant)
+	// For the first message, we use a special instruction to generate a welcome message
+	// The ProcessResponse will handle creating the proper multi-message structure
+	firstInstruction := "Generate a warm, personalized welcome message to start the conversation. Make it natural and engaging, and reference relevant aspects of the participant's background if provided."
 
-	// For the very first message, we can use the conversation flow's ProcessResponse with a special initialization message
-	// This ensures the conversation history is properly initialized and the LLM generates an appropriate response
-	response, err := conversationFlow.ProcessResponse(ctx, participantID, contextPrompt)
+	response, err := conversationFlow.ProcessResponse(ctx, participantID, firstInstruction)
 	if err != nil {
 		slog.Error("generateFirstConversationMessage ProcessResponse failed", "error", err, "participantID", participantID)
 		return "", err
 	}
 
 	return response, nil
-}
-
-// buildWelcomePrompt creates a contextual prompt for the first conversation message
-func buildWelcomePrompt(participant models.ConversationParticipant) string {
-	prompt := "SYSTEM_CONTEXT: This is the first interaction with a new conversation participant."
-
-	if participant.Name != "" {
-		prompt += fmt.Sprintf(" The participant's name is %s.", participant.Name)
-	}
-
-	if participant.Gender != "" {
-		prompt += fmt.Sprintf(" Gender: %s.", participant.Gender)
-	}
-
-	if participant.Ethnicity != "" {
-		prompt += fmt.Sprintf(" Ethnicity: %s.", participant.Ethnicity)
-	}
-
-	if participant.Background != "" {
-		prompt += fmt.Sprintf(" Background info: %s.", participant.Background)
-	}
-
-	prompt += " Please generate a warm, personalized welcome message to start our conversation. Keep it natural and engaging."
-
-	return prompt
 }
 
 // listConversationParticipantsHandler handles GET /conversation/participants
@@ -322,4 +306,24 @@ func (s *Server) deleteConversationParticipantHandler(w http.ResponseWriter, r *
 
 	slog.Info("Conversation participant deleted successfully", "id", participantID)
 	writeJSONResponse(w, http.StatusOK, models.SuccessWithMessage("Participant deleted successfully", nil))
+}
+
+// buildParticipantBackgroundInfo creates a formatted background string from participant information
+func buildParticipantBackgroundInfo(participant models.ConversationParticipant) string {
+	var backgroundBuilder strings.Builder
+
+	if participant.Name != "" {
+		backgroundBuilder.WriteString(fmt.Sprintf("Name: %s\n", participant.Name))
+	}
+	if participant.Gender != "" {
+		backgroundBuilder.WriteString(fmt.Sprintf("Gender: %s\n", participant.Gender))
+	}
+	if participant.Ethnicity != "" {
+		backgroundBuilder.WriteString(fmt.Sprintf("Ethnicity: %s\n", participant.Ethnicity))
+	}
+	if participant.Background != "" {
+		backgroundBuilder.WriteString(fmt.Sprintf("Background: %s\n", participant.Background))
+	}
+
+	return strings.TrimSpace(backgroundBuilder.String())
 }

@@ -13,6 +13,7 @@ import (
 
 	"github.com/BTreeMap/PromptPipe/internal/genai"
 	"github.com/BTreeMap/PromptPipe/internal/models"
+	"github.com/openai/openai-go"
 )
 
 // ConversationMessage represents a single message in the conversation history.
@@ -159,11 +160,15 @@ func (f *ConversationFlow) processConversationMessage(ctx context.Context, parti
 	}
 	history.Messages = append(history.Messages, userMsg)
 
-	// Build conversation context for GenAI
-	conversationContext := f.buildConversationContext(history)
+	// Build OpenAI messages using native multi-message format
+	messages, err := f.buildOpenAIMessages(ctx, participantID, history)
+	if err != nil {
+		slog.Error("ConversationFlow failed to build OpenAI messages", "error", err, "participantID", participantID)
+		return "", fmt.Errorf("failed to build OpenAI messages: %w", err)
+	}
 
-	// Generate response using GenAI
-	response, err := f.genaiClient.GeneratePromptWithContext(ctx, f.systemPrompt, conversationContext)
+	// Generate response using GenAI with multi-message format
+	response, err := f.genaiClient.GenerateWithMessages(ctx, messages)
 	if err != nil {
 		slog.Error("ConversationFlow GenAI generation failed", "error", err, "participantID", participantID)
 		return "", fmt.Errorf("failed to generate response: %w", err)
@@ -279,6 +284,62 @@ func (f *ConversationFlow) buildConversationContext(history *ConversationHistory
 	}
 
 	return contextBuilder.String()
+}
+
+// buildOpenAIMessages creates OpenAI message array with system prompt, participant background, and conversation history.
+// Follows the structure: system prompt + user background (as system message) + conversation history + current instruction
+func (f *ConversationFlow) buildOpenAIMessages(ctx context.Context, participantID string, history *ConversationHistory) ([]openai.ChatCompletionMessageParamUnion, error) {
+	messages := []openai.ChatCompletionMessageParamUnion{}
+
+	// 1. Add system prompt
+	if f.systemPrompt != "" {
+		messages = append(messages, openai.SystemMessage(f.systemPrompt))
+	}
+
+	// 2. Get and add participant background as system message (part of stored "history")
+	participantBackground, err := f.getParticipantBackground(ctx, participantID)
+	if err != nil {
+		slog.Warn("Failed to get participant background", "error", err, "participantID", participantID)
+	} else if participantBackground != "" {
+		messages = append(messages, openai.SystemMessage(participantBackground))
+	}
+
+	// 3. Add conversation history (part of stored "history")
+	// Limit history to prevent token overflow (keep last 30 messages for context)
+	historyMessages := history.Messages
+	const maxHistoryMessages = 30
+	if len(historyMessages) > maxHistoryMessages {
+		historyMessages = historyMessages[len(historyMessages)-maxHistoryMessages:]
+	}
+
+	for _, msg := range historyMessages {
+		if msg.Role == "user" {
+			messages = append(messages, openai.UserMessage(msg.Content))
+		} else if msg.Role == "assistant" {
+			messages = append(messages, openai.AssistantMessage(msg.Content))
+		}
+	}
+
+	// 4. Current instruction (for first message generation)
+	// This is handled implicitly - the last user message in history serves as the current instruction
+
+	return messages, nil
+}
+
+// getParticipantBackground retrieves participant background information from state storage
+func (f *ConversationFlow) getParticipantBackground(ctx context.Context, participantID string) (string, error) {
+	// Try to get participant background from state data
+	background, err := f.stateManager.GetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyParticipantBackground)
+	if err != nil {
+		return "", fmt.Errorf("failed to get participant background: %w", err)
+	}
+
+	if background == "" {
+		return "", nil
+	}
+
+	// Format as a system message
+	return fmt.Sprintf("PARTICIPANT BACKGROUND:\n%s", background), nil
 }
 
 // GetSystemPromptPath returns the default system prompt file path.
