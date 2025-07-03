@@ -43,7 +43,7 @@ log "Testing conversation participant enrollment - Busy Parent..."
 response=$(curl -s -w "HTTPSTATUS:%{http_code}" -X POST \
     -H "Content-Type: application/json" \
     -d '{
-        "phoneNumber": "'$PARTICIPANT_1_PHONE'",
+        "phone_number": "'$PARTICIPANT_1_PHONE'",
         "name": "Alice Smith",
         "gender": "female",
         "ethnicity": "Hispanic",
@@ -68,7 +68,7 @@ log "Testing conversation participant enrollment - Busy Professional..."
 response=$(curl -s -w "HTTPSTATUS:%{http_code}" -X POST \
     -H "Content-Type: application/json" \
     -d '{
-        "phoneNumber": "'$PARTICIPANT_2_PHONE'",
+        "phone_number": "'$PARTICIPANT_2_PHONE'",
         "name": "Marcus Johnson",
         "gender": "male",
         "ethnicity": "African American",
@@ -93,7 +93,7 @@ log "Testing conversation participant enrollment - Graduate Student..."
 response=$(curl -s -w "HTTPSTATUS:%{http_code}" -X POST \
     -H "Content-Type: application/json" \
     -d '{
-        "phoneNumber": "'$PARTICIPANT_3_PHONE'",
+        "phone_number": "'$PARTICIPANT_3_PHONE'",
         "name": "Elena Rodriguez",
         "gender": "female", 
         "ethnicity": "Latina",
@@ -127,13 +127,13 @@ if echo "$response" | jq . >/dev/null 2>&1; then
     
     # Extract participant IDs if we don't have them yet
     if [ -z "$PARTICIPANT_1_ID" ]; then
-        PARTICIPANT_1_ID=$(echo "$response" | jq -r ".result[] | select(.phoneNumber == \"$PARTICIPANT_1_PHONE\") | .id")
+        PARTICIPANT_1_ID=$(echo "$response" | jq -r ".result[] | select(.phone_number == \"$PARTICIPANT_1_PHONE\") | .id")
     fi
     if [ -z "$PARTICIPANT_2_ID" ]; then
-        PARTICIPANT_2_ID=$(echo "$response" | jq -r ".result[] | select(.phoneNumber == \"$PARTICIPANT_2_PHONE\") | .id")
+        PARTICIPANT_2_ID=$(echo "$response" | jq -r ".result[] | select(.phone_number == \"$PARTICIPANT_2_PHONE\") | .id")
     fi
     if [ -z "$PARTICIPANT_3_ID" ]; then
-        PARTICIPANT_3_ID=$(echo "$response" | jq -r ".result[] | select(.phoneNumber == \"$PARTICIPANT_3_PHONE\") | .id")
+        PARTICIPANT_3_ID=$(echo "$response" | jq -r ".result[] | select(.phone_number == \"$PARTICIPANT_3_PHONE\") | .id")
     fi
     
     echo "  Participant 1 (Alice - Busy Parent): $PARTICIPANT_1_ID"
@@ -187,13 +187,13 @@ log "Testing conversation enrollment validation..."
 
 # Try to enroll duplicate participant
 test_endpoint "POST" "/conversation/participants" '{
-    "phoneNumber": "'$PARTICIPANT_1_PHONE'",
+    "phone_number": "'$PARTICIPANT_1_PHONE'",
     "name": "Duplicate Alice"
 }' "409" "Enroll duplicate participant (should fail)"
 
 # Invalid phone number
 test_endpoint "POST" "/conversation/participants" '{
-    "phoneNumber": "invalid-phone",
+    "phone_number": "invalid-phone",
     "name": "Invalid Phone User"
 }' "400" "Enroll with invalid phone number"
 
@@ -205,7 +205,7 @@ test_endpoint "POST" "/conversation/participants" '{
 # Empty name should still work
 TEMP_PHONE="+155510$(date +%s)$RANDOM"
 test_endpoint "POST" "/conversation/participants" '{
-    "phoneNumber": "'$TEMP_PHONE'",
+    "phone_number": "'$TEMP_PHONE'",
     "gender": "other"
 }' "201" "Enroll with minimal info (no name)"
 
