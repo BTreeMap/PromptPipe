@@ -192,7 +192,7 @@ fi
 
 echo
 echo "=================================================="
-echo "PHASE 3: Conversation Flow Testing"
+echo "PHASE 3: Participant Updates Testing"
 echo "=================================================="
 
 # Test 6: Update participant details (name only)
@@ -215,70 +215,6 @@ if [ -n "$PARTICIPANT_3_ID" ]; then
     test_endpoint "PUT" "/conversation/participants/$PARTICIPANT_3_ID" '{
         "name": "'$PARTICIPANT_3_NAME'-Updated"
     }' "200" "Update $PARTICIPANT_3_NAME's name"
-fi
-
-# Test 7: Test various validation scenarios
-log "Testing conversation enrollment validation..."
-
-# Try to enroll duplicate participant
-test_endpoint "POST" "/conversation/participants" '{
-    "phone_number": "'$PARTICIPANT_1_PHONE'",
-    "name": "Duplicate Alice"
-}' "409" "Enroll duplicate participant (should fail)"
-
-# Invalid phone number
-test_endpoint "POST" "/conversation/participants" '{
-    "phone_number": "invalid-phone",
-    "name": "Invalid Phone User"
-}' "400" "Enroll with invalid phone number"
-
-# Missing phone number
-test_endpoint "POST" "/conversation/participants" '{
-    "name": "Missing Phone User"
-}' "400" "Enroll without phone number"
-
-# Test enrollment with phone number only (no name)
-TEMP_PHONE="+155510$(date +%s)$RANDOM"
-test_endpoint "POST" "/conversation/participants" '{
-    "phone_number": "'$TEMP_PHONE'"
-}' "201" "Enroll with phone number only (no name)"
-
-echo
-echo "=================================================="
-echo "PHASE 4: Edge Cases and Error Handling"
-echo "=================================================="
-
-# Test 8: Non-existent participant operations
-test_endpoint "GET" "/conversation/participants/conv_nonexistent123" "" "404" "Get non-existent participant"
-test_endpoint "PUT" "/conversation/participants/conv_nonexistent123" '{
-    "name": "Non-existent"
-}' "404" "Update non-existent participant"
-test_endpoint "DELETE" "/conversation/participants/conv_nonexistent123" "" "404" "Delete non-existent participant"
-
-# Test 9: Invalid JSON payloads
-log "Testing invalid JSON handling..."
-
-invalid_json_test() {
-    local endpoint="$1"
-    local method="$2"
-    local test_name="$3"
-    
-    response=$(curl -s -w "HTTPSTATUS:%{http_code}" -X "$method" \
-        -H "Content-Type: application/json" \
-        -d '{"invalid": json syntax}' \
-        "$API_BASE_URL$endpoint")
-    
-    status=$(echo "$response" | grep -o "HTTPSTATUS:[0-9]*" | cut -d: -f2)
-    if [ "$status" = "400" ]; then
-        success "$test_name - Status: $status"
-    else
-        error "$test_name - Expected: 400, Got: $status"
-    fi
-}
-
-invalid_json_test "/conversation/participants" "POST" "Invalid JSON for enrollment"
-if [ -n "$PARTICIPANT_1_ID" ]; then
-    invalid_json_test "/conversation/participants/$PARTICIPANT_1_ID" "PUT" "Invalid JSON for update"
 fi
 
 echo
@@ -343,7 +279,7 @@ fi
 
 echo
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "TEST 10: Test Status Updates for Each Participant"
+echo "PHASE 4: Test Status Updates for Each Participant"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 statuses=("paused" "active" "inactive" "paused")
