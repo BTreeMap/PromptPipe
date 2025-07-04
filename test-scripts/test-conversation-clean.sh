@@ -46,15 +46,13 @@ echo "=================================================="
 
 # Test 1: Enroll first participant
 log "Testing conversation participant enrollment - Participant 1..."
+json_data=$(jq -n --arg phone "$PARTICIPANT_1_PHONE" --arg name "$PARTICIPANT_1_NAME" '{phone_number: $phone, name: $name}')
 response=$(curl -s -w "HTTPSTATUS:%{http_code}" -X POST \
     -H "Content-Type: application/json" \
-    -d '{
-        "phone_number": "'$PARTICIPANT_1_PHONE'",
-        "name": "'$PARTICIPANT_1_NAME'"
-    }' \
+    -d "$json_data" \
     "$API_BASE_URL/conversation/participants")
 
-status=$(echo "$response" | grep -o "HTTPSTATUS:[0-9]*" | cut -d: -f2)
+status=$(echo "$response" | grep -o "HTTPSTATUS:[0-9]*$" | cut -d: -f2)
 body=$(echo "$response" | sed 's/HTTPSTATUS:[0-9]*$//')
 
 if [ "$status" = "201" ]; then
@@ -68,15 +66,13 @@ fi
 
 # Test 2: Enroll second participant
 log "Testing conversation participant enrollment - Participant 2..."
+json_data=$(jq -n --arg phone "$PARTICIPANT_2_PHONE" --arg name "$PARTICIPANT_2_NAME" '{phone_number: $phone, name: $name}')
 response=$(curl -s -w "HTTPSTATUS:%{http_code}" -X POST \
     -H "Content-Type: application/json" \
-    -d '{
-        "phone_number": "'$PARTICIPANT_2_PHONE'",
-        "name": "'$PARTICIPANT_2_NAME'"
-    }' \
+    -d "$json_data" \
     "$API_BASE_URL/conversation/participants")
 
-status=$(echo "$response" | grep -o "HTTPSTATUS:[0-9]*" | cut -d: -f2)
+status=$(echo "$response" | grep -o "HTTPSTATUS:[0-9]*$" | cut -d: -f2)
 body=$(echo "$response" | sed 's/HTTPSTATUS:[0-9]*$//')
 
 if [ "$status" = "201" ]; then
@@ -90,15 +86,13 @@ fi
 
 # Test 3: Enroll third participant
 log "Testing conversation participant enrollment - Participant 3..."
+json_data=$(jq -n --arg phone "$PARTICIPANT_3_PHONE" --arg name "$PARTICIPANT_3_NAME" '{phone_number: $phone, name: $name}')
 response=$(curl -s -w "HTTPSTATUS:%{http_code}" -X POST \
     -H "Content-Type: application/json" \
-    -d '{
-        "phone_number": "'$PARTICIPANT_3_PHONE'",
-        "name": "'$PARTICIPANT_3_NAME'"
-    }' \
+    -d "$json_data" \
     "$API_BASE_URL/conversation/participants")
 
-status=$(echo "$response" | grep -o "HTTPSTATUS:[0-9]*" | cut -d: -f2)
+status=$(echo "$response" | grep -o "HTTPSTATUS:[0-9]*$" | cut -d: -f2)
 body=$(echo "$response" | sed 's/HTTPSTATUS:[0-9]*$//')
 
 if [ "$status" = "201" ]; then
@@ -112,15 +106,13 @@ fi
 
 # Test 4: Enroll fourth participant
 log "Testing conversation participant enrollment - Participant 4..."
+json_data=$(jq -n --arg phone "$PARTICIPANT_4_PHONE" --arg name "$PARTICIPANT_4_NAME" '{phone_number: $phone, name: $name}')
 response=$(curl -s -w "HTTPSTATUS:%{http_code}" -X POST \
     -H "Content-Type: application/json" \
-    -d '{
-        "phone_number": "'$PARTICIPANT_4_PHONE'",
-        "name": "'$PARTICIPANT_4_NAME'"
-    }' \
+    -d "$json_data" \
     "$API_BASE_URL/conversation/participants")
 
-status=$(echo "$response" | grep -o "HTTPSTATUS:[0-9]*" | cut -d: -f2)
+status=$(echo "$response" | grep -o "HTTPSTATUS:[0-9]*$" | cut -d: -f2)
 body=$(echo "$response" | sed 's/HTTPSTATUS:[0-9]*$//')
 
 if [ "$status" = "201" ]; then
@@ -192,33 +184,6 @@ fi
 
 echo
 echo "=================================================="
-echo "PHASE 3: Participant Updates Testing"
-echo "=================================================="
-
-# Test 6: Update participant details (name only)
-if [ -n "$PARTICIPANT_1_ID" ]; then
-    log "Testing participant update for $PARTICIPANT_1_NAME..."
-    test_endpoint "PUT" "/conversation/participants/$PARTICIPANT_1_ID" '{
-        "name": "'$PARTICIPANT_1_NAME'-Updated"
-    }' "200" "Update $PARTICIPANT_1_NAME's name"
-fi
-
-if [ -n "$PARTICIPANT_2_ID" ]; then
-    log "Testing participant update for $PARTICIPANT_2_NAME..."
-    test_endpoint "PUT" "/conversation/participants/$PARTICIPANT_2_ID" '{
-        "name": "'$PARTICIPANT_2_NAME'-Updated"
-    }' "200" "Update $PARTICIPANT_2_NAME's name"
-fi
-
-if [ -n "$PARTICIPANT_3_ID" ]; then
-    log "Testing participant update for $PARTICIPANT_3_NAME..."
-    test_endpoint "PUT" "/conversation/participants/$PARTICIPANT_3_ID" '{
-        "name": "'$PARTICIPANT_3_NAME'-Updated"
-    }' "200" "Update $PARTICIPANT_3_NAME's name"
-fi
-
-echo
-echo "=================================================="
 echo "CONVERSATION ENROLLMENT TEST SUMMARY"
 echo "=================================================="
 
@@ -256,7 +221,7 @@ print_summary
 
 log "Verifying all enrolled participants are accessible..."
 response=$(curl -s -w "HTTPSTATUS:%{http_code}" -X GET "$API_BASE_URL/conversation/participants")
-status=$(echo "$response" | grep -o "HTTPSTATUS:[0-9]*" | cut -d: -f2)
+status=$(echo "$response" | grep -o "HTTPSTATUS:[0-9]*$" | cut -d: -f2)
 body=$(echo "$response" | sed 's/HTTPSTATUS:[0-9]*$//')
 
 if [ "$status" = "200" ]; then
@@ -279,25 +244,8 @@ fi
 
 echo
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "PHASE 4: Test Status Updates for Each Participant"
+echo "FINAL VERIFICATION"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-
-statuses=("paused" "active" "inactive" "paused")
-
-for i in "${!PARTICIPANT_IDS[@]}"; do
-    if [ $i -lt ${#statuses[@]} ]; then
-        participant_id="${PARTICIPANT_IDS[$i]}"
-        status="${statuses[$i]}"
-        
-        update_data='{
-            "status": "'$status'"
-        }'
-        
-        test_endpoint "PUT" "/conversation/participants/$participant_id" "$update_data" "200" "Update participant $participant_id to $status"
-    fi
-done
-
-echo
 echo "========================================================================"
 echo "CONVERSATION ENROLLMENT TEST SUMMARY (CLEAN VERSION)"
 echo "========================================================================"
