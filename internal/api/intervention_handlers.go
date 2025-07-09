@@ -266,6 +266,16 @@ func (s *Server) deleteParticipantHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// Send unregister notification to participant
+	notificationCtx := context.Background()
+	unregisterMsg := "You have been unregistered from the micro health intervention experiment by the organizer. If you have any questions, please contact the organizer for assistance. Thank you for your participation."
+	if err := s.msgService.SendMessage(notificationCtx, participant.PhoneNumber, unregisterMsg); err != nil {
+		slog.Error("deleteParticipantHandler notification failed", "error", err, "participantID", participantID, "phone", participant.PhoneNumber)
+		// Continue with deletion even if notification fails
+	} else {
+		slog.Info("Unregister notification sent", "participantID", participantID, "phone", participant.PhoneNumber)
+	}
+
 	// Delete participant (this will cascade delete their responses via foreign key)
 	if err := s.st.DeleteInterventionParticipant(participantID); err != nil {
 		slog.Error("deleteParticipantHandler delete failed", "error", err, "participantID", participantID)

@@ -282,6 +282,16 @@ func (s *Server) deleteConversationParticipantHandler(w http.ResponseWriter, r *
 		return
 	}
 
+	// Send unregister notification to participant
+	notificationCtx := context.Background()
+	unregisterMsg := "You have been unregistered from the conversation experiment by the organizer. If you have any questions, please contact the organizer for assistance. Thank you for your participation."
+	if err := s.msgService.SendMessage(notificationCtx, participant.PhoneNumber, unregisterMsg); err != nil {
+		slog.Error("deleteConversationParticipantHandler notification failed", "error", err, "participantID", participantID, "phone", participant.PhoneNumber)
+		// Continue with deletion even if notification fails
+	} else {
+		slog.Info("Unregister notification sent", "participantID", participantID, "phone", participant.PhoneNumber)
+	}
+
 	// Unregister response hook
 	if err := s.respHandler.UnregisterHook(participant.PhoneNumber); err != nil {
 		slog.Warn("deleteConversationParticipantHandler hook unregistration failed", "error", err, "participantID", participantID)
