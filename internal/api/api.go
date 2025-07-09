@@ -20,6 +20,7 @@ import (
 	"github.com/BTreeMap/PromptPipe/internal/genai"
 	"github.com/BTreeMap/PromptPipe/internal/messaging"
 	"github.com/BTreeMap/PromptPipe/internal/models"
+	"github.com/BTreeMap/PromptPipe/internal/recovery"
 	"github.com/BTreeMap/PromptPipe/internal/store"
 	"github.com/BTreeMap/PromptPipe/internal/whatsapp"
 )
@@ -169,6 +170,11 @@ func createAndConfigureServer(waOpts []whatsapp.Option, storeOpts []store.Option
 		return nil, "", fmt.Errorf("failed to initialize conversation flow: %w", err)
 	}
 
+	// Initialize application state recovery
+	if err := server.initializeRecovery(); err != nil {
+		return nil, "", fmt.Errorf("failed to initialize recovery: %w", err)
+	}
+
 	return server, addr, nil
 }
 
@@ -292,6 +298,70 @@ func (s *Server) initializeConversationFlow() error {
 	flow.Register(models.PromptTypeConversation, conversationFlow)
 	slog.Debug("Conversation flow initialized and registered", "systemPromptFile", systemPromptFile)
 
+	return nil
+}
+
+// initializeRecovery sets up application state recovery system
+func (s *Server) initializeRecovery() error {
+	slog.Info("Initializing application state recovery system")
+
+	// Create recovery manager
+	recoveryManager := recovery.NewRecoveryManager(s.st, s.timer)
+
+	// Create state manager for flow recoveries
+	stateManager := flow.NewStoreBasedStateManager(s.st)
+
+	// Register flow recoveries
+	interventionRecovery := flow.NewMicroHealthInterventionRecovery(stateManager)
+	conversationRecovery := flow.NewConversationFlowRecovery()
+
+	recoveryManager.RegisterRecoverable(interventionRecovery)
+	recoveryManager.RegisterRecoverable(conversationRecovery)
+
+	// Register infrastructure recovery callbacks
+	recoveryManager.RegisterTimerRecovery(recovery.TimerRecoveryHandler(s.timer))
+
+	// Create response handler recovery callback that avoids import cycles
+	handlerRecoveryCallback := func(info recovery.ResponseHandlerRecoveryInfo) error {
+		slog.Debug("Processing response handler recovery",
+			"phone", info.PhoneNumber, "flowType", info.FlowType)
+
+		switch info.FlowType {
+		case models.FlowTypeMicroHealthIntervention:
+			// Create intervention hook
+			hook := messaging.CreateInterventionHook(info.ParticipantID, info.PhoneNumber, stateManager, s.msgService, s.timer)
+			if err := s.respHandler.RegisterHook(info.PhoneNumber, hook); err != nil {
+				return fmt.Errorf("failed to register intervention hook: %w", err)
+			}
+			s.respHandler.SetAutoCleanupTimeout(info.PhoneNumber, info.TTL)
+
+		case models.FlowTypeConversation:
+			// Create conversation hook
+			hook := messaging.CreateStaticHook(s.msgService)
+			if err := s.respHandler.RegisterHook(info.PhoneNumber, hook); err != nil {
+				return fmt.Errorf("failed to register conversation hook: %w", err)
+			}
+			s.respHandler.SetAutoCleanupTimeout(info.PhoneNumber, info.TTL)
+
+		default:
+			return fmt.Errorf("unknown flow type for response handler recovery: %s", info.FlowType)
+		}
+
+		slog.Debug("Successfully registered response handler",
+			"phone", info.PhoneNumber, "flowType", info.FlowType)
+		return nil
+	}
+
+	recoveryManager.RegisterHandlerRecovery(recovery.CreateResponseHandlerRecoveryHandler(handlerRecoveryCallback))
+
+	// Perform recovery
+	ctx := context.Background()
+	if err := recoveryManager.RecoverAll(ctx); err != nil {
+		slog.Warn("Recovery completed with errors", "error", err)
+		// Don't fail startup for recovery errors, just log them
+	}
+
+	slog.Info("Application state recovery system initialized successfully")
 	return nil
 }
 
