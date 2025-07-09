@@ -1,5 +1,5 @@
-// Package recovery provides generic infrastructure recovery mechanisms for PromptPipe 
-// to handle application restarts gracefully. This package is application-agnostic and 
+// Package recovery provides generic infrastructure recovery mechanisms for PromptPipe
+// to handle application restarts gracefully. This package is application-agnostic and
 // provides interfaces for flows to register their own recovery logic.
 package recovery
 
@@ -49,14 +49,14 @@ type ResponseHandlerRecoveryInfo struct {
 
 // RecoveryRegistry provides services that components can use during recovery
 type RecoveryRegistry struct {
-	store      store.Store
-	timer      models.Timer
-	timerInfos []TimerRecoveryInfo
+	store        store.Store
+	timer        models.Timer
+	timerInfos   []TimerRecoveryInfo
 	handlerInfos []ResponseHandlerRecoveryInfo
-	
+
 	// Callbacks for infrastructure components to register
-	timerRecoveryFunc      func(TimerRecoveryInfo) (string, error)
-	handlerRecoveryFunc    func(ResponseHandlerRecoveryInfo) error
+	timerRecoveryFunc   func(TimerRecoveryInfo) (string, error)
+	handlerRecoveryFunc func(ResponseHandlerRecoveryInfo) error
 }
 
 // NewRecoveryRegistry creates a new recovery registry
@@ -129,7 +129,7 @@ func (rm *RecoveryManager) RegisterTimerRecovery(fn func(TimerRecoveryInfo) (str
 	rm.registry.RegisterTimerRecovery(fn)
 }
 
-// RegisterHandlerRecovery registers the response handler recovery infrastructure  
+// RegisterHandlerRecovery registers the response handler recovery infrastructure
 func (rm *RecoveryManager) RegisterHandlerRecovery(fn func(ResponseHandlerRecoveryInfo) error) {
 	rm.registry.RegisterHandlerRecovery(fn)
 }
@@ -151,11 +151,11 @@ func (rm *RecoveryManager) RecoverAll(ctx context.Context) error {
 	}
 
 	slog.Info("Application recovery completed", "recovered", recoveredCount, "errors", errorCount)
-	
+
 	if errorCount > 0 {
 		return fmt.Errorf("recovery completed with %d errors out of %d components", errorCount, len(rm.recoverables))
 	}
-	
+
 	return nil
 }
 
@@ -163,4 +163,3 @@ func (rm *RecoveryManager) RecoverAll(ctx context.Context) error {
 func (rm *RecoveryManager) GetRegistry() *RecoveryRegistry {
 	return rm.registry
 }
-

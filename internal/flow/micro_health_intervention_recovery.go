@@ -47,7 +47,7 @@ func (r *MicroHealthInterventionRecovery) RecoverState(ctx context.Context, regi
 		}
 
 		if err := r.RecoverParticipant(ctx, participant.ID, participant, registry); err != nil {
-			slog.Error("Failed to recover intervention participant", 
+			slog.Error("Failed to recover intervention participant",
 				"error", err, "participantID", participant.ID, "phone", participant.PhoneNumber)
 			errorCount++
 			continue
@@ -56,7 +56,7 @@ func (r *MicroHealthInterventionRecovery) RecoverState(ctx context.Context, regi
 		recoveredCount++
 	}
 
-	slog.Info("Micro health intervention recovery completed", 
+	slog.Info("Micro health intervention recovery completed",
 		"recovered", recoveredCount, "errors", errorCount, "total", len(participants))
 	return nil
 }
@@ -75,14 +75,14 @@ func (r *MicroHealthInterventionRecovery) RecoverParticipant(ctx context.Context
 	}
 
 	if currentState == "" || currentState == models.StateEndOfDay {
-		slog.Debug("Participant has no active state to recover", 
+		slog.Debug("Participant has no active state to recover",
 			"participantID", participantID, "state", currentState)
 		return nil
 	}
 
 	// Recover timers for this participant
 	if err := r.recoverTimersForParticipant(ctx, participantID, currentState, registry); err != nil {
-		slog.Error("Failed to recover timers for participant", 
+		slog.Error("Failed to recover timers for participant",
 			"error", err, "participantID", participantID)
 		// Continue with response handler recovery even if timer recovery fails
 	}
@@ -100,7 +100,7 @@ func (r *MicroHealthInterventionRecovery) RecoverParticipant(ctx context.Context
 		return fmt.Errorf("failed to register response handler: %w", err)
 	}
 
-	slog.Debug("Successfully recovered intervention participant", 
+	slog.Debug("Successfully recovered intervention participant",
 		"participantID", participantID, "state", currentState, "phone", p.PhoneNumber)
 	return nil
 }
@@ -137,7 +137,7 @@ func (r *MicroHealthInterventionRecovery) recoverTimersForParticipant(ctx contex
 	// Recreate appropriate timer based on current state
 	// Use shorter recovery timeouts since we don't know how long the timer has been running
 	var timerInfo recovery.TimerRecoveryInfo
-	
+
 	switch currentState {
 	case models.StateCommitmentPrompt:
 		timerInfo = recovery.TimerRecoveryInfo{
@@ -200,7 +200,7 @@ func (r *MicroHealthInterventionRecovery) recoverTimersForParticipant(ctx contex
 		}
 
 	default:
-		slog.Debug("No timer recovery needed for current state", 
+		slog.Debug("No timer recovery needed for current state",
 			"participantID", participantID, "state", currentState)
 		return nil
 	}
@@ -213,9 +213,9 @@ func (r *MicroHealthInterventionRecovery) recoverTimersForParticipant(ctx contex
 
 	// Store the new timer ID
 	r.stateManager.SetStateData(ctx, participantID, models.FlowTypeMicroHealthIntervention, timerInfo.DataKey, timerID)
-	
-	slog.Info("Recreated timer", 
+
+	slog.Info("Recreated timer",
 		"participantID", participantID, "state", currentState, "timerID", timerID, "ttl", timerInfo.OriginalTTL)
-	
+
 	return nil
 }

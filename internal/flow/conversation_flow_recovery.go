@@ -1,4 +1,4 @@
-// Package flow provides recovery implementation for conversation flows  
+// Package flow provides recovery implementation for conversation flows
 package flow
 
 import (
@@ -43,7 +43,7 @@ func (r *ConversationFlowRecovery) RecoverState(ctx context.Context, registry *r
 		}
 
 		if err := r.RecoverParticipant(ctx, participant.ID, participant, registry); err != nil {
-			slog.Error("Failed to recover conversation participant", 
+			slog.Error("Failed to recover conversation participant",
 				"error", err, "participantID", participant.ID, "phone", participant.PhoneNumber)
 			errorCount++
 			continue
@@ -52,7 +52,7 @@ func (r *ConversationFlowRecovery) RecoverState(ctx context.Context, registry *r
 		recoveredCount++
 	}
 
-	slog.Info("Conversation flow recovery completed", 
+	slog.Info("Conversation flow recovery completed",
 		"recovered", recoveredCount, "errors", errorCount, "total", len(participants))
 	return nil
 }
@@ -77,7 +77,7 @@ func (r *ConversationFlowRecovery) RecoverParticipant(ctx context.Context, parti
 		return fmt.Errorf("failed to register response handler: %w", err)
 	}
 
-	slog.Debug("Successfully recovered conversation participant", 
+	slog.Debug("Successfully recovered conversation participant",
 		"participantID", participantID, "phone", p.PhoneNumber)
 	return nil
 }

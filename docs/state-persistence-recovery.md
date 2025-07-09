@@ -5,7 +5,7 @@
 The original PromptPipe application had critical state persistence issues that caused loss of functionality across application restarts:
 
 1. **Timer State Loss**: Timer IDs were stored in flow state data, but actual timers existed only in memory
-2. **Response Handler Loss**: Response handlers were registered only in memory 
+2. **Response Handler Loss**: Response handlers were registered only in memory
 3. **Application-Aware Recovery**: Previous recovery logic was tightly coupled to specific flow types
 
 ## Solution: Decoupled Recovery Architecture
@@ -32,16 +32,19 @@ The original PromptPipe application had critical state persistence issues that c
 ## Key Architecture Principles
 
 ### **Separation of Concerns**
+
 - Recovery infrastructure handles timers and response handlers generically
 - Flow logic handles business-specific recovery concerns
 - No business logic embedded in recovery infrastructure
 
 ### **Inversion of Control**
+
 - Flows register with recovery manager rather than recovery knowing about flows
 - Infrastructure provides callbacks rather than direct dependencies
 - Plugin-like architecture for extensibility
 
 ### **No Import Cycles**
+
 - Recovery package doesn't import messaging or flow packages
 - Callbacks used to wire up dependencies at application level
 - Clean dependency graph maintained
@@ -68,18 +71,21 @@ CREATE TABLE conversation_participants (...);
 ## Recovery Process
 
 ### **Application Startup**
+
 1. Store and timer infrastructure initialized
 2. Recovery manager created with infrastructure callbacks
 3. Flow recoveries registered with manager
 4. `RecoverAll()` called to restore state
 
 ### **Per-Participant Recovery**
+
 1. Query database for active participants by flow type
 2. For each participant, check current state and stored timer IDs
 3. Clear stale timer IDs and recreate timers with shortened timeouts
 4. Register appropriate response handlers for phone numbers
 
 ### **Infrastructure Recovery**
+
 - **Timer Recovery**: Uses shortened timeouts since restart time unknown
 - **Response Handler Recovery**: Recreates hooks based on flow type
 - **Error Handling**: Continues recovery even if individual components fail
