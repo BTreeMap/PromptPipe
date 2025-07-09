@@ -260,3 +260,107 @@ func TestGetConversationParticipant(t *testing.T) {
 		t.Errorf("Expected gender 'female', got %v", participantMap["gender"])
 	}
 }
+
+// TestDeleteConversationParticipant tests the deletion of a conversation participant with unregister notification
+func TestDeleteConversationParticipant(t *testing.T) {
+	// Create in-memory store
+	st := store.NewInMemoryStore()
+	defer st.Close()
+
+	// Create mock messaging service
+	mockMessaging := NewMockMessagingService()
+	
+	// Create the API server
+	server := &Server{
+		st: st,
+		msgService: mockMessaging,
+		respHandler: messaging.NewResponseHandler(mockMessaging, st),
+	}
+
+	// Add a test participant to the store
+	participant := models.ConversationParticipant{
+		ID:          "test-delete-123",
+		PhoneNumber: "+1234567890",
+		Name:        "Test Delete User",
+		Status:      models.ConversationStatusActive,
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
+	}
+	err := st.SaveConversationParticipant(participant)
+	if err != nil {
+		t.Fatalf("Failed to save test participant: %v", err)
+	}
+
+	// Create a mock request
+	req := httptest.NewRequest("DELETE", "/conversation/participants/test-delete-123", nil)
+	req = req.WithContext(context.WithValue(req.Context(), ContextKeyParticipantID, "test-delete-123"))
+	
+	// Create a response recorder
+	w := httptest.NewRecorder()
+	
+	// Call the handler
+	server.deleteConversationParticipantHandler(w, req)
+
+	// Check the response status
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+
+	// Verify that the notification message was sent
+	if !mockMessaging.MessageSent {
+		t.Error("Expected unregister notification to be sent")
+	}
+
+	expectedMsg := "You have been unregistered from the conversation experiment by the organizer. If you have any questions, please contact the organizer for assistance. Thank you for your participation."
+	if mockMessaging.LastMessage != expectedMsg {
+		t.Errorf("Expected notification message '%s', got '%s'", expectedMsg, mockMessaging.LastMessage)
+	}
+
+	if mockMessaging.LastRecipient != "+1234567890" {
+		t.Errorf("Expected notification to be sent to '+1234567890', got '%s'", mockMessaging.LastRecipient)
+	}
+
+	// Verify participant was deleted from store
+	deletedParticipant, _ := st.GetConversationParticipant("test-delete-123")
+	if deletedParticipant != nil {
+		t.Error("Expected participant to be deleted from store")
+	}
+}
+
+// MockMessagingService for testing message sending
+type MockMessagingService struct {
+	MessageSent   bool
+	LastRecipient string
+	LastMessage   string
+}
+
+func NewMockMessagingService() *MockMessagingService {
+	return &MockMessagingService{}
+}
+
+func (m *MockMessagingService) ValidateAndCanonicalizeRecipient(recipient string) (string, error) {
+	return recipient, nil
+}
+
+func (m *MockMessagingService) SendMessage(ctx context.Context, to string, body string) error {
+	m.MessageSent = true
+	m.LastRecipient = to
+	m.LastMessage = body
+	return nil
+}
+
+func (m *MockMessagingService) Start(ctx context.Context) error {
+	return nil
+}
+
+func (m *MockMessagingService) Stop() error {
+	return nil
+}
+
+func (m *MockMessagingService) Receipts() <-chan models.Receipt {
+	return make(<-chan models.Receipt)
+}
+
+func (m *MockMessagingService) Responses() <-chan models.Response {
+	return make(<-chan models.Response)
+}
