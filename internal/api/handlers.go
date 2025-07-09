@@ -70,11 +70,7 @@ func (s *Server) sendHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Auto-register response handler for prompts that expect responses
-	// Set a reasonable timeout for response handlers (24 hours for most prompts)
-	defaultTimeout := 24 * time.Hour
-	if s.respHandler.AutoRegisterResponseHandler(p, defaultTimeout) {
-		// Set auto-cleanup after 48 hours to prevent memory leaks
-		s.respHandler.SetAutoCleanupTimeout(p.To, 48*time.Hour)
+	if s.respHandler.AutoRegisterResponseHandler(p) {
 		slog.Debug("Response handler registered for prompt", "type", p.Type, "to", p.To)
 	}
 
@@ -159,10 +155,7 @@ func (s *Server) scheduleHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Auto-register response handler for scheduled prompts that expect responses
-		defaultTimeout := 24 * time.Hour
-		if s.respHandler.AutoRegisterResponseHandler(job, defaultTimeout) {
-			// Set auto-cleanup after 48 hours to prevent memory leaks
-			s.respHandler.SetAutoCleanupTimeout(job.To, 48*time.Hour)
+		if s.respHandler.AutoRegisterResponseHandler(job) {
 			slog.Debug("Response handler registered for scheduled prompt", "type", job.Type, "to", job.To)
 		}
 
@@ -380,4 +373,40 @@ func (s *Server) cancelTimerHandler(w http.ResponseWriter, r *http.Request, time
 
 	slog.Info("cancelTimerHandler timer cancelled", "timerID", timerID)
 	writeJSONResponse(w, http.StatusOK, response)
+}
+
+// healthHandler provides a health check endpoint for monitoring and load balancing
+func (s *Server) healthHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", http.MethodGet)
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	healthData := map[string]interface{}{
+		"status":    "healthy",
+		"timestamp": time.Now().UTC().Format(time.RFC3339),
+	}
+
+	// Get active participant count as a health indicator
+	if s.respHandler != nil {
+		if count, err := s.respHandler.GetActiveParticipantCount(ctx); err != nil {
+			slog.Warn("Health check: failed to get active participant count", "error", err)
+			healthData["status"] = "degraded"
+			healthData["error"] = "Failed to fetch participant metrics"
+		} else {
+			healthData["active_participants"] = count
+		}
+	}
+
+	// Set appropriate status code based on health
+	statusCode := http.StatusOK
+	if healthData["status"] == "degraded" {
+		statusCode = http.StatusServiceUnavailable
+	}
+
+	writeJSONResponse(w, statusCode, healthData)
 }

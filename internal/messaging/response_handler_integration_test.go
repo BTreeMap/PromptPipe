@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/BTreeMap/PromptPipe/internal/models"
+	"github.com/BTreeMap/PromptPipe/internal/store"
 	"github.com/BTreeMap/PromptPipe/internal/whatsapp"
 )
 
@@ -16,7 +17,7 @@ func TestAPIIntegration_BranchPromptResponseFlow(t *testing.T) {
 	msgService := NewWhatsAppService(mockClient)
 
 	// Create response handler
-	respHandler := NewResponseHandler(msgService)
+	respHandler := NewResponseHandler(msgService, store.NewInMemoryStore())
 
 	// Create a branch prompt
 	branchPrompt := models.Prompt{
@@ -30,7 +31,7 @@ func TestAPIIntegration_BranchPromptResponseFlow(t *testing.T) {
 	}
 
 	// Simulate the API flow: auto-register response handler
-	registered := respHandler.AutoRegisterResponseHandler(branchPrompt, time.Hour)
+	registered := respHandler.AutoRegisterResponseHandler(branchPrompt)
 	if !registered {
 		t.Fatal("Response handler should have been registered for branch prompt")
 	}
@@ -74,7 +75,7 @@ func TestAPIIntegration_GenAIPromptResponseFlow(t *testing.T) {
 	msgService := NewWhatsAppService(mockClient)
 
 	// Create response handler
-	respHandler := NewResponseHandler(msgService)
+	respHandler := NewResponseHandler(msgService, store.NewInMemoryStore())
 
 	// Create a GenAI prompt
 	genaiPrompt := models.Prompt{
@@ -85,7 +86,7 @@ func TestAPIIntegration_GenAIPromptResponseFlow(t *testing.T) {
 	}
 
 	// Simulate the API flow: auto-register response handler
-	registered := respHandler.AutoRegisterResponseHandler(genaiPrompt, time.Hour)
+	registered := respHandler.AutoRegisterResponseHandler(genaiPrompt)
 	if !registered {
 		t.Fatal("Response handler should have been registered for GenAI prompt")
 	}
@@ -124,7 +125,7 @@ func TestAPIIntegration_StaticPromptNoAutoHandler(t *testing.T) {
 	msgService := NewWhatsAppService(mockClient)
 
 	// Create response handler
-	respHandler := NewResponseHandler(msgService)
+	respHandler := NewResponseHandler(msgService, store.NewInMemoryStore())
 
 	// Create a static prompt that doesn't expect responses
 	staticPrompt := models.Prompt{
@@ -134,7 +135,7 @@ func TestAPIIntegration_StaticPromptNoAutoHandler(t *testing.T) {
 	}
 
 	// Simulate the API flow: try to auto-register response handler
-	registered := respHandler.AutoRegisterResponseHandler(staticPrompt, time.Hour)
+	registered := respHandler.AutoRegisterResponseHandler(staticPrompt)
 	if registered {
 		t.Error("Response handler should NOT have been registered for non-interactive static prompt")
 	}
@@ -178,7 +179,7 @@ func TestAPIIntegration_InteractiveStaticPromptWithHandler(t *testing.T) {
 	msgService := NewWhatsAppService(mockClient)
 
 	// Create response handler
-	respHandler := NewResponseHandler(msgService)
+	respHandler := NewResponseHandler(msgService, store.NewInMemoryStore())
 
 	// Create a static prompt that expects responses (has question)
 	staticPrompt := models.Prompt{
@@ -188,7 +189,7 @@ func TestAPIIntegration_InteractiveStaticPromptWithHandler(t *testing.T) {
 	}
 
 	// Simulate the API flow: auto-register response handler
-	registered := respHandler.AutoRegisterResponseHandler(staticPrompt, time.Hour)
+	registered := respHandler.AutoRegisterResponseHandler(staticPrompt)
 	if !registered {
 		t.Fatal("Response handler should have been registered for interactive static prompt")
 	}

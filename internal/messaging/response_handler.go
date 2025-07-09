@@ -7,10 +7,10 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/BTreeMap/PromptPipe/internal/flow"
 	"github.com/BTreeMap/PromptPipe/internal/models"
+	"github.com/BTreeMap/PromptPipe/internal/store"
 )
 
 // ResponseAction defines a hook function that processes a participant's response.
@@ -29,14 +29,17 @@ type ResponseHandler struct {
 	msgService Service
 	// defaultMessage is sent when no hook handles a response
 	defaultMessage string
+	// store is used for validating active participants
+	store store.Store
 }
 
 // NewResponseHandler creates a new ResponseHandler with the given messaging service.
-func NewResponseHandler(msgService Service) *ResponseHandler {
+func NewResponseHandler(msgService Service, store store.Store) *ResponseHandler {
 	return &ResponseHandler{
 		hooks:          make(map[string]ResponseAction),
 		msgService:     msgService,
 		defaultMessage: "📝 Your message has been recorded. Thank you for your response!",
+		store:          store,
 	}
 }
 
@@ -207,7 +210,7 @@ func (rh *ResponseHandler) Start(ctx context.Context) {
 // CreateInterventionHook creates a specialized hook for intervention participants that
 // processes responses according to the micro health intervention flow logic.
 // It includes timer management for timeout-based state transitions.
-func CreateInterventionHook(participantID, phoneNumber string, stateManager StateManager, msgService Service, timer models.Timer) ResponseAction {
+func CreateInterventionHook(participantID, phoneNumber string, stateManager flow.StateManager, msgService Service, timer models.Timer) ResponseAction {
 	return func(ctx context.Context, from, responseText string, timestamp int64) (bool, error) {
 		slog.Debug("InterventionHook processing response", "from", from, "responseText", responseText)
 
@@ -394,7 +397,7 @@ func (f *ResponseHandlerFactory) CreateHandlerForPrompt(prompt models.Prompt) Re
 
 // AutoRegisterResponseHandler automatically registers a response handler for a prompt
 // if one is needed. Returns true if a handler was registered.
-func (rh *ResponseHandler) AutoRegisterResponseHandler(prompt models.Prompt, timeoutDuration time.Duration) bool {
+func (rh *ResponseHandler) AutoRegisterResponseHandler(prompt models.Prompt) bool {
 	factory := NewResponseHandlerFactory(rh.msgService)
 	handler := factory.CreateHandlerForPrompt(prompt)
 
@@ -403,75 +406,147 @@ func (rh *ResponseHandler) AutoRegisterResponseHandler(prompt models.Prompt, tim
 		return false
 	}
 
-	// Wrap the handler with timeout logic if specified
-	if timeoutDuration > 0 {
-		handler = rh.createTimeoutWrapper(handler, timeoutDuration)
-	}
-
 	if err := rh.RegisterHook(prompt.To, handler); err != nil {
 		slog.Error("Failed to auto-register response handler", "error", err, "type", prompt.Type, "to", prompt.To)
 		return false
 	}
 
-	slog.Info("Auto-registered response handler", "type", prompt.Type, "to", prompt.To, "timeout", timeoutDuration)
+	slog.Info("Auto-registered response handler", "type", prompt.Type, "to", prompt.To)
 	return true
 }
 
-// createTimeoutWrapper wraps a response handler with timeout logic.
-func (rh *ResponseHandler) createTimeoutWrapper(handler ResponseAction, timeout time.Duration) ResponseAction {
-	return func(ctx context.Context, from, responseText string, timestamp int64) (bool, error) {
-		// Create a context with timeout
-		timeoutCtx, cancel := context.WithTimeout(ctx, timeout)
-		defer cancel()
+// ValidateAndCleanupHooks removes hooks for participants who are no longer active.
+// This should be called during startup and optionally periodically to prevent memory leaks
+// while ensuring active users can always respond.
+func (rh *ResponseHandler) ValidateAndCleanupHooks(ctx context.Context) error {
+	slog.Info("Starting response handler validation and cleanup")
 
-		// Run the handler with timeout
-		done := make(chan struct{})
-		var result bool
-		var err error
+	rh.mu.Lock()
+	defer rh.mu.Unlock()
 
-		go func() {
-			defer close(done)
-			result, err = handler(timeoutCtx, from, responseText, timestamp)
-		}()
+	var removedCount int
+	var errorCount int
 
-		select {
-		case <-done:
-			return result, err
-		case <-timeoutCtx.Done():
-			slog.Warn("Response handler timed out", "from", from, "timeout", timeout)
+	// Get lists of active participants from both flow types
+	interventionParticipants, err := rh.store.ListInterventionParticipants()
+	if err != nil {
+		slog.Error("Failed to list intervention participants for validation", "error", err)
+		errorCount++
+	}
 
-			// Send timeout message
-			timeoutMsg := "⏰ Response processing timed out. Please try again or contact support if this continues."
-			if sendErr := rh.msgService.SendMessage(ctx, from, timeoutMsg); sendErr != nil {
-				slog.Error("Failed to send timeout message", "error", sendErr, "from", from)
+	conversationParticipants, err := rh.store.ListConversationParticipants()
+	if err != nil {
+		slog.Error("Failed to list conversation participants for validation", "error", err)
+		errorCount++
+	}
+
+	// Create a map of active phone numbers for quick lookup
+	activePhones := make(map[string]bool)
+
+	// Add active intervention participants
+	for _, participant := range interventionParticipants {
+		if participant.Status == models.ParticipantStatusActive {
+			canonical, err := rh.msgService.ValidateAndCanonicalizeRecipient(participant.PhoneNumber)
+			if err != nil {
+				slog.Warn("Failed to canonicalize intervention participant phone",
+					"error", err, "phone", participant.PhoneNumber, "id", participant.ID)
+				continue
 			}
-
-			return false, fmt.Errorf("response handler timed out after %v", timeout)
+			activePhones[canonical] = true
 		}
 	}
-}
 
-// SetAutoCleanupTimeout sets up automatic cleanup of response handlers after a specified duration.
-// This is useful for preventing memory leaks from long-lived handlers.
-func (rh *ResponseHandler) SetAutoCleanupTimeout(recipient string, duration time.Duration) {
-	go func() {
-		time.Sleep(duration)
-		if err := rh.UnregisterHook(recipient); err != nil {
-			slog.Debug("Auto-cleanup failed for response handler", "error", err, "recipient", recipient)
-		} else {
-			slog.Debug("Auto-cleaned up response handler", "recipient", recipient, "after", duration)
+	// Add active conversation participants
+	for _, participant := range conversationParticipants {
+		if participant.Status == models.ConversationStatusActive {
+			canonical, err := rh.msgService.ValidateAndCanonicalizeRecipient(participant.PhoneNumber)
+			if err != nil {
+				slog.Warn("Failed to canonicalize conversation participant phone",
+					"error", err, "phone", participant.PhoneNumber, "id", participant.ID)
+				continue
+			}
+			activePhones[canonical] = true
 		}
-	}()
+	}
+
+	// Remove hooks for participants who are no longer active
+	for phoneNumber := range rh.hooks {
+		if !activePhones[phoneNumber] {
+			delete(rh.hooks, phoneNumber)
+			removedCount++
+			slog.Debug("Removed hook for inactive participant", "phone", phoneNumber)
+		}
+	}
+
+	slog.Info("Response handler validation completed",
+		"removed_hooks", removedCount,
+		"remaining_hooks", len(rh.hooks),
+		"errors", errorCount)
+
+	if errorCount > 0 {
+		return fmt.Errorf("validation completed with %d errors", errorCount)
+	}
+
+	return nil
 }
 
-// StateManager interface for state operations (to avoid circular imports)
-type StateManager interface {
-	GetCurrentState(ctx context.Context, participantID string, flowType models.FlowType) (models.StateType, error)
-	SetCurrentState(ctx context.Context, participantID string, flowType models.FlowType, state models.StateType) error
-	GetStateData(ctx context.Context, participantID string, flowType models.FlowType, key models.DataKey) (string, error)
-	SetStateData(ctx context.Context, participantID string, flowType models.FlowType, key models.DataKey, value string) error
-	TransitionState(ctx context.Context, participantID string, flowType models.FlowType, fromState, toState models.StateType) error
-	ResetState(ctx context.Context, participantID string, flowType models.FlowType) error
+// GetActiveParticipantCount returns the number of active participants across all flow types.
+func (rh *ResponseHandler) GetActiveParticipantCount(ctx context.Context) (int, error) {
+	var total int
+
+	// Count active intervention participants
+	interventionParticipants, err := rh.store.ListInterventionParticipants()
+	if err != nil {
+		return 0, fmt.Errorf("failed to list intervention participants: %w", err)
+	}
+
+	for _, participant := range interventionParticipants {
+		if participant.Status == models.ParticipantStatusActive {
+			total++
+		}
+	}
+
+	// Count active conversation participants
+	conversationParticipants, err := rh.store.ListConversationParticipants()
+	if err != nil {
+		return 0, fmt.Errorf("failed to list conversation participants: %w", err)
+	}
+
+	for _, participant := range conversationParticipants {
+		if participant.Status == models.ConversationStatusActive {
+			total++
+		}
+	}
+
+	return total, nil
+}
+
+// IsParticipantActive checks if a participant is active based on their phone number.
+func (rh *ResponseHandler) IsParticipantActive(ctx context.Context, phoneNumber string) (bool, error) {
+	canonical, err := rh.msgService.ValidateAndCanonicalizeRecipient(phoneNumber)
+	if err != nil {
+		return false, fmt.Errorf("failed to canonicalize phone number: %w", err)
+	}
+
+	// Check intervention participants
+	interventionParticipant, err := rh.store.GetInterventionParticipantByPhone(canonical)
+	if err != nil {
+		return false, fmt.Errorf("failed to get intervention participant: %w", err)
+	}
+	if interventionParticipant != nil && interventionParticipant.Status == models.ParticipantStatusActive {
+		return true, nil
+	}
+
+	// Check conversation participants
+	conversationParticipant, err := rh.store.GetConversationParticipantByPhone(canonical)
+	if err != nil {
+		return false, fmt.Errorf("failed to get conversation participant: %w", err)
+	}
+	if conversationParticipant != nil && conversationParticipant.Status == models.ConversationStatusActive {
+		return true, nil
+	}
+
+	return false, nil
 }
 
 // CreateConversationHook creates a specialized hook for conversation prompts that
@@ -494,11 +569,7 @@ func CreateConversationHook(participantID string, msgService Service) ResponseAc
 			return false, fmt.Errorf("invalid generator type for conversation flow")
 		}
 
-		// Use the actual participant ID passed in (not normalized phone number)
-		// This ensures consistency with how background info was stored during enrollment
-
 		// Process the response through the conversation flow
-		// The conversation flow handles generating the AI response and returns it
 		aiResponse, err := conversationFlow.ProcessResponse(ctx, participantID, responseText)
 		if err != nil {
 			slog.Error("ConversationHook flow processing failed", "error", err, "participantID", participantID)

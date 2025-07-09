@@ -56,7 +56,7 @@ type Server struct {
 // NewServer creates a new API server instance with the provided dependencies.
 func NewServer(msgService messaging.Service, st store.Store, timer models.Timer, defaultCron string, gaClient *genai.Client) *Server {
 	// Create response handler
-	respHandler := messaging.NewResponseHandler(msgService)
+	respHandler := messaging.NewResponseHandler(msgService, st)
 
 	return &Server{
 		msgService:  msgService,
@@ -136,8 +136,13 @@ func createAndConfigureServer(waOpts []whatsapp.Option, storeOpts []store.Option
 	server.msgService = messaging.NewWhatsAppService(whClient)
 	slog.Debug("Messaging service initialized")
 
-	// Create response handler
-	server.respHandler = messaging.NewResponseHandler(server.msgService)
+	// Initialize store
+	if err := server.initializeStore(storeOpts); err != nil {
+		return nil, "", fmt.Errorf("failed to initialize store: %w", err)
+	}
+
+	// Create response handler (after store is initialized)
+	server.respHandler = messaging.NewResponseHandler(server.msgService, server.st)
 	slog.Debug("Response handler initialized")
 
 	// Start messaging service
@@ -146,11 +151,6 @@ func createAndConfigureServer(waOpts []whatsapp.Option, storeOpts []store.Option
 		return nil, "", fmt.Errorf("failed to start messaging service: %w", err)
 	}
 	slog.Debug("Messaging service started")
-
-	// Initialize store
-	if err := server.initializeStore(storeOpts); err != nil {
-		return nil, "", fmt.Errorf("failed to initialize store: %w", err)
-	}
 
 	// Initialize timer
 	server.timer = flow.NewSimpleTimer()
@@ -333,7 +333,6 @@ func (s *Server) initializeRecovery() error {
 			if err := s.respHandler.RegisterHook(info.PhoneNumber, hook); err != nil {
 				return fmt.Errorf("failed to register intervention hook: %w", err)
 			}
-			s.respHandler.SetAutoCleanupTimeout(info.PhoneNumber, info.TTL)
 
 		case models.FlowTypeConversation:
 			// Create conversation hook
@@ -341,7 +340,6 @@ func (s *Server) initializeRecovery() error {
 			if err := s.respHandler.RegisterHook(info.PhoneNumber, hook); err != nil {
 				return fmt.Errorf("failed to register conversation hook: %w", err)
 			}
-			s.respHandler.SetAutoCleanupTimeout(info.PhoneNumber, info.TTL)
 
 		default:
 			return fmt.Errorf("unknown flow type for response handler recovery: %s", info.FlowType)
@@ -361,6 +359,13 @@ func (s *Server) initializeRecovery() error {
 		// Don't fail startup for recovery errors, just log them
 	}
 
+	// Validate and cleanup response handler hooks based on active participants
+	// This ensures hooks only exist for currently active participants
+	if err := s.respHandler.ValidateAndCleanupHooks(ctx); err != nil {
+		slog.Warn("Response handler validation completed with errors", "error", err)
+		// Don't fail startup for validation errors, just log them
+	}
+
 	slog.Info("Application state recovery system initialized successfully")
 	return nil
 }
@@ -369,6 +374,7 @@ func (s *Server) initializeRecovery() error {
 func startHTTPServer(addr string, server *Server) *http.Server {
 	// Register HTTP handlers
 	slog.Debug("Registering HTTP handlers")
+	http.HandleFunc("/health", server.healthHandler)
 	http.HandleFunc("/send", server.sendHandler)
 	http.HandleFunc("/schedule", server.scheduleHandler)
 	http.HandleFunc("/receipts", server.receiptsHandler)

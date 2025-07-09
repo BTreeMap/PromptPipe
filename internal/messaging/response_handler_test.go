@@ -8,6 +8,7 @@ import (
 
 	"github.com/BTreeMap/PromptPipe/internal/flow"
 	"github.com/BTreeMap/PromptPipe/internal/models"
+	"github.com/BTreeMap/PromptPipe/internal/store"
 	"github.com/BTreeMap/PromptPipe/internal/whatsapp"
 )
 
@@ -64,11 +65,10 @@ func (m *MockStateManager) ResetState(ctx context.Context, participantID string,
 	}
 	return nil
 }
-
 func TestResponseHandler_RegisterHook(t *testing.T) {
 	mockClient := whatsapp.NewMockClient()
 	msgService := NewWhatsAppService(mockClient)
-	handler := NewResponseHandler(msgService)
+	handler := NewResponseHandler(msgService, store.NewInMemoryStore())
 
 	testPhone := "+1234567890"
 	expectedCanonical := "1234567890"
@@ -103,7 +103,7 @@ func TestResponseHandler_RegisterHook(t *testing.T) {
 func TestResponseHandler_UnregisterHook(t *testing.T) {
 	mockClient := whatsapp.NewMockClient()
 	msgService := NewWhatsAppService(mockClient)
-	handler := NewResponseHandler(msgService)
+	handler := NewResponseHandler(msgService, store.NewInMemoryStore())
 
 	testPhone := "+1234567890"
 	testHook := func(ctx context.Context, from, responseText string, timestamp int64) (bool, error) {
@@ -134,7 +134,7 @@ func TestResponseHandler_UnregisterHook(t *testing.T) {
 func TestResponseHandler_ProcessResponse_WithHook(t *testing.T) {
 	mockClient := whatsapp.NewMockClient()
 	msgService := NewWhatsAppService(mockClient)
-	handler := NewResponseHandler(msgService)
+	handler := NewResponseHandler(msgService, store.NewInMemoryStore())
 
 	testPhone := "+1234567890"
 	expectedCanonical := "1234567890"
@@ -192,7 +192,7 @@ func TestResponseHandler_ProcessResponse_WithHook(t *testing.T) {
 func TestResponseHandler_ProcessResponse_WithoutHook(t *testing.T) {
 	mockClient := whatsapp.NewMockClient()
 	msgService := NewWhatsAppService(mockClient)
-	handler := NewResponseHandler(msgService)
+	handler := NewResponseHandler(msgService, store.NewInMemoryStore())
 
 	testPhone := "+1234567890"
 
@@ -217,7 +217,7 @@ func TestResponseHandler_ProcessResponse_WithoutHook(t *testing.T) {
 func TestResponseHandler_SetDefaultMessage(t *testing.T) {
 	mockClient := whatsapp.NewMockClient()
 	msgService := NewWhatsAppService(mockClient)
-	handler := NewResponseHandler(msgService)
+	handler := NewResponseHandler(msgService, store.NewInMemoryStore())
 
 	newMessage := "Custom default message"
 	handler.SetDefaultMessage(newMessage)
@@ -516,7 +516,7 @@ func TestResponseHandlerFactory_CreateHandlerForPrompt(t *testing.T) {
 func TestResponseHandler_AutoRegisterResponseHandler(t *testing.T) {
 	mockClient := whatsapp.NewMockClient()
 	msgService := NewWhatsAppService(mockClient)
-	handler := NewResponseHandler(msgService)
+	handler := NewResponseHandler(msgService, store.NewInMemoryStore())
 
 	// Test with branch prompt
 	branchPrompt := models.Prompt{
@@ -528,7 +528,7 @@ func TestResponseHandler_AutoRegisterResponseHandler(t *testing.T) {
 		},
 	}
 
-	registered := handler.AutoRegisterResponseHandler(branchPrompt, time.Hour)
+	registered := handler.AutoRegisterResponseHandler(branchPrompt)
 	if !registered {
 		t.Error("Should have registered handler for branch prompt")
 	}
@@ -545,78 +545,140 @@ func TestResponseHandler_AutoRegisterResponseHandler(t *testing.T) {
 		Body: "Just an info message",
 	}
 
-	registered = handler.AutoRegisterResponseHandler(staticPrompt, time.Hour)
+	registered = handler.AutoRegisterResponseHandler(staticPrompt)
 	if registered {
 		t.Error("Should not have registered handler for static prompt without question")
 	}
 }
 
-func TestResponseHandler_TimeoutWrapper(t *testing.T) {
+// TestResponseHandler_ValidateAndCleanupHooks tests the validation and cleanup functionality
+func TestResponseHandler_ValidateAndCleanupHooks(t *testing.T) {
 	mockClient := whatsapp.NewMockClient()
 	msgService := NewWhatsAppService(mockClient)
-	handler := NewResponseHandler(msgService)
+	inMemoryStore := store.NewInMemoryStore()
+	handler := NewResponseHandler(msgService, inMemoryStore)
 
-	// Create a mock handler that takes longer than the timeout
-	slowHandler := func(ctx context.Context, from, responseText string, timestamp int64) (bool, error) {
-		time.Sleep(100 * time.Millisecond) // Simulate slow processing
-		return true, nil
+	// Create test participants
+	activeParticipant := models.InterventionParticipant{
+		ID:          "active123",
+		PhoneNumber: "+1234567890",
+		Status:      models.ParticipantStatusActive,
+		Name:        "Active Participant",
+	}
+	inactiveParticipant := models.InterventionParticipant{
+		ID:          "inactive123",
+		PhoneNumber: "+9876543210",
+		Status:      models.ParticipantStatusPaused,
+		Name:        "Inactive Participant",
 	}
 
-	// Wrap with very short timeout
-	wrappedHandler := handler.createTimeoutWrapper(slowHandler, 10*time.Millisecond)
-
-	ctx := context.Background()
-	handled, err := wrappedHandler(ctx, "1234567890", "test response", time.Now().Unix())
-
-	if handled {
-		t.Error("Handler should not have succeeded due to timeout")
+	// Save participants to store
+	err := inMemoryStore.SaveInterventionParticipant(activeParticipant)
+	if err != nil {
+		t.Fatalf("Failed to save active participant: %v", err)
 	}
-	if err == nil {
-		t.Error("Should have returned timeout error")
-	}
-	if !strings.Contains(err.Error(), "timed out") {
-		t.Errorf("Error should mention timeout, got: %v", err)
+	err = inMemoryStore.SaveInterventionParticipant(inactiveParticipant)
+	if err != nil {
+		t.Fatalf("Failed to save inactive participant: %v", err)
 	}
 
-	// Verify timeout message was sent
-	if len(mockClient.SentMessages) != 1 {
-		t.Errorf("Expected 1 timeout message sent, got %d", len(mockClient.SentMessages))
-	}
-	timeoutMsg := mockClient.SentMessages[0]
-	if !strings.Contains(timeoutMsg.Body, "timed out") {
-		t.Errorf("Expected timeout message, got: %s", timeoutMsg.Body)
-	}
-}
-
-func TestResponseHandler_AutoCleanupTimeout(t *testing.T) {
-	mockClient := whatsapp.NewMockClient()
-	msgService := NewWhatsAppService(mockClient)
-	handler := NewResponseHandler(msgService)
-
-	testPhone := "+1234567890"
+	// Register hooks for both participants
 	testHook := func(ctx context.Context, from, responseText string, timestamp int64) (bool, error) {
 		return true, nil
 	}
 
-	// Register a handler
-	err := handler.RegisterHook(testPhone, testHook)
+	err = handler.RegisterHook(activeParticipant.PhoneNumber, testHook)
 	if err != nil {
-		t.Fatalf("Failed to register hook: %v", err)
+		t.Fatalf("Failed to register hook for active participant: %v", err)
+	}
+	err = handler.RegisterHook(inactiveParticipant.PhoneNumber, testHook)
+	if err != nil {
+		t.Fatalf("Failed to register hook for inactive participant: %v", err)
 	}
 
-	// Verify it's registered
+	// Verify both hooks are registered
+	if handler.GetHookCount() != 2 {
+		t.Errorf("Expected 2 hooks registered, got %d", handler.GetHookCount())
+	}
+
+	// Run validation and cleanup
+	ctx := context.Background()
+	err = handler.ValidateAndCleanupHooks(ctx)
+	if err != nil {
+		t.Errorf("ValidateAndCleanupHooks returned error: %v", err)
+	}
+
+	// Verify only active participant hook remains
+	if handler.GetHookCount() != 1 {
+		t.Errorf("Expected 1 hook after cleanup, got %d", handler.GetHookCount())
+	}
+
+	// Verify the correct hook remains
 	if !handler.IsHookRegistered("1234567890") {
-		t.Error("Hook should be registered")
+		t.Error("Active participant hook should still be registered")
+	}
+	if handler.IsHookRegistered("9876543210") {
+		t.Error("Inactive participant hook should have been removed")
+	}
+}
+
+// TestResponseHandler_IsParticipantActive tests the participant activity check
+func TestResponseHandler_IsParticipantActive(t *testing.T) {
+	mockClient := whatsapp.NewMockClient()
+	msgService := NewWhatsAppService(mockClient)
+	inMemoryStore := store.NewInMemoryStore()
+	handler := NewResponseHandler(msgService, inMemoryStore)
+
+	// Create test participants with canonicalized phone numbers
+	activeParticipant := models.InterventionParticipant{
+		ID:          "active123",
+		PhoneNumber: "1234567890", // Canonicalized format
+		Status:      models.ParticipantStatusActive,
+		Name:        "Active Participant",
+	}
+	inactiveParticipant := models.InterventionParticipant{
+		ID:          "inactive123",
+		PhoneNumber: "9876543210", // Canonicalized format
+		Status:      models.ParticipantStatusPaused,
+		Name:        "Inactive Participant",
 	}
 
-	// Set auto-cleanup with very short duration
-	handler.SetAutoCleanupTimeout("1234567890", 50*time.Millisecond)
+	// Save participants to store
+	err := inMemoryStore.SaveInterventionParticipant(activeParticipant)
+	if err != nil {
+		t.Fatalf("Failed to save active participant: %v", err)
+	}
+	err = inMemoryStore.SaveInterventionParticipant(inactiveParticipant)
+	if err != nil {
+		t.Fatalf("Failed to save inactive participant: %v", err)
+	}
 
-	// Wait for cleanup
-	time.Sleep(100 * time.Millisecond)
+	ctx := context.Background()
 
-	// Verify it's been cleaned up
-	if handler.IsHookRegistered("1234567890") {
-		t.Error("Hook should have been auto-cleaned up")
+	// Test active participant
+	isActive, err := handler.IsParticipantActive(ctx, activeParticipant.PhoneNumber)
+	if err != nil {
+		t.Fatalf("Error checking active participant: %v", err)
+	}
+	if !isActive {
+		t.Error("Active participant should be reported as active")
+	}
+
+	// Test inactive participant
+	isActive, err = handler.IsParticipantActive(ctx, inactiveParticipant.PhoneNumber)
+	if err != nil {
+		t.Fatalf("Error checking inactive participant: %v", err)
+	}
+	if isActive {
+		t.Error("Inactive participant should be reported as inactive")
+	}
+
+	// Test non-existent participant
+	isActive, err = handler.IsParticipantActive(ctx, "+5555555555")
+	if err != nil {
+		t.Fatalf("Error checking non-existent participant: %v", err)
+	}
+	if isActive {
+		t.Error("Non-existent participant should be reported as inactive")
 	}
 }
