@@ -269,11 +269,11 @@ func TestDeleteConversationParticipant(t *testing.T) {
 
 	// Create mock messaging service
 	mockMessaging := NewMockMessagingService()
-	
+
 	// Create the API server
 	server := &Server{
-		st: st,
-		msgService: mockMessaging,
+		st:          st,
+		msgService:  mockMessaging,
 		respHandler: messaging.NewResponseHandler(mockMessaging, st),
 	}
 
@@ -294,10 +294,10 @@ func TestDeleteConversationParticipant(t *testing.T) {
 	// Create a mock request
 	req := httptest.NewRequest("DELETE", "/conversation/participants/test-delete-123", nil)
 	req = req.WithContext(context.WithValue(req.Context(), ContextKeyParticipantID, "test-delete-123"))
-	
+
 	// Create a response recorder
 	w := httptest.NewRecorder()
-	
+
 	// Call the handler
 	server.deleteConversationParticipantHandler(w, req)
 
