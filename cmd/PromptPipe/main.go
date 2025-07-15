@@ -144,14 +144,27 @@ func initializeLogger() {
 	slog.SetDefault(logger)
 }
 
+// loadEnvFile searches for and loads .env files from multiple possible locations.
+// This allows the binary to work correctly regardless of the execution directory.
+func loadEnvFile() {
+	// Search for .env files in order of priority
+	envFiles := []string{".env", "../.env", "../../.env"}
+
+	for _, envFile := range envFiles {
+		if err := godotenv.Load(envFile); err == nil {
+			slog.Debug("Successfully loaded .env file", "file", envFile)
+			return
+		}
+	}
+
+	slog.Debug("No .env file found in any of the search locations", "locations", envFiles)
+}
+
 // loadEnvironmentConfig loads configuration from environment variables and .env file.
 // This separates WhatsApp database configuration from application database configuration.
+// It searches for .env files in multiple locations to handle different execution directories.
 func loadEnvironmentConfig() Config {
-	if err := godotenv.Load(); err != nil {
-		slog.Debug("failed to load .env file", "error", err)
-	} else {
-		slog.Debug("successfully loaded .env file")
-	}
+	loadEnvFile()
 
 	config := Config{
 		WhatsAppDBDSN:    os.Getenv("WHATSAPP_DB_DSN"),
