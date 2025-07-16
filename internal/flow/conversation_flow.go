@@ -216,6 +216,8 @@ func (f *ConversationFlow) processConversationMessage(ctx context.Context, parti
 
 // processWithTools handles conversation with tool calling capability.
 func (f *ConversationFlow) processWithTools(ctx context.Context, participantID string, messages []openai.ChatCompletionMessageParamUnion, history *ConversationHistory) (string, error) {
+	slog.Debug("ConversationFlow processWithTools", "participantID", participantID, "messageCount", len(messages))
+
 	// Create tool definitions
 	tools := []openai.ChatCompletionToolParam{
 		f.schedulerTool.GetToolDefinition(),
