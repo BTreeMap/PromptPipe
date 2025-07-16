@@ -418,7 +418,7 @@ func TestEndToEndDatabaseConfiguration(t *testing.T) {
 	// Get the state directory from .env file to use in expected values
 	envConfig := loadEnvironmentConfig()
 	envStateDir := envConfig.StateDir
-	
+
 	tests := []struct {
 		name                string
 		whatsappDBDSN       string
