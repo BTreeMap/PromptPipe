@@ -3,8 +3,10 @@ package flow
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
 	"log/slog"
+	"math/big"
 	"time"
 
 	"github.com/BTreeMap/PromptPipe/internal/genai"
@@ -12,6 +14,15 @@ import (
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/shared"
 )
+
+// RandomScheduleInfo holds information for random scheduling between start and end times
+type RandomScheduleInfo struct {
+	StartSchedule *models.Schedule // Schedule for the start of the random window
+	EndSchedule   *models.Schedule // Schedule for the end of the random window
+	StartTime     time.Time        // Parsed start time (used for calculations)
+	EndTime       time.Time        // Parsed end time (used for calculations)
+	Timezone      string           // Timezone for the schedule
+}
 
 // SchedulerTool provides LLM tool functionality for scheduling daily habit prompts.
 type SchedulerTool struct {
@@ -109,40 +120,7 @@ func (st *SchedulerTool) ExecuteScheduler(ctx context.Context, participantID str
 		}, nil
 	}
 
-	// Convert to Schedule based on type
-	var schedule *models.Schedule
-	var err error
-
-	switch params.Type {
-	case models.SchedulerTypeFixed:
-		schedule, err = st.buildFixedSchedule(params.FixedTime, params.Timezone)
-		if err != nil {
-			return &models.ToolResult{
-				Success: false,
-				Message: "Failed to create fixed schedule",
-				Error:   err.Error(),
-			}, nil
-		}
-	case models.SchedulerTypeRandom:
-		schedule, err = st.buildRandomSchedule(params.RandomStartTime, params.RandomEndTime, params.Timezone)
-		if err != nil {
-			return &models.ToolResult{
-				Success: false,
-				Message: "Failed to create random schedule",
-				Error:   err.Error(),
-			}, nil
-		}
-	default:
-		return &models.ToolResult{
-			Success: false,
-			Message: "Invalid scheduler type",
-			Error:   fmt.Sprintf("unsupported scheduler type: %s", params.Type),
-		}, nil
-	}
-
 	// Get the participant's phone number from participantID
-	// Note: This would typically require a store lookup, but for now we'll assume
-	// the participantID can be used directly or we need to modify the interface
 	phoneNumber, err := st.getParticipantPhoneNumber(ctx, participantID)
 	if err != nil {
 		return &models.ToolResult{
@@ -152,41 +130,90 @@ func (st *SchedulerTool) ExecuteScheduler(ctx context.Context, participantID str
 		}, nil
 	}
 
-	// Create the scheduled prompt
-	prompt := models.Prompt{
-		To:           phoneNumber,
-		Type:         models.PromptTypeGenAI,
-		SystemPrompt: params.PromptSystemPrompt,
-		UserPrompt:   params.PromptUserPrompt,
-		Schedule:     schedule,
-	}
-
-	// Schedule the prompt using the timer
-	timerID, err := st.timer.ScheduleWithSchedule(schedule, func() {
-		st.executeScheduledPrompt(ctx, prompt)
-	})
-	if err != nil {
-		return &models.ToolResult{
-			Success: false,
-			Message: "Failed to schedule prompt",
-			Error:   err.Error(),
-		}, nil
-	}
-
-	// Build success message
+	// Handle scheduling based on type
+	var timerID string
 	var scheduleDescription string
-	if params.Type == models.SchedulerTypeFixed {
+
+	switch params.Type {
+	case models.SchedulerTypeFixed:
+		schedule, err := st.buildFixedSchedule(params.FixedTime, params.Timezone)
+		if err != nil {
+			return &models.ToolResult{
+				Success: false,
+				Message: "Failed to create fixed schedule",
+				Error:   err.Error(),
+			}, nil
+		}
+
+		// Create the scheduled prompt
+		prompt := models.Prompt{
+			To:           phoneNumber,
+			Type:         models.PromptTypeGenAI,
+			SystemPrompt: params.PromptSystemPrompt,
+			UserPrompt:   params.PromptUserPrompt,
+			Schedule:     schedule,
+		}
+
+		// Schedule the prompt using the timer
+		timerID, err = st.timer.ScheduleWithSchedule(schedule, func() {
+			st.executeScheduledPrompt(ctx, prompt)
+		})
+		if err != nil {
+			return &models.ToolResult{
+				Success: false,
+				Message: "Failed to schedule prompt",
+				Error:   err.Error(),
+			}, nil
+		}
+
 		timezone := params.Timezone
 		if timezone == "" {
 			timezone = "UTC"
 		}
 		scheduleDescription = fmt.Sprintf("daily at %s (%s)", params.FixedTime, timezone)
-	} else {
+
+	case models.SchedulerTypeRandom:
+		randomInfo, err := st.buildRandomScheduleInfo(params.RandomStartTime, params.RandomEndTime, params.Timezone)
+		if err != nil {
+			return &models.ToolResult{
+				Success: false,
+				Message: "Failed to create random schedule",
+				Error:   err.Error(),
+			}, nil
+		}
+
+		// Create the scheduled prompt
+		prompt := models.Prompt{
+			To:           phoneNumber,
+			Type:         models.PromptTypeGenAI,
+			SystemPrompt: params.PromptSystemPrompt,
+			UserPrompt:   params.PromptUserPrompt,
+		}
+
+		// Schedule the recurring timer at the start time that will create random one-time timers
+		timerID, err = st.timer.ScheduleWithSchedule(randomInfo.StartSchedule, func() {
+			st.executeRandomScheduledPrompt(ctx, prompt, randomInfo)
+		})
+		if err != nil {
+			return &models.ToolResult{
+				Success: false,
+				Message: "Failed to schedule random prompt",
+				Error:   err.Error(),
+			}, nil
+		}
+
 		timezone := params.Timezone
 		if timezone == "" {
 			timezone = "UTC"
 		}
 		scheduleDescription = fmt.Sprintf("daily between %s and %s (%s)", params.RandomStartTime, params.RandomEndTime, timezone)
+
+	default:
+		return &models.ToolResult{
+			Success: false,
+			Message: "Invalid scheduler type",
+			Error:   fmt.Sprintf("unsupported scheduler type: %s", params.Type),
+		}, nil
 	}
 
 	successMessage := fmt.Sprintf("✅ Perfect! I've scheduled your daily habit reminders to be sent %s. You'll receive personalized messages about: %s\n\nYour reminders are now active and will start tomorrow!",
@@ -225,10 +252,10 @@ func (st *SchedulerTool) buildFixedSchedule(fixedTime, timezone string) (*models
 	return schedule, nil
 }
 
-// buildRandomSchedule creates a Schedule for random timing.
-// This implementation creates a recurring timer at the start time of the interval
-// that creates one one-time timer for the actual message within the interval.
-func (st *SchedulerTool) buildRandomSchedule(startTime, endTime, timezone string) (*models.Schedule, error) {
+// buildRandomScheduleInfo creates a RandomScheduleInfo for random timing.
+// This implementation creates schedules for both start and end times of the interval
+// to be used for proper random scheduling.
+func (st *SchedulerTool) buildRandomScheduleInfo(startTime, endTime, timezone string) (*RandomScheduleInfo, error) {
 	// Parse start and end times
 	start, err := time.Parse("15:04", startTime)
 	if err != nil {
@@ -244,22 +271,34 @@ func (st *SchedulerTool) buildRandomSchedule(startTime, endTime, timezone string
 		return nil, fmt.Errorf("end time must be after start time")
 	}
 
-	// For random scheduling, create a schedule that runs at the start time
-	// The actual random timing will be handled by the execution logic
-	hour := start.Hour()
-	minute := start.Minute()
+	// Create schedules for both start and end times
+	startHour := start.Hour()
+	startMinute := start.Minute()
+	startSchedule := &models.Schedule{
+		Hour:   &startHour,
+		Minute: &startMinute,
+	}
 
-	schedule := &models.Schedule{
-		Hour:   &hour,
-		Minute: &minute,
+	endHour := end.Hour()
+	endMinute := end.Minute()
+	endSchedule := &models.Schedule{
+		Hour:   &endHour,
+		Minute: &endMinute,
 	}
 
 	// Set timezone if provided
 	if timezone != "" {
-		schedule.Timezone = timezone
+		startSchedule.Timezone = timezone
+		endSchedule.Timezone = timezone
 	}
 
-	return schedule, nil
+	return &RandomScheduleInfo{
+		StartSchedule: startSchedule,
+		EndSchedule:   endSchedule,
+		StartTime:     start,
+		EndTime:       end,
+		Timezone:      timezone,
+	}, nil
 }
 
 // getParticipantPhoneNumber retrieves the phone number for a participant.
@@ -275,6 +314,61 @@ func (st *SchedulerTool) getParticipantPhoneNumber(ctx context.Context, particip
 
 	// Simple fallback - assume participantID is already a phone number
 	return participantID, nil
+}
+
+// executeRandomScheduledPrompt handles the random scheduling logic.
+// This method is called by the recurring timer at the start time and schedules
+// a one-time timer at a random time within the specified interval.
+func (st *SchedulerTool) executeRandomScheduledPrompt(ctx context.Context, prompt models.Prompt, randomInfo *RandomScheduleInfo) {
+	slog.Debug("Executing random scheduled prompt logic", "to", prompt.To, "startTime", randomInfo.StartTime.Format("15:04"), "endTime", randomInfo.EndTime.Format("15:04"))
+
+	// Calculate random delay from start time to end time
+	startMinutes := randomInfo.StartTime.Hour()*60 + randomInfo.StartTime.Minute()
+	endMinutes := randomInfo.EndTime.Hour()*60 + randomInfo.EndTime.Minute()
+	
+	if endMinutes <= startMinutes {
+		// Handle case where end time is the next day (e.g., 23:00 to 01:00)
+		endMinutes += 24 * 60
+	}
+	
+	// Generate random minutes within the interval
+	intervalMinutes := endMinutes - startMinutes
+	if intervalMinutes <= 0 {
+		slog.Error("Invalid time interval for random scheduling", "startMinutes", startMinutes, "endMinutes", endMinutes)
+		// Fallback to immediate execution
+		st.executeScheduledPrompt(ctx, prompt)
+		return
+	}
+
+	// Use crypto/rand for secure random number generation
+	randomOffset, err := rand.Int(rand.Reader, big.NewInt(int64(intervalMinutes)))
+	if err != nil {
+		slog.Error("Failed to generate random offset", "error", err)
+		// Fallback to immediate execution
+		st.executeScheduledPrompt(ctx, prompt)
+		return
+	}
+
+	// Calculate the random delay in minutes
+	randomDelayMinutes := randomOffset.Int64()
+	randomDelay := time.Duration(randomDelayMinutes) * time.Minute
+
+	slog.Info("Scheduling random prompt", 
+		"to", prompt.To, 
+		"intervalMinutes", intervalMinutes, 
+		"randomDelayMinutes", randomDelayMinutes,
+		"delay", randomDelay)
+
+	// Schedule a one-time timer for the random time
+	_, err = st.timer.ScheduleAfter(randomDelay, func() {
+		st.executeScheduledPrompt(ctx, prompt)
+	})
+	
+	if err != nil {
+		slog.Error("Failed to schedule random one-time timer", "error", err, "to", prompt.To)
+		// Fallback to immediate execution
+		st.executeScheduledPrompt(ctx, prompt)
+	}
 }
 
 // executeScheduledPrompt executes a scheduled prompt by generating content and sending it.
