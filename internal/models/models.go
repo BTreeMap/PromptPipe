@@ -147,7 +147,7 @@ func (b *Branch) Validate() error {
 // Prompt represents a message to be sent, supporting static, GenAI, or branch types.
 type Prompt struct {
 	To            string         `json:"to"`
-	Cron          string         `json:"cron,omitempty"`
+	Schedule      *Schedule      `json:"schedule,omitempty"`
 	Type          PromptType     `json:"type,omitempty"`
 	State         StateType      `json:"state,omitempty"` // current state for custom flows
 	Body          string         `json:"body,omitempty"`
@@ -588,11 +588,11 @@ func IsValidConversationParticipantStatus(status ConversationParticipantStatus) 
 // TimerInfo represents information about a scheduled timer
 type TimerInfo struct {
 	ID          string    `json:"id"`
-	Type        string    `json:"type"` // "once", "cron"
+	Type        string    `json:"type"` // "once", "recurring"
 	ScheduledAt time.Time `json:"scheduled_at"`
 	ExpiresAt   time.Time `json:"expires_at,omitempty"` // For one-time timers
-	CronExpr    string    `json:"cron_expr,omitempty"`  // For cron timers
-	NextRun     time.Time `json:"next_run,omitempty"`   // For cron timers
+	Schedule    *Schedule `json:"schedule,omitempty"`   // For recurring timers
+	NextRun     time.Time `json:"next_run,omitempty"`   // For recurring timers
 	Remaining   string    `json:"remaining"`
 	Description string    `json:"description,omitempty"`
 }
@@ -605,8 +605,8 @@ type Timer interface {
 	// ScheduleAt schedules a function to run at a specific time and returns a timer ID
 	ScheduleAt(when time.Time, fn func()) (string, error)
 
-	// ScheduleCron schedules a function to run according to a cron expression and returns a timer ID
-	ScheduleCron(cronExpr string, fn func()) (string, error)
+	// ScheduleWithSchedule schedules a function to run according to a Schedule and returns a timer ID
+	ScheduleWithSchedule(schedule *Schedule, fn func()) (string, error)
 
 	// Cancel cancels a scheduled function by ID
 	Cancel(id string) error
@@ -619,4 +619,135 @@ type Timer interface {
 
 	// GetTimer returns information about a specific timer by ID
 	GetTimer(id string) (*TimerInfo, error)
+}
+
+// Schedule defines when and how often something should be scheduled.
+// This replaces cron expressions with a more type-safe and clear structure.
+// Fields correspond to cron fields: minute hour day month weekday
+// nil values mean "any" (equivalent to * in cron)
+type Schedule struct {
+	Minute   *int   `json:"minute,omitempty"`   // 0-59, nil means any minute
+	Hour     *int   `json:"hour,omitempty"`     // 0-23, nil means any hour
+	Day      *int   `json:"day,omitempty"`      // 1-31, nil means any day of month
+	Month    *int   `json:"month,omitempty"`    // 1-12, nil means any month
+	Weekday  *int   `json:"weekday,omitempty"`  // 0-6 (Sunday=0), nil means any weekday
+	Timezone string `json:"timezone,omitempty"` // IANA timezone (e.g., "America/Toronto")
+}
+
+// Validate ensures the schedule has valid field values.
+func (s *Schedule) Validate() error {
+	if s.Minute != nil && (*s.Minute < 0 || *s.Minute > 59) {
+		return errors.New("minute must be between 0 and 59")
+	}
+	if s.Hour != nil && (*s.Hour < 0 || *s.Hour > 23) {
+		return errors.New("hour must be between 0 and 23")
+	}
+	if s.Day != nil && (*s.Day < 1 || *s.Day > 31) {
+		return errors.New("day must be between 1 and 31")
+	}
+	if s.Month != nil && (*s.Month < 1 || *s.Month > 12) {
+		return errors.New("month must be between 1 and 12")
+	}
+	if s.Weekday != nil && (*s.Weekday < 0 || *s.Weekday > 6) {
+		return errors.New("weekday must be between 0 and 6 (Sunday=0)")
+	}
+	if s.Timezone != "" {
+		if _, err := time.LoadLocation(s.Timezone); err != nil {
+			return fmt.Errorf("invalid timezone: %w", err)
+		}
+	}
+	return nil
+}
+
+// String returns a human-readable description of the schedule.
+func (s *Schedule) String() string {
+	parts := []string{}
+
+	if s.Minute != nil {
+		parts = append(parts, fmt.Sprintf("minute=%d", *s.Minute))
+	}
+	if s.Hour != nil {
+		parts = append(parts, fmt.Sprintf("hour=%d", *s.Hour))
+	}
+	if s.Day != nil {
+		parts = append(parts, fmt.Sprintf("day=%d", *s.Day))
+	}
+	if s.Month != nil {
+		parts = append(parts, fmt.Sprintf("month=%d", *s.Month))
+	}
+	if s.Weekday != nil {
+		weekdays := []string{"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"}
+		parts = append(parts, fmt.Sprintf("weekday=%s", weekdays[*s.Weekday]))
+	}
+
+	if len(parts) == 0 {
+		return "every minute"
+	}
+
+	return fmt.Sprintf("schedule(%s)", fmt.Sprintf("%s", fmt.Sprintf("%v", parts)))
+}
+
+// ToCronString converts the schedule to a cron-like string (minute hour day month weekday).
+func (s *Schedule) ToCronString() string {
+	minute := "*"
+	if s.Minute != nil {
+		minute = fmt.Sprintf("%d", *s.Minute)
+	}
+
+	hour := "*"
+	if s.Hour != nil {
+		hour = fmt.Sprintf("%d", *s.Hour)
+	}
+
+	day := "*"
+	if s.Day != nil {
+		day = fmt.Sprintf("%d", *s.Day)
+	}
+
+	month := "*"
+	if s.Month != nil {
+		month = fmt.Sprintf("%d", *s.Month)
+	}
+
+	weekday := "*"
+	if s.Weekday != nil {
+		weekday = fmt.Sprintf("%d", *s.Weekday)
+	}
+
+	return fmt.Sprintf("%s %s %s %s %s", minute, hour, day, month, weekday)
+}
+
+// Helper functions for creating common schedules
+
+// NewDailySchedule creates a schedule that runs daily at the specified time.
+func NewDailySchedule(hour, minute int) *Schedule {
+	return &Schedule{
+		Hour:   &hour,
+		Minute: &minute,
+	}
+}
+
+// NewWeeklySchedule creates a schedule that runs weekly on the specified weekday and time.
+func NewWeeklySchedule(weekday, hour, minute int) *Schedule {
+	return &Schedule{
+		Weekday: &weekday,
+		Hour:    &hour,
+		Minute:  &minute,
+	}
+}
+
+// NewMonthlySchedule creates a schedule that runs monthly on the specified day and time.
+func NewMonthlySchedule(day, hour, minute int) *Schedule {
+	return &Schedule{
+		Day:    &day,
+		Hour:   &hour,
+		Minute: &minute,
+	}
+}
+
+// NewHourlySchedule creates a schedule that runs every hour at the specified minute.
+func NewHourlySchedule(minute int) *Schedule {
+	return &Schedule{
+		Minute: &minute,
+	}
 }

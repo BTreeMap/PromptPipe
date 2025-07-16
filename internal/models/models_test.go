@@ -5,10 +5,47 @@ import (
 	"testing"
 )
 
+// scheduleEquals compares two Schedule pointers for equality
+func scheduleEquals(a, b *Schedule) bool {
+	// Both nil
+	if a == nil && b == nil {
+		return true
+	}
+	// One nil, one not
+	if a == nil || b == nil {
+		return false
+	}
+	// Compare fields
+	return intPtrEquals(a.Minute, b.Minute) &&
+		intPtrEquals(a.Hour, b.Hour) &&
+		intPtrEquals(a.Day, b.Day) &&
+		intPtrEquals(a.Month, b.Month) &&
+		intPtrEquals(a.Weekday, b.Weekday) &&
+		a.Timezone == b.Timezone
+}
+
+// intPtrEquals compares two int pointers for equality
+func intPtrEquals(a, b *int) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	return *a == *b
+}
+
 func TestPromptJSONTags(t *testing.T) {
+	hour := 9
+	minute := 0
+	schedule := &Schedule{
+		Hour:   &hour,
+		Minute: &minute,
+	}
+
 	p := Prompt{
 		To:            "+1234567890",
-		Cron:          "daily",
+		Schedule:      schedule,
 		Type:          PromptTypeStatic,
 		State:         "initial",
 		Body:          "hi",
@@ -16,7 +53,7 @@ func TestPromptJSONTags(t *testing.T) {
 		UserPrompt:    "user",
 		BranchOptions: []BranchOption{{Label: "Option 1", Body: "Branch Body 1"}},
 	}
-	expectedJSON := `{"to":"+1234567890","cron":"daily","type":"static","state":"initial","body":"hi","system_prompt":"system","user_prompt":"user","branch_options":[{"label":"Option 1","body":"Branch Body 1"}]}`
+	expectedJSON := `{"to":"+1234567890","schedule":{"minute":0,"hour":9},"type":"static","state":"initial","body":"hi","system_prompt":"system","user_prompt":"user","branch_options":[{"label":"Option 1","body":"Branch Body 1"}]}`
 
 	jsonData, err := json.Marshal(p)
 	if err != nil {
@@ -33,7 +70,7 @@ func TestPromptJSONTags(t *testing.T) {
 		t.Fatalf("Error unmarshaling JSON to Prompt: %v", err)
 	}
 
-	if pUnmarshaled.To != p.To || pUnmarshaled.Cron != p.Cron || pUnmarshaled.Type != p.Type || pUnmarshaled.State != p.State || pUnmarshaled.Body != p.Body || pUnmarshaled.SystemPrompt != p.SystemPrompt || pUnmarshaled.UserPrompt != p.UserPrompt || len(pUnmarshaled.BranchOptions) != len(p.BranchOptions) || pUnmarshaled.BranchOptions[0].Label != p.BranchOptions[0].Label || pUnmarshaled.BranchOptions[0].Body != p.BranchOptions[0].Body {
+	if pUnmarshaled.To != p.To || !scheduleEquals(pUnmarshaled.Schedule, p.Schedule) || pUnmarshaled.Type != p.Type || pUnmarshaled.State != p.State || pUnmarshaled.Body != p.Body || pUnmarshaled.SystemPrompt != p.SystemPrompt || pUnmarshaled.UserPrompt != p.UserPrompt || len(pUnmarshaled.BranchOptions) != len(p.BranchOptions) || pUnmarshaled.BranchOptions[0].Label != p.BranchOptions[0].Label || pUnmarshaled.BranchOptions[0].Body != p.BranchOptions[0].Body {
 		t.Errorf("JSON unmarshaling of Prompt was incorrect.\nGot: %+v\nWant: %+v", pUnmarshaled, p)
 	}
 }
