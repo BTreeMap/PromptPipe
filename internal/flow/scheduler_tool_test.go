@@ -16,7 +16,7 @@ type MockTimer struct {
 }
 
 type ScheduledCall struct {
-	CronExpr string
+	Schedule *models.Schedule
 	Fn       func()
 }
 
@@ -28,9 +28,9 @@ func (m *MockTimer) ScheduleAt(when time.Time, fn func()) (string, error) {
 	return "mock-timer-id", nil
 }
 
-func (m *MockTimer) ScheduleCron(cronExpr string, fn func()) (string, error) {
+func (m *MockTimer) ScheduleWithSchedule(schedule *models.Schedule, fn func()) (string, error) {
 	m.scheduledCalls = append(m.scheduledCalls, ScheduledCall{
-		CronExpr: cronExpr,
+		Schedule: schedule,
 		Fn:       fn,
 	})
 	return "mock-timer-id", nil
@@ -140,14 +140,18 @@ func TestSchedulerTool_ExecuteScheduler_Fixed(t *testing.T) {
 		t.Error("Expected non-empty success message")
 	}
 
-	// Check that a cron job was scheduled
+	// Check that a schedule was created
 	if len(timer.scheduledCalls) != 1 {
 		t.Errorf("Expected 1 scheduled call, got %d", len(timer.scheduledCalls))
 	} else {
 		// Should schedule at 9:30 AM (minute=30, hour=9)
-		expectedCron := "30 9 * * *"
-		if timer.scheduledCalls[0].CronExpr != expectedCron {
-			t.Errorf("Expected cron expression %s, got %s", expectedCron, timer.scheduledCalls[0].CronExpr)
+		schedule := timer.scheduledCalls[0].Schedule
+		if schedule == nil {
+			t.Error("Expected non-nil schedule")
+		} else if schedule.Hour == nil || *schedule.Hour != 9 {
+			t.Errorf("Expected hour=9, got %v", schedule.Hour)
+		} else if schedule.Minute == nil || *schedule.Minute != 30 {
+			t.Errorf("Expected minute=30, got %v", schedule.Minute)
 		}
 	}
 }

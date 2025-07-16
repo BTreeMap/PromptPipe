@@ -125,18 +125,18 @@ func (s *Server) scheduleHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Apply default schedule if none provided
-	if p.Cron == "" {
-		if s.defaultCron == "" {
-			slog.Warn("scheduleHandler missing cron schedule and no default set", "prompt", p)
-			writeJSONResponse(w, http.StatusBadRequest, models.Error("Missing required field: cron schedule"))
+	if p.Schedule == nil {
+		if s.defaultSchedule == nil {
+			slog.Warn("scheduleHandler missing schedule and no default set", "prompt", p)
+			writeJSONResponse(w, http.StatusBadRequest, models.Error("Missing required field: schedule"))
 			return
 		}
-		p.Cron = s.defaultCron
+		p.Schedule = s.defaultSchedule
 	}
 	// Capture prompt locally for closure
-	slog.Debug("scheduleHandler scheduling job", "to", p.To, "cron", p.Cron)
+	slog.Debug("scheduleHandler scheduling job", "to", p.To, "schedule", p.Schedule.ToCronString())
 	job := p
-	timerID, addErr := s.timer.ScheduleCron(p.Cron, func() {
+	timerID, addErr := s.timer.ScheduleWithSchedule(p.Schedule, func() {
 		slog.Debug("scheduled job triggered", "to", job.To)
 		// Create context with timeout for scheduled job operations
 		ctx, cancel := context.WithTimeout(context.Background(), DefaultScheduledJobTimeout)
@@ -171,7 +171,7 @@ func (s *Server) scheduleHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Job scheduled successfully
-	slog.Info("Job scheduled successfully", "to", p.To, "cron", p.Cron, "timerID", timerID)
+	slog.Info("Job scheduled successfully", "to", p.To, "schedule", p.Schedule.ToCronString(), "timerID", timerID)
 	writeJSONResponse(w, http.StatusCreated, models.SuccessWithMessage("Scheduled successfully", timerID))
 }
 

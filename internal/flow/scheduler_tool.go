@@ -109,13 +109,13 @@ func (st *SchedulerTool) ExecuteScheduler(ctx context.Context, participantID str
 		}, nil
 	}
 
-	// Convert to cron schedule based on type
-	var cronSchedule string
+	// Convert to Schedule based on type
+	var schedule *models.Schedule
 	var err error
 
 	switch params.Type {
 	case models.SchedulerTypeFixed:
-		cronSchedule, err = st.buildFixedCronSchedule(params.FixedTime, params.Timezone)
+		schedule, err = st.buildFixedSchedule(params.FixedTime, params.Timezone)
 		if err != nil {
 			return &models.ToolResult{
 				Success: false,
@@ -124,7 +124,7 @@ func (st *SchedulerTool) ExecuteScheduler(ctx context.Context, participantID str
 			}, nil
 		}
 	case models.SchedulerTypeRandom:
-		cronSchedule, err = st.buildRandomCronSchedule(params.RandomStartTime, params.RandomEndTime, params.Timezone)
+		schedule, err = st.buildRandomSchedule(params.RandomStartTime, params.RandomEndTime, params.Timezone)
 		if err != nil {
 			return &models.ToolResult{
 				Success: false,
@@ -158,11 +158,11 @@ func (st *SchedulerTool) ExecuteScheduler(ctx context.Context, participantID str
 		Type:         models.PromptTypeGenAI,
 		SystemPrompt: params.PromptSystemPrompt,
 		UserPrompt:   params.PromptUserPrompt,
-		Cron:         cronSchedule,
+		Schedule:     schedule,
 	}
 
 	// Schedule the prompt using the timer
-	timerID, err := st.timer.ScheduleCron(cronSchedule, func() {
+	timerID, err := st.timer.ScheduleWithSchedule(schedule, func() {
 		st.executeScheduledPrompt(ctx, prompt)
 	})
 	if err != nil {
@@ -200,47 +200,66 @@ func (st *SchedulerTool) ExecuteScheduler(ctx context.Context, participantID str
 	}, nil
 }
 
-// buildFixedCronSchedule converts a fixed time to a cron schedule.
-func (st *SchedulerTool) buildFixedCronSchedule(fixedTime, timezone string) (string, error) {
+// buildFixedSchedule converts a fixed time to a Schedule.
+func (st *SchedulerTool) buildFixedSchedule(fixedTime, timezone string) (*models.Schedule, error) {
 	// Parse the time
 	t, err := time.Parse("15:04", fixedTime)
 	if err != nil {
-		return "", fmt.Errorf("invalid time format: %w", err)
+		return nil, fmt.Errorf("invalid time format: %w", err)
 	}
 
-	// Convert to cron format: "minute hour * * *"
-	cronSchedule := fmt.Sprintf("%d %d * * *", t.Minute(), t.Hour())
+	// Create schedule for daily execution at the specified time
+	hour := t.Hour()
+	minute := t.Minute()
 
-	// Note: Timezone handling would need to be implemented based on the timer's capabilities
-	// For now, we assume the timer handles timezone conversion
+	schedule := &models.Schedule{
+		Hour:   &hour,
+		Minute: &minute,
+	}
 
-	return cronSchedule, nil
+	// Set timezone if provided
+	if timezone != "" {
+		schedule.Timezone = timezone
+	}
+
+	return schedule, nil
 }
 
-// buildRandomCronSchedule creates a cron schedule for random timing.
-// For simplicity, this implementation creates multiple cron jobs at different times.
-func (st *SchedulerTool) buildRandomCronSchedule(startTime, endTime, timezone string) (string, error) {
+// buildRandomSchedule creates a Schedule for random timing.
+// This implementation creates a recurring timer at the start time of the interval
+// that creates one one-time timer for the actual message within the interval.
+func (st *SchedulerTool) buildRandomSchedule(startTime, endTime, timezone string) (*models.Schedule, error) {
 	// Parse start and end times
 	start, err := time.Parse("15:04", startTime)
 	if err != nil {
-		return "", fmt.Errorf("invalid start time format: %w", err)
+		return nil, fmt.Errorf("invalid start time format: %w", err)
 	}
 
 	end, err := time.Parse("15:04", endTime)
 	if err != nil {
-		return "", fmt.Errorf("invalid end time format: %w", err)
+		return nil, fmt.Errorf("invalid end time format: %w", err)
 	}
 
 	if !end.After(start) {
-		return "", fmt.Errorf("end time must be after start time")
+		return nil, fmt.Errorf("end time must be after start time")
 	}
 
-	// For random scheduling, we can use a single cron job that picks a random time
-	// within the window when it executes. For simplicity, we'll schedule at the start time
-	// and let the execution logic handle the randomization.
-	cronSchedule := fmt.Sprintf("%d %d * * *", start.Minute(), start.Hour())
+	// For random scheduling, create a schedule that runs at the start time
+	// The actual random timing will be handled by the execution logic
+	hour := start.Hour()
+	minute := start.Minute()
 
-	return cronSchedule, nil
+	schedule := &models.Schedule{
+		Hour:   &hour,
+		Minute: &minute,
+	}
+
+	// Set timezone if provided
+	if timezone != "" {
+		schedule.Timezone = timezone
+	}
+
+	return schedule, nil
 }
 
 // getParticipantPhoneNumber retrieves the phone number for a participant.

@@ -33,7 +33,7 @@ func (m *MockTimer) ScheduleAt(timestamp time.Time, callback func()) (string, er
 	return m.ScheduleAfter(0, callback)
 }
 
-func (m *MockTimer) ScheduleCron(cronExpr string, callback func()) (string, error) {
+func (m *MockTimer) ScheduleWithSchedule(schedule *models.Schedule, callback func()) (string, error) {
 	return m.ScheduleAfter(0, callback)
 }
 

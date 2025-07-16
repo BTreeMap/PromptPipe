@@ -12,6 +12,41 @@ import (
 	"github.com/openai/openai-go"
 )
 
+// Helper functions for test comparisons
+func intPtr(i int) *int {
+	return &i
+}
+
+// scheduleEquals compares two Schedule pointers for equality
+func scheduleEquals(a, b *models.Schedule) bool {
+	// Both nil
+	if a == nil && b == nil {
+		return true
+	}
+	// One nil, one not
+	if a == nil || b == nil {
+		return false
+	}
+	// Compare fields
+	return intPtrEquals(a.Minute, b.Minute) &&
+		intPtrEquals(a.Hour, b.Hour) &&
+		intPtrEquals(a.Day, b.Day) &&
+		intPtrEquals(a.Month, b.Month) &&
+		intPtrEquals(a.Weekday, b.Weekday) &&
+		a.Timezone == b.Timezone
+}
+
+// intPtrEquals compares two int pointers for equality
+func intPtrEquals(a, b *int) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	return *a == *b
+}
+
 // Mock GenAI client for testing tool use
 type MockGenAIClientWithTools struct {
 	shouldCallTools bool
@@ -128,9 +163,20 @@ func TestConversationFlow_WithSchedulerTool(t *testing.T) {
 	if len(timer.scheduledCalls) != 1 {
 		t.Errorf("Expected 1 scheduled call, got %d", len(timer.scheduledCalls))
 	} else {
-		expectedCron := "0 9 * * *" // 9:00 AM daily
-		if timer.scheduledCalls[0].CronExpr != expectedCron {
-			t.Errorf("Expected cron expression %s, got %s", expectedCron, timer.scheduledCalls[0].CronExpr)
+		expectedSchedule := &models.Schedule{
+			Hour:     intPtr(9),
+			Minute:   intPtr(0),
+			Timezone: "America/Toronto", // Match the timezone from the test data
+		}
+		actualSchedule := timer.scheduledCalls[0].Schedule
+		if !scheduleEquals(actualSchedule, expectedSchedule) {
+			t.Errorf("Expected schedule %v, got %v", expectedSchedule, actualSchedule)
+			if expectedSchedule.Hour != nil && actualSchedule.Hour != nil {
+				t.Errorf("Expected Hour value: %d, Actual Hour value: %d", *expectedSchedule.Hour, *actualSchedule.Hour)
+			}
+			if expectedSchedule.Minute != nil && actualSchedule.Minute != nil {
+				t.Errorf("Expected Minute value: %d, Actual Minute value: %d", *expectedSchedule.Minute, *actualSchedule.Minute)
+			}
 		}
 	}
 }

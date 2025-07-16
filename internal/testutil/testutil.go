@@ -32,7 +32,9 @@ func NewTestServer() *api.Server {
 	st := store.NewInMemoryStore()
 	timer := flow.NewSimpleTimer()
 
-	return api.NewServer(msgService, st, timer, "", nil)
+	// Create a default schedule (every minute)
+	defaultSchedule := &models.Schedule{}
+	return api.NewServer(msgService, st, timer, defaultSchedule, nil)
 }
 
 // AssertHTTPStatus checks the HTTP status code and fails the test if it doesn't match.
@@ -139,7 +141,7 @@ func SeedTestData(t TestingT, store store.Store) {
 func AssertPromptEquals(t TestingT, expected, actual models.Prompt, context string) {
 	t.Helper()
 	if actual.To != expected.To ||
-		actual.Cron != expected.Cron ||
+		!scheduleEquals(actual.Schedule, expected.Schedule) ||
 		actual.Type != expected.Type ||
 		actual.State != expected.State ||
 		actual.Body != expected.Body ||
@@ -179,4 +181,34 @@ func MustUnmarshalJSON(t TestingT, data []byte, target interface{}) {
 	if err := json.Unmarshal(data, target); err != nil {
 		t.Fatalf("failed to unmarshal JSON: %v", err)
 	}
+}
+
+// scheduleEquals compares two Schedule pointers for equality
+func scheduleEquals(a, b *models.Schedule) bool {
+	// Both nil
+	if a == nil && b == nil {
+		return true
+	}
+	// One nil, one not
+	if a == nil || b == nil {
+		return false
+	}
+	// Compare fields
+	return intPtrEquals(a.Minute, b.Minute) &&
+		intPtrEquals(a.Hour, b.Hour) &&
+		intPtrEquals(a.Day, b.Day) &&
+		intPtrEquals(a.Month, b.Month) &&
+		intPtrEquals(a.Weekday, b.Weekday) &&
+		a.Timezone == b.Timezone
+}
+
+// intPtrEquals compares two int pointers for equality
+func intPtrEquals(a, b *int) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	return *a == *b
 }
