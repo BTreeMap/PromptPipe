@@ -31,18 +31,30 @@ type ConversationHistory struct {
 // ConversationFlow implements a stateful conversation flow that maintains history and uses GenAI.
 type ConversationFlow struct {
 	stateManager     StateManager
-	genaiClient      *genai.Client
+	genaiClient      genai.ClientInterface
 	systemPrompt     string
 	systemPromptFile string
+	schedulerTool    *SchedulerTool // Tool for scheduling daily prompts
 }
 
 // NewConversationFlow creates a new conversation flow with dependencies.
-func NewConversationFlow(stateManager StateManager, genaiClient *genai.Client, systemPromptFile string) *ConversationFlow {
+func NewConversationFlow(stateManager StateManager, genaiClient genai.ClientInterface, systemPromptFile string) *ConversationFlow {
 	slog.Debug("Creating ConversationFlow with dependencies", "systemPromptFile", systemPromptFile)
 	return &ConversationFlow{
 		stateManager:     stateManager,
 		genaiClient:      genaiClient,
 		systemPromptFile: systemPromptFile,
+	}
+}
+
+// NewConversationFlowWithScheduler creates a new conversation flow with scheduler tool support.
+func NewConversationFlowWithScheduler(stateManager StateManager, genaiClient genai.ClientInterface, systemPromptFile string, schedulerTool *SchedulerTool) *ConversationFlow {
+	slog.Debug("Creating ConversationFlow with scheduler tool", "systemPromptFile", systemPromptFile, "hasGenAI", genaiClient != nil, "hasSchedulerTool", schedulerTool != nil)
+	return &ConversationFlow{
+		stateManager:     stateManager,
+		genaiClient:      genaiClient,
+		systemPromptFile: systemPromptFile,
+		schedulerTool:    schedulerTool,
 	}
 }
 
@@ -123,6 +135,8 @@ func (f *ConversationFlow) ProcessResponse(ctx context.Context, participantID, r
 		if err != nil {
 			return "", err
 		}
+		// Update currentState to the new state
+		currentState = models.StateConversationActive
 		// Initialize empty conversation history
 		emptyHistory := ConversationHistory{Messages: []ConversationMessage{}}
 		historyJSON, _ := json.Marshal(emptyHistory)
@@ -167,7 +181,13 @@ func (f *ConversationFlow) processConversationMessage(ctx context.Context, parti
 		return "", fmt.Errorf("failed to build OpenAI messages: %w", err)
 	}
 
-	// Generate response using GenAI with multi-message format
+	// Check if scheduler tool is available and we should enable tool calling
+	if f.schedulerTool != nil && f.genaiClient != nil {
+		// Use tool-enabled generation
+		return f.processWithTools(ctx, participantID, messages, history)
+	}
+
+	// Fallback to standard generation without tools
 	response, err := f.genaiClient.GenerateWithMessages(ctx, messages)
 	if err != nil {
 		slog.Error("ConversationFlow GenAI generation failed", "error", err, "participantID", participantID)
@@ -192,6 +212,118 @@ func (f *ConversationFlow) processConversationMessage(ctx context.Context, parti
 	// Return the AI response for sending
 	slog.Info("ConversationFlow generated response", "participantID", participantID, "responseLength", len(response))
 	return response, nil
+}
+
+// processWithTools handles conversation with tool calling capability.
+func (f *ConversationFlow) processWithTools(ctx context.Context, participantID string, messages []openai.ChatCompletionMessageParamUnion, history *ConversationHistory) (string, error) {
+	// Create tool definitions
+	tools := []openai.ChatCompletionToolParam{
+		f.schedulerTool.GetToolDefinition(),
+	}
+
+	// Generate response with tools
+	toolResponse, err := f.genaiClient.GenerateWithTools(ctx, messages, tools)
+	if err != nil {
+		slog.Error("ConversationFlow tool generation failed", "error", err, "participantID", participantID)
+		return "", fmt.Errorf("failed to generate response with tools: %w", err)
+	}
+
+	// Check if the AI wants to call tools
+	if len(toolResponse.ToolCalls) > 0 {
+		slog.Info("ConversationFlow processing tool calls", "participantID", participantID, "toolCallCount", len(toolResponse.ToolCalls))
+		return f.handleToolCalls(ctx, participantID, toolResponse, history, messages, tools)
+	}
+
+	// No tool calls, process as regular response
+	if toolResponse.Content == "" {
+		slog.Warn("ConversationFlow received empty content and no tool calls", "participantID", participantID)
+		return "I'm here to help you with your habits. What would you like to work on?", nil
+	}
+
+	// Add assistant response to history
+	assistantMsg := ConversationMessage{
+		Role:      "assistant",
+		Content:   toolResponse.Content,
+		Timestamp: time.Now(),
+	}
+	history.Messages = append(history.Messages, assistantMsg)
+
+	// Save updated history
+	err = f.saveConversationHistory(ctx, participantID, history)
+	if err != nil {
+		slog.Error("ConversationFlow failed to save conversation history", "error", err, "participantID", participantID)
+		// Don't fail the request if we can't save history, but log the error
+	}
+
+	slog.Info("ConversationFlow generated tool-enabled response", "participantID", participantID, "responseLength", len(toolResponse.Content))
+	return toolResponse.Content, nil
+}
+
+// handleToolCalls processes tool calls from the AI and executes them.
+func (f *ConversationFlow) handleToolCalls(ctx context.Context, participantID string, toolResponse *genai.ToolCallResponse, history *ConversationHistory, messages []openai.ChatCompletionMessageParamUnion, tools []openai.ChatCompletionToolParam) (string, error) {
+	// Add assistant message with tool calls to history
+	assistantMsg := ConversationMessage{
+		Role:      "assistant", // May be empty if only tool calls
+		Content:   toolResponse.Content,
+		Timestamp: time.Now(),
+	}
+	history.Messages = append(history.Messages, assistantMsg)
+
+	var toolResults []string
+
+	// Execute each tool call
+	for _, toolCall := range toolResponse.ToolCalls {
+		slog.Info("ConversationFlow executing tool call", "participantID", participantID, "toolName", toolCall.Function.Name, "toolCallID", toolCall.ID)
+
+		switch toolCall.Function.Name {
+		case "scheduler":
+			result, err := f.executeSchedulerTool(ctx, participantID, toolCall)
+			if err != nil {
+				slog.Error("ConversationFlow scheduler tool execution failed", "error", err, "participantID", participantID, "toolCallID", toolCall.ID)
+				errorMsg := fmt.Sprintf("❌ Sorry, I couldn't set up your scheduling: %s", err.Error())
+				toolResults = append(toolResults, errorMsg)
+			} else if !result.Success {
+				slog.Warn("ConversationFlow scheduler tool returned error", "error", result.Error, "participantID", participantID, "toolCallID", toolCall.ID)
+				errorMsg := fmt.Sprintf("❌ %s", result.Message)
+				toolResults = append(toolResults, errorMsg)
+			} else {
+				toolResults = append(toolResults, result.Message)
+			}
+
+		default:
+			slog.Warn("ConversationFlow unknown tool call", "toolName", toolCall.Function.Name, "participantID", participantID)
+			errorMsg := fmt.Sprintf("❌ Sorry, I don't know how to use the tool '%s'", toolCall.Function.Name)
+			toolResults = append(toolResults, errorMsg)
+		}
+	}
+
+	// Combine tool results into a single response
+	finalResponse := ""
+	if len(toolResults) == 1 {
+		finalResponse = toolResults[0]
+	} else if len(toolResults) > 1 {
+		finalResponse = strings.Join(toolResults, "\n\n")
+	} else {
+		finalResponse = "✅ Done! I've processed your request."
+	}
+
+	// Add tool execution result to history
+	toolResultMsg := ConversationMessage{
+		Role:      "assistant",
+		Content:   finalResponse,
+		Timestamp: time.Now(),
+	}
+	history.Messages = append(history.Messages, toolResultMsg)
+
+	// Save updated history
+	err := f.saveConversationHistory(ctx, participantID, history)
+	if err != nil {
+		slog.Error("ConversationFlow failed to save conversation history after tool execution", "error", err, "participantID", participantID)
+		// Don't fail the request if we can't save history, but log the error
+	}
+
+	slog.Info("ConversationFlow completed tool execution", "participantID", participantID, "toolCount", len(toolResponse.ToolCalls), "responseLength", len(finalResponse))
+	return finalResponse, nil
 }
 
 // transitionToState safely transitions to a new state with logging
@@ -356,4 +488,20 @@ Your goal is to have meaningful conversations and assist users with their questi
 
 	slog.Info("Created default system prompt file", "path", filePath)
 	return nil
+}
+
+// executeSchedulerTool executes a scheduler tool call.
+func (f *ConversationFlow) executeSchedulerTool(ctx context.Context, participantID string, toolCall genai.ToolCall) (*models.ToolResult, error) {
+	// Parse the scheduler parameters from the tool call
+	var params models.SchedulerToolParams
+	if err := json.Unmarshal(toolCall.Function.Arguments, &params); err != nil {
+		return &models.ToolResult{
+			Success: false,
+			Message: "Failed to parse scheduling parameters",
+			Error:   err.Error(),
+		}, fmt.Errorf("failed to unmarshal scheduler parameters: %w", err)
+	}
+
+	// Execute the scheduler tool
+	return f.schedulerTool.ExecuteScheduler(ctx, participantID, params)
 }

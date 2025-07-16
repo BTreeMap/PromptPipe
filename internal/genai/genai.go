@@ -4,6 +4,7 @@ package genai
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 
@@ -26,6 +27,14 @@ var (
 	ErrAPIKeyNotSet      = fmt.Errorf("API key not set")
 	ErrNoChoicesReturned = fmt.Errorf("no choices returned from OpenAI API")
 )
+
+// ClientInterface defines the interface for GenAI clients to improve testability.
+type ClientInterface interface {
+	GeneratePrompt(system, user string) (string, error)
+	GeneratePromptWithContext(ctx context.Context, system, user string) (string, error)
+	GenerateWithMessages(ctx context.Context, messages []openai.ChatCompletionMessageParamUnion) (string, error)
+	GenerateWithTools(ctx context.Context, messages []openai.ChatCompletionMessageParamUnion, tools []openai.ChatCompletionToolParam) (*ToolCallResponse, error)
+}
 
 // ChatService defines minimal interface for chat completions.
 // Interface names should be descriptive and use proper Go naming conventions.
@@ -190,4 +199,68 @@ func (c *Client) GenerateWithMessages(ctx context.Context, messages []openai.Cha
 	content := resp.Choices[0].Message.Content
 	slog.Debug("GenerateWithMessages succeeded", "length", len(content), "model", c.model)
 	return content, nil
+}
+
+// ToolCallResponse represents a response that may contain tool calls.
+type ToolCallResponse struct {
+	Content   string     `json:"content"`
+	ToolCalls []ToolCall `json:"tool_calls,omitempty"`
+}
+
+// ToolCall represents a tool/function call made by the LLM.
+type ToolCall struct {
+	ID       string       `json:"id"`
+	Type     string       `json:"type"`
+	Function FunctionCall `json:"function"`
+}
+
+// FunctionCall represents a function call with name and arguments.
+type FunctionCall struct {
+	Name      string          `json:"name"`
+	Arguments json.RawMessage `json:"arguments"`
+}
+
+// GenerateWithTools generates content with the ability to call tools/functions.
+// Returns either a text response or tool calls that need to be executed.
+func (c *Client) GenerateWithTools(ctx context.Context, messages []openai.ChatCompletionMessageParamUnion, tools []openai.ChatCompletionToolParam) (*ToolCallResponse, error) {
+	slog.Debug("GenerateWithTools invoked", "messageCount", len(messages), "toolCount", len(tools), "model", c.model)
+
+	params := openai.ChatCompletionNewParams{
+		Model:       c.model,
+		Messages:    messages,
+		Tools:       tools,
+		Temperature: openai.Float(c.temperature),
+		MaxTokens:   openai.Int(int64(c.maxTokens)),
+	}
+
+	resp, err := c.chat.Create(ctx, params)
+	if err != nil {
+		slog.Error("GenAI GenerateWithTools failed", "error", err, "model", c.model)
+		return nil, fmt.Errorf("failed to create chat completion with tools: %w", err)
+	}
+
+	if len(resp.Choices) == 0 {
+		slog.Warn("GenerateWithTools no choices returned", "model", c.model)
+		return nil, ErrNoChoicesReturned
+	}
+
+	choice := resp.Choices[0]
+	result := &ToolCallResponse{
+		Content: choice.Message.Content,
+	}
+
+	// Extract tool calls if present
+	for _, toolCall := range choice.Message.ToolCalls {
+		result.ToolCalls = append(result.ToolCalls, ToolCall{
+			ID:   toolCall.ID,
+			Type: string(toolCall.Type),
+			Function: FunctionCall{
+				Name:      toolCall.Function.Name,
+				Arguments: json.RawMessage(toolCall.Function.Arguments),
+			},
+		})
+	}
+
+	slog.Debug("GenerateWithTools succeeded", "contentLength", len(result.Content), "toolCallCount", len(result.ToolCalls))
+	return result, nil
 }

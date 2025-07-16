@@ -275,7 +275,7 @@ func (s *Server) initializeGenAI(genaiOpts []genai.Option) error {
 	return nil
 }
 
-// initializeConversationFlow sets up the conversation flow with system prompt loading
+// initializeConversationFlow sets up the conversation flow with system prompt loading and scheduler tool
 func (s *Server) initializeConversationFlow() error {
 	// Get system prompt file path
 	systemPromptFile := flow.GetSystemPromptPath()
@@ -285,9 +285,25 @@ func (s *Server) initializeConversationFlow() error {
 		slog.Warn("Failed to create default system prompt file", "error", err, "path", systemPromptFile)
 	}
 
-	// Create conversation flow with dependencies
+	// Create conversation flow with dependencies and scheduler tool
 	stateManager := flow.NewStoreBasedStateManager(s.st)
-	conversationFlow := flow.NewConversationFlow(stateManager, s.gaClient, systemPromptFile)
+
+	// Create scheduler tool for LLM function calling with GenAI support
+	var schedulerTool *flow.SchedulerTool
+	if s.gaClient != nil {
+		schedulerTool = flow.NewSchedulerToolWithGenAI(s.timer, s.msgService, s.gaClient)
+	} else {
+		schedulerTool = flow.NewSchedulerTool(s.timer, s.msgService)
+	}
+
+	// Create conversation flow with scheduler tool support
+	// Handle typed nil interface issue - if gaClient is a nil pointer, pass nil interface
+	var genaiClientInterface genai.ClientInterface
+	if s.gaClient != nil {
+		genaiClientInterface = s.gaClient
+	}
+
+	conversationFlow := flow.NewConversationFlowWithScheduler(stateManager, genaiClientInterface, systemPromptFile, schedulerTool)
 
 	// Load system prompt
 	if err := conversationFlow.LoadSystemPrompt(); err != nil {
@@ -296,7 +312,7 @@ func (s *Server) initializeConversationFlow() error {
 
 	// Register conversation flow generator
 	flow.Register(models.PromptTypeConversation, conversationFlow)
-	slog.Debug("Conversation flow initialized and registered", "systemPromptFile", systemPromptFile)
+	slog.Debug("Conversation flow initialized with scheduler tool", "systemPromptFile", systemPromptFile, "hasGenAI", s.gaClient != nil)
 
 	return nil
 }

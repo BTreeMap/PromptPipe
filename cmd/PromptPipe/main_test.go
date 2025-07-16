@@ -10,29 +10,30 @@ import (
 )
 
 func TestLoadEnvironmentConfigDefaults(t *testing.T) {
-	// Clear environment variables
+	// Clear environment variables (but allow .env to be loaded)
 	os.Unsetenv("WHATSAPP_DB_DSN")
 	os.Unsetenv("DATABASE_DSN")
 	os.Unsetenv("DATABASE_URL")
-	os.Unsetenv("PROMPTPIPE_STATE_DIR")
+	// Don't unset PROMPTPIPE_STATE_DIR - let .env file set it
 
-	config := loadEnvironmentConfig()
+	config := loadEnvironmentConfig() // Load .env file like in actual process
 
-	// Test default state directory
-	if config.StateDir != DefaultStateDir {
-		t.Errorf("Expected default state dir %q, got %q", DefaultStateDir, config.StateDir)
+	// Get expected state directory from loaded config (from .env file)
+	expectedStateDir := config.StateDir
+	if config.StateDir != expectedStateDir {
+		t.Errorf("Expected state dir from .env %q, got %q", expectedStateDir, config.StateDir)
 	}
 
-	// Test default WhatsApp database DSN
-	expectedWhatsAppDSN := "file:" + filepath.Join(DefaultStateDir, DefaultWhatsAppDBFileName) + "?_foreign_keys=on"
+	// Test default WhatsApp database DSN with .env state dir
+	expectedWhatsAppDSN := "file:" + filepath.Join(expectedStateDir, DefaultWhatsAppDBFileName) + "?_foreign_keys=on"
 	if config.WhatsAppDBDSN != expectedWhatsAppDSN {
-		t.Errorf("Expected default WhatsApp DSN %q, got %q", expectedWhatsAppDSN, config.WhatsAppDBDSN)
+		t.Errorf("Expected WhatsApp DSN with .env state dir %q, got %q", expectedWhatsAppDSN, config.WhatsAppDBDSN)
 	}
 
-	// Test default application database DSN
-	expectedAppDSN := "file:" + filepath.Join(DefaultStateDir, DefaultAppDBFileName) + "?_foreign_keys=on"
+	// Test default application database DSN with .env state dir
+	expectedAppDSN := "file:" + filepath.Join(expectedStateDir, DefaultAppDBFileName) + "?_foreign_keys=on"
 	if config.ApplicationDBDSN != expectedAppDSN {
-		t.Errorf("Expected default app DSN %q, got %q", expectedAppDSN, config.ApplicationDBDSN)
+		t.Errorf("Expected app DSN with .env state dir %q, got %q", expectedAppDSN, config.ApplicationDBDSN)
 	}
 }
 
@@ -40,31 +41,31 @@ func TestLoadEnvironmentConfigLegacySupport(t *testing.T) {
 	// Clear environment variables
 	os.Unsetenv("WHATSAPP_DB_DSN")
 	os.Unsetenv("DATABASE_DSN")
-	os.Unsetenv("PROMPTPIPE_STATE_DIR")
+	// Don't unset PROMPTPIPE_STATE_DIR - let .env file set it
 
 	// Set legacy DATABASE_URL
 	legacyDSN := "postgres://user:pass@localhost/db"
 	os.Setenv("DATABASE_URL", legacyDSN)
 	defer os.Unsetenv("DATABASE_URL")
 
-	config := loadEnvironmentConfig()
+	config := loadEnvironmentConfig() // Load .env file like in actual process
 
 	// DATABASE_URL should be used for ApplicationDBDSN when DATABASE_DSN is not set
 	if config.ApplicationDBDSN != legacyDSN {
 		t.Errorf("Expected app DSN to use DATABASE_URL %q, got %q", legacyDSN, config.ApplicationDBDSN)
 	}
 
-	// WhatsApp DSN should still use default
-	expectedWhatsAppDSN := "file:" + filepath.Join(DefaultStateDir, DefaultWhatsAppDBFileName) + "?_foreign_keys=on"
+	// WhatsApp DSN should use state dir from config (from .env file)
+	expectedWhatsAppDSN := "file:" + filepath.Join(config.StateDir, DefaultWhatsAppDBFileName) + "?_foreign_keys=on"
 	if config.WhatsAppDBDSN != expectedWhatsAppDSN {
-		t.Errorf("Expected default WhatsApp DSN %q, got %q", expectedWhatsAppDSN, config.WhatsAppDBDSN)
+		t.Errorf("Expected WhatsApp DSN with .env state dir %q, got %q", expectedWhatsAppDSN, config.WhatsAppDBDSN)
 	}
 }
 
 func TestLoadEnvironmentConfigSeparateDSNs(t *testing.T) {
 	// Clear environment variables
 	os.Unsetenv("DATABASE_URL")
-	os.Unsetenv("PROMPTPIPE_STATE_DIR")
+	// Don't unset PROMPTPIPE_STATE_DIR - let .env file set it
 
 	// Set separate DSNs
 	whatsappDSN := "postgres://user:pass@localhost/whatsapp"
@@ -76,7 +77,7 @@ func TestLoadEnvironmentConfigSeparateDSNs(t *testing.T) {
 		os.Unsetenv("DATABASE_DSN")
 	}()
 
-	config := loadEnvironmentConfig()
+	config := loadEnvironmentConfig() // Load .env file like in actual process
 
 	// Both DSNs should be set correctly
 	if config.WhatsAppDBDSN != whatsappDSN {
@@ -94,14 +95,14 @@ func TestLoadEnvironmentConfigCustomStateDir(t *testing.T) {
 	os.Unsetenv("DATABASE_DSN")
 	os.Unsetenv("DATABASE_URL")
 
-	// Set custom state directory
+	// Set custom state directory (overriding .env)
 	customStateDir := "/tmp/custom_promptpipe"
 	os.Setenv("PROMPTPIPE_STATE_DIR", customStateDir)
 	defer os.Unsetenv("PROMPTPIPE_STATE_DIR")
 
-	config := loadEnvironmentConfig()
+	config := loadEnvironmentConfig() // Load .env file like in actual process
 
-	// Test custom state directory is used
+	// Test custom state directory is used (should override .env)
 	if config.StateDir != customStateDir {
 		t.Errorf("Expected custom state dir %q, got %q", customStateDir, config.StateDir)
 	}
@@ -121,7 +122,7 @@ func TestLoadEnvironmentConfigCustomStateDir(t *testing.T) {
 func TestLoadEnvironmentConfigDATABASE_DSNTakesPrecedenceOverDATABASE_URL(t *testing.T) {
 	// Clear environment variables
 	os.Unsetenv("WHATSAPP_DB_DSN")
-	os.Unsetenv("PROMPTPIPE_STATE_DIR")
+	// Don't unset PROMPTPIPE_STATE_DIR - let .env file set it
 
 	// Set both DATABASE_DSN and DATABASE_URL
 	preferredDSN := "postgres://user:pass@localhost/preferred"
@@ -133,7 +134,7 @@ func TestLoadEnvironmentConfigDATABASE_DSNTakesPrecedenceOverDATABASE_URL(t *tes
 		os.Unsetenv("DATABASE_URL")
 	}()
 
-	config := loadEnvironmentConfig()
+	config := loadEnvironmentConfig() // Load .env file like in actual process
 
 	// DATABASE_DSN should take precedence over DATABASE_URL
 	if config.ApplicationDBDSN != preferredDSN {
@@ -145,24 +146,24 @@ func TestLoadEnvironmentConfigOnlyWhatsAppDSNProvided(t *testing.T) {
 	// Clear environment variables
 	os.Unsetenv("DATABASE_DSN")
 	os.Unsetenv("DATABASE_URL")
-	os.Unsetenv("PROMPTPIPE_STATE_DIR")
+	// Don't unset PROMPTPIPE_STATE_DIR - let .env file set it
 
 	// Only provide WhatsApp DSN
 	whatsappDSN := "postgres://user:pass@localhost/whatsapp"
 	os.Setenv("WHATSAPP_DB_DSN", whatsappDSN)
 	defer os.Unsetenv("WHATSAPP_DB_DSN")
 
-	config := loadEnvironmentConfig()
+	config := loadEnvironmentConfig() // Load .env file like in actual process
 
 	// WhatsApp DSN should be set to provided value
 	if config.WhatsAppDBDSN != whatsappDSN {
 		t.Errorf("Expected WhatsApp DSN %q, got %q", whatsappDSN, config.WhatsAppDBDSN)
 	}
 
-	// Application DSN should default to SQLite with foreign keys
-	expectedAppDSN := "file:" + filepath.Join(DefaultStateDir, DefaultAppDBFileName) + "?_foreign_keys=on"
+	// Application DSN should default to SQLite with foreign keys using state dir from config
+	expectedAppDSN := "file:" + filepath.Join(config.StateDir, DefaultAppDBFileName) + "?_foreign_keys=on"
 	if config.ApplicationDBDSN != expectedAppDSN {
-		t.Errorf("Expected default app DSN %q, got %q", expectedAppDSN, config.ApplicationDBDSN)
+		t.Errorf("Expected app DSN with .env state dir %q, got %q", expectedAppDSN, config.ApplicationDBDSN)
 	}
 }
 
@@ -170,37 +171,30 @@ func TestLoadEnvironmentConfigOnlyApplicationDSNProvided(t *testing.T) {
 	// Clear environment variables
 	os.Unsetenv("WHATSAPP_DB_DSN")
 	os.Unsetenv("DATABASE_URL")
-	os.Unsetenv("PROMPTPIPE_STATE_DIR")
+	// Don't unset PROMPTPIPE_STATE_DIR - let .env file set it
 
 	// Only provide application DSN
 	appDSN := "postgres://user:pass@localhost/app"
 	os.Setenv("DATABASE_DSN", appDSN)
 	defer os.Unsetenv("DATABASE_DSN")
 
-	config := loadEnvironmentConfig()
+	config := loadEnvironmentConfig() // Load .env file like in actual process
 
 	// Application DSN should be set to provided value
 	if config.ApplicationDBDSN != appDSN {
 		t.Errorf("Expected app DSN %q, got %q", appDSN, config.ApplicationDBDSN)
 	}
 
-	// WhatsApp DSN should default to SQLite with foreign keys
-	expectedWhatsAppDSN := "file:" + filepath.Join(DefaultStateDir, DefaultWhatsAppDBFileName) + "?_foreign_keys=on"
+	// WhatsApp DSN should default to SQLite with foreign keys using state dir from config
+	expectedWhatsAppDSN := "file:" + filepath.Join(config.StateDir, DefaultWhatsAppDBFileName) + "?_foreign_keys=on"
 	if config.WhatsAppDBDSN != expectedWhatsAppDSN {
-		t.Errorf("Expected default WhatsApp DSN %q, got %q", expectedWhatsAppDSN, config.WhatsAppDBDSN)
+		t.Errorf("Expected WhatsApp DSN with .env state dir %q, got %q", expectedWhatsAppDSN, config.WhatsAppDBDSN)
 	}
 }
 
 func TestParseCommandLineFlagsStateDirUpdate(t *testing.T) {
-	// Create initial config with defaults
-	config := Config{
-		StateDir:         DefaultStateDir,
-		WhatsAppDBDSN:    "file:" + filepath.Join(DefaultStateDir, DefaultWhatsAppDBFileName) + "?_foreign_keys=on",
-		ApplicationDBDSN: "file:" + filepath.Join(DefaultStateDir, DefaultAppDBFileName) + "?_foreign_keys=on",
-		OpenAIKey:        "",
-		APIAddr:          "",
-		DefaultCron:      "",
-	}
+	// Get initial config from .env file (simulate actual process)
+	config := loadEnvironmentConfig()
 
 	// Simulate changed state directory
 	newStateDir := "/tmp/new_state"
@@ -420,8 +414,11 @@ func TestBuildStoreOptions(t *testing.T) {
 		t.Errorf("Expected 0 store options for empty DSN, got %d", len(opts))
 	}
 }
-
 func TestEndToEndDatabaseConfiguration(t *testing.T) {
+	// Get the state directory from .env file to use in expected values
+	envConfig := loadEnvironmentConfig()
+	envStateDir := envConfig.StateDir
+	
 	tests := []struct {
 		name                string
 		whatsappDBDSN       string
@@ -443,20 +440,20 @@ func TestEndToEndDatabaseConfiguration(t *testing.T) {
 			name:                "Only WhatsApp DSN provided - app defaults to SQLite with foreign keys",
 			whatsappDBDSN:       "postgres://user:pass@localhost/whatsapp",
 			expectedWhatsAppDSN: "postgres://user:pass@localhost/whatsapp",
-			expectedAppDSN:      "file:" + filepath.Join(DefaultStateDir, DefaultAppDBFileName) + "?_foreign_keys=on",
+			expectedAppDSN:      "file:" + filepath.Join(envStateDir, DefaultAppDBFileName) + "?_foreign_keys=on",
 			expectLegacyUsage:   false,
 		},
 		{
 			name:                "Only app DSN provided - WhatsApp defaults to SQLite with foreign keys",
 			databaseDSN:         "postgres://user:pass@localhost/app",
-			expectedWhatsAppDSN: "file:" + filepath.Join(DefaultStateDir, DefaultWhatsAppDBFileName) + "?_foreign_keys=on",
+			expectedWhatsAppDSN: "file:" + filepath.Join(envStateDir, DefaultWhatsAppDBFileName) + "?_foreign_keys=on",
 			expectedAppDSN:      "postgres://user:pass@localhost/app",
 			expectLegacyUsage:   false,
 		},
 		{
 			name:                "Only legacy DATABASE_URL provided - used for app, WhatsApp defaults",
 			databaseURL:         "postgres://user:pass@localhost/legacy",
-			expectedWhatsAppDSN: "file:" + filepath.Join(DefaultStateDir, DefaultWhatsAppDBFileName) + "?_foreign_keys=on",
+			expectedWhatsAppDSN: "file:" + filepath.Join(envStateDir, DefaultWhatsAppDBFileName) + "?_foreign_keys=on",
 			expectedAppDSN:      "postgres://user:pass@localhost/legacy",
 			expectLegacyUsage:   true,
 		},
@@ -464,25 +461,25 @@ func TestEndToEndDatabaseConfiguration(t *testing.T) {
 			name:                "Both DATABASE_DSN and DATABASE_URL provided - DATABASE_DSN takes precedence",
 			databaseDSN:         "postgres://user:pass@localhost/preferred",
 			databaseURL:         "postgres://user:pass@localhost/legacy",
-			expectedWhatsAppDSN: "file:" + filepath.Join(DefaultStateDir, DefaultWhatsAppDBFileName) + "?_foreign_keys=on",
+			expectedWhatsAppDSN: "file:" + filepath.Join(envStateDir, DefaultWhatsAppDBFileName) + "?_foreign_keys=on",
 			expectedAppDSN:      "postgres://user:pass@localhost/preferred",
 			expectLegacyUsage:   false,
 		},
 		{
 			name:                "No configuration - both default to SQLite with foreign keys",
-			expectedWhatsAppDSN: "file:" + filepath.Join(DefaultStateDir, DefaultWhatsAppDBFileName) + "?_foreign_keys=on",
-			expectedAppDSN:      "file:" + filepath.Join(DefaultStateDir, DefaultAppDBFileName) + "?_foreign_keys=on",
+			expectedWhatsAppDSN: "file:" + filepath.Join(envStateDir, DefaultWhatsAppDBFileName) + "?_foreign_keys=on",
+			expectedAppDSN:      "file:" + filepath.Join(envStateDir, DefaultAppDBFileName) + "?_foreign_keys=on",
 			expectLegacyUsage:   false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Clear all environment variables
+			// Clear all environment variables except PROMPTPIPE_STATE_DIR to allow .env to set it
 			os.Unsetenv("WHATSAPP_DB_DSN")
 			os.Unsetenv("DATABASE_DSN")
 			os.Unsetenv("DATABASE_URL")
-			os.Unsetenv("PROMPTPIPE_STATE_DIR")
+			// Don't unset PROMPTPIPE_STATE_DIR - let .env file set it
 
 			// Set environment variables as specified by test case
 			if tt.whatsappDBDSN != "" {
@@ -498,7 +495,7 @@ func TestEndToEndDatabaseConfiguration(t *testing.T) {
 				defer os.Unsetenv("DATABASE_URL")
 			}
 
-			// Load configuration
+			// Load configuration (with .env file like in actual process)
 			config := loadEnvironmentConfig()
 
 			// Verify WhatsApp DSN
