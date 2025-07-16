@@ -3,10 +3,9 @@ package flow
 
 import (
 	"context"
-	"crypto/rand"
 	"fmt"
 	"log/slog"
-	"math/big"
+	"math/rand"
 	"time"
 
 	"github.com/BTreeMap/PromptPipe/internal/genai"
@@ -325,12 +324,12 @@ func (st *SchedulerTool) executeRandomScheduledPrompt(ctx context.Context, promp
 	// Calculate random delay from start time to end time
 	startMinutes := randomInfo.StartTime.Hour()*60 + randomInfo.StartTime.Minute()
 	endMinutes := randomInfo.EndTime.Hour()*60 + randomInfo.EndTime.Minute()
-	
+
 	if endMinutes <= startMinutes {
 		// Handle case where end time is the next day (e.g., 23:00 to 01:00)
 		endMinutes += 24 * 60
 	}
-	
+
 	// Generate random minutes within the interval
 	intervalMinutes := endMinutes - startMinutes
 	if intervalMinutes <= 0 {
@@ -340,30 +339,21 @@ func (st *SchedulerTool) executeRandomScheduledPrompt(ctx context.Context, promp
 		return
 	}
 
-	// Use crypto/rand for secure random number generation
-	randomOffset, err := rand.Int(rand.Reader, big.NewInt(int64(intervalMinutes)))
-	if err != nil {
-		slog.Error("Failed to generate random offset", "error", err)
-		// Fallback to immediate execution
-		st.executeScheduledPrompt(ctx, prompt)
-		return
-	}
-
-	// Calculate the random delay in minutes
-	randomDelayMinutes := randomOffset.Int64()
+	// Generate random offset within the interval using math/rand
+	randomDelayMinutes := rand.Intn(intervalMinutes)
 	randomDelay := time.Duration(randomDelayMinutes) * time.Minute
 
-	slog.Info("Scheduling random prompt", 
-		"to", prompt.To, 
-		"intervalMinutes", intervalMinutes, 
+	slog.Info("Scheduling random prompt",
+		"to", prompt.To,
+		"intervalMinutes", intervalMinutes,
 		"randomDelayMinutes", randomDelayMinutes,
 		"delay", randomDelay)
 
 	// Schedule a one-time timer for the random time
-	_, err = st.timer.ScheduleAfter(randomDelay, func() {
+	_, err := st.timer.ScheduleAfter(randomDelay, func() {
 		st.executeScheduledPrompt(ctx, prompt)
 	})
-	
+
 	if err != nil {
 		slog.Error("Failed to schedule random one-time timer", "error", err, "to", prompt.To)
 		// Fallback to immediate execution
