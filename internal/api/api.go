@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -45,33 +46,33 @@ const (
 
 // Server holds all dependencies for the API server.
 type Server struct {
-	msgService  messaging.Service
-	respHandler *messaging.ResponseHandler
-	st          store.Store
-	timer       models.Timer
-	defaultCron string
-	gaClient    *genai.Client
+	msgService      messaging.Service
+	respHandler     *messaging.ResponseHandler
+	st              store.Store
+	timer           models.Timer
+	defaultSchedule *models.Schedule
+	gaClient        *genai.Client
 }
 
 // NewServer creates a new API server instance with the provided dependencies.
-func NewServer(msgService messaging.Service, st store.Store, timer models.Timer, defaultCron string, gaClient *genai.Client) *Server {
+func NewServer(msgService messaging.Service, st store.Store, timer models.Timer, defaultSchedule *models.Schedule, gaClient *genai.Client) *Server {
 	// Create response handler
 	respHandler := messaging.NewResponseHandler(msgService, st)
 
 	return &Server{
-		msgService:  msgService,
-		respHandler: respHandler,
-		st:          st,
-		timer:       timer,
-		defaultCron: defaultCron,
-		gaClient:    gaClient,
+		msgService:      msgService,
+		respHandler:     respHandler,
+		st:              st,
+		timer:           timer,
+		defaultSchedule: defaultSchedule,
+		gaClient:        gaClient,
 	}
 }
 
-// Opts holds configuration options for the API server, such as HTTP address and default cron schedule.
+// Opts holds configuration options for the API server, such as HTTP address and default schedule.
 type Opts struct {
-	Addr        string // overrides API_ADDR
-	DefaultCron string // overrides DEFAULT_SCHEDULE
+	Addr            string           // overrides API_ADDR
+	DefaultSchedule *models.Schedule // overrides DEFAULT_SCHEDULE
 }
 
 // Option defines a configuration option for the API server.
@@ -84,10 +85,24 @@ func WithAddr(addr string) Option {
 	}
 }
 
-// WithDefaultCron overrides the default cron schedule for prompts.
-func WithDefaultCron(cron string) Option {
+// WithDefaultSchedule overrides the default schedule for prompts.
+func WithDefaultSchedule(schedule *models.Schedule) Option {
 	return func(o *Opts) {
-		o.DefaultCron = cron
+		o.DefaultSchedule = schedule
+	}
+}
+
+// WithDefaultCron overrides the default schedule for prompts using a cron-like format.
+// This is a compatibility function that converts cron string to Schedule struct.
+func WithDefaultCron(cron string) Option {
+	// Parse cron string (format: "minute hour day month weekday")
+	schedule, err := parseCronToSchedule(cron)
+	if err != nil {
+		slog.Warn("Failed to parse cron string, using nil schedule", "cron", cron, "error", err)
+		schedule = nil
+	}
+	return func(o *Opts) {
+		o.DefaultSchedule = schedule
 	}
 }
 
@@ -157,8 +172,8 @@ func createAndConfigureServer(waOpts []whatsapp.Option, storeOpts []store.Option
 	slog.Debug("Timer initialized")
 
 	// Configure default schedule
-	server.defaultCron = apiCfg.DefaultCron
-	slog.Debug("Default cron schedule set", "defaultCron", server.defaultCron)
+	server.defaultSchedule = apiCfg.DefaultSchedule
+	slog.Debug("Default schedule set", "defaultSchedule", apiCfg.DefaultSchedule)
 
 	// Initialize GenAI client if options provided
 	if err := server.initializeGenAI(genaiOpts); err != nil {
@@ -487,6 +502,87 @@ func (s *Server) gracefulShutdown(srv *http.Server) error {
 
 	slog.Info("Graceful shutdown completed successfully")
 	return nil
+}
+
+// parseCronToSchedule converts a cron string to a Schedule struct.
+// Supports the basic cron format: "minute hour day month weekday"
+func parseCronToSchedule(cron string) (*models.Schedule, error) {
+	if cron == "" {
+		return nil, errors.New("empty cron string")
+	}
+
+	// Split cron string into fields
+	fields := strings.Fields(cron)
+	if len(fields) != 5 {
+		return nil, fmt.Errorf("invalid cron format, expected 5 fields, got %d", len(fields))
+	}
+
+	schedule := &models.Schedule{}
+
+	// Parse minute (field 0)
+	if fields[0] != "*" {
+		if minute, err := parseInt(fields[0], 0, 59); err == nil {
+			schedule.Minute = &minute
+		} else {
+			return nil, fmt.Errorf("invalid minute: %s", fields[0])
+		}
+	}
+
+	// Parse hour (field 1)
+	if fields[1] != "*" {
+		if hour, err := parseInt(fields[1], 0, 23); err == nil {
+			schedule.Hour = &hour
+		} else {
+			return nil, fmt.Errorf("invalid hour: %s", fields[1])
+		}
+	}
+
+	// Parse day (field 2)
+	if fields[2] != "*" {
+		if day, err := parseInt(fields[2], 1, 31); err == nil {
+			schedule.Day = &day
+		} else {
+			return nil, fmt.Errorf("invalid day: %s", fields[2])
+		}
+	}
+
+	// Parse month (field 3)
+	if fields[3] != "*" {
+		if month, err := parseInt(fields[3], 1, 12); err == nil {
+			schedule.Month = &month
+		} else {
+			return nil, fmt.Errorf("invalid month: %s", fields[3])
+		}
+	}
+
+	// Parse weekday (field 4)
+	if fields[4] != "*" {
+		if weekday, err := parseInt(fields[4], 0, 6); err == nil {
+			schedule.Weekday = &weekday
+		} else {
+			return nil, fmt.Errorf("invalid weekday: %s", fields[4])
+		}
+	}
+
+	return schedule, nil
+}
+
+// parseInt parses an integer with range validation.
+func parseInt(s string, min, max int) (int, error) {
+	// Handle simple range formats like "1-5" by taking the first value
+	if strings.Contains(s, "-") {
+		parts := strings.Split(s, "-")
+		s = parts[0]
+	}
+
+	val, err := strconv.Atoi(s)
+	if err != nil {
+		return 0, err
+	}
+	if val < min || val > max {
+		return 0, fmt.Errorf("value %d out of range [%d,%d]", val, min, max)
+	}
+	return val, nil
 }
 
 // interventionRouter handles all intervention-related endpoints with proper RESTful routing

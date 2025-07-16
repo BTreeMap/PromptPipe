@@ -16,11 +16,13 @@ import (
 
 // newTestServer creates a Server instance for testing with in-memory dependencies.
 func newTestServer() *Server {
+	// Create a default schedule (every minute)
+	defaultSchedule := &models.Schedule{}
 	return NewServer(
 		messaging.NewWhatsAppService(whatsapp.NewMockClient()),
 		store.NewInMemoryStore(),
 		flow.NewSimpleTimer(),
-		"",
+		defaultSchedule,
 		nil,
 	)
 }
