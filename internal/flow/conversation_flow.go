@@ -382,7 +382,14 @@ func (f *ConversationFlow) handleToolCalls(ctx context.Context, participantID st
 				errorMsg := fmt.Sprintf("❌ %s", result.Message)
 				toolResults = append(toolResults, errorMsg)
 			} else {
-				toolResults = append(toolResults, result.Message)
+				// For intervention tool, don't add any response to toolResults
+				// The tool already sent the intervention content directly to the user
+				// No acknowledgment needed since user already received the content
+				slog.Info("ConversationFlow intervention tool executed successfully", 
+					"participantID", participantID, 
+					"toolCallID", toolCall.ID,
+					"successMessage", result.Message)
+				// Don't add anything to toolResults - let the intervention speak for itself
 			}
 
 		default:
@@ -399,16 +406,21 @@ func (f *ConversationFlow) handleToolCalls(ctx context.Context, participantID st
 	} else if len(toolResults) > 1 {
 		finalResponse = strings.Join(toolResults, "\n\n")
 	} else {
-		finalResponse = "✅ Done! I've processed your request."
+		// No tool results means all tools executed successfully but didn't produce user-facing content
+		// This happens when intervention tools are called (they handle messaging directly)
+		// Return empty string to avoid sending any redundant acknowledgment
+		finalResponse = ""
 	}
 
-	// Add tool execution result to history
-	toolResultMsg := ConversationMessage{
-		Role:      "assistant",
-		Content:   finalResponse,
-		Timestamp: time.Now(),
+	// Add tool execution result to history only if there's content to add
+	if finalResponse != "" {
+		toolResultMsg := ConversationMessage{
+			Role:      "assistant",
+			Content:   finalResponse,
+			Timestamp: time.Now(),
+		}
+		history.Messages = append(history.Messages, toolResultMsg)
 	}
-	history.Messages = append(history.Messages, toolResultMsg)
 
 	// Save updated history
 	err := f.saveConversationHistory(ctx, participantID, history)
