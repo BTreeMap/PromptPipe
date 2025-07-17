@@ -9,7 +9,7 @@ import (
 )
 
 func TestOneMinuteInterventionTool_GetToolDefinition(t *testing.T) {
-	stateManager := &MockStateManager{}
+	stateManager := NewMockStateManager()
 	genaiClient := &MockGenAIClientWithTools{}
 	msgService := &MockMessagingService{}
 	tool := NewOneMinuteInterventionTool(stateManager, genaiClient, msgService)
@@ -30,7 +30,7 @@ func TestOneMinuteInterventionTool_GetToolDefinition(t *testing.T) {
 }
 
 func TestOneMinuteInterventionTool_ExecuteOneMinuteIntervention(t *testing.T) {
-	stateManager := &MockStateManager{}
+	stateManager := NewMockStateManager()
 	genaiClient := &MockGenAIClientWithTools{}
 	msgService := &MockMessagingService{}
 	tool := NewOneMinuteInterventionTool(stateManager, genaiClient, msgService)
@@ -71,7 +71,7 @@ func TestOneMinuteInterventionTool_ExecuteOneMinuteIntervention(t *testing.T) {
 }
 
 func TestOneMinuteInterventionTool_FlexibleParameters(t *testing.T) {
-	stateManager := &MockStateManager{}
+	stateManager := NewMockStateManager()
 	genaiClient := &MockGenAIClientWithTools{}
 	msgService := &MockMessagingService{}
 	tool := NewOneMinuteInterventionTool(stateManager, genaiClient, msgService)
@@ -107,7 +107,7 @@ func TestOneMinuteInterventionTool_FlexibleParameters(t *testing.T) {
 }
 
 func TestOneMinuteInterventionTool_BuildInterventionSystemPrompt(t *testing.T) {
-	stateManager := &MockStateManager{}
+	stateManager := NewMockStateManager()
 	genaiClient := &MockGenAIClientWithTools{}
 	msgService := &MockMessagingService{}
 	tool := NewOneMinuteInterventionTool(stateManager, genaiClient, msgService)

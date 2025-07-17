@@ -42,6 +42,20 @@ func (m *MockGenAIInterventionClient) GenerateWithTools(ctx context.Context, mes
 	}, nil
 }
 
+// MockMessagingServiceForIntervention for testing intervention functionality
+type MockMessagingServiceForIntervention struct {
+	sentMessages []string
+}
+
+func (m *MockMessagingServiceForIntervention) ValidateAndCanonicalizeRecipient(recipient string) (string, error) {
+	return recipient, nil
+}
+
+func (m *MockMessagingServiceForIntervention) SendMessage(ctx context.Context, to, message string) error {
+	m.sentMessages = append(m.sentMessages, message)
+	return nil
+}
+
 func TestConversationFlow_WithInterventionTool(t *testing.T) {
 	// Create mocks
 	stateManager := NewMockStateManager()
@@ -60,7 +74,7 @@ func TestConversationFlow_WithInterventionTool(t *testing.T) {
 	mockGenAI.toolCallArgs = string(paramsJSON)
 
 	// Create intervention tool
-	msgService := &MockMessagingService{}
+	msgService := &MockMessagingServiceForIntervention{}
 	interventionTool := NewOneMinuteInterventionTool(stateManager, mockGenAI, msgService)
 
 	// Create conversation flow with intervention tool
@@ -68,6 +82,8 @@ func TestConversationFlow_WithInterventionTool(t *testing.T) {
 
 	// Test initial response processing
 	ctx := context.Background()
+	// Add phone number to context for intervention tool
+	ctx = context.WithValue(ctx, phoneNumberContextKey, "+1234567890")
 	participantID := "test-participant-intervention"
 
 	// First message - setup conversation without tools
@@ -84,7 +100,7 @@ func TestConversationFlow_WithInterventionTool(t *testing.T) {
 	// Test the intervention tool being called
 	// Create a mock that specifically returns intervention tool call
 	interventionMockGenAI := &MockGenAIInterventionClient{}
-	msgService2 := &MockMessagingService{}
+	msgService2 := &MockMessagingServiceForIntervention{}
 	interventionTool2 := NewOneMinuteInterventionTool(stateManager, interventionMockGenAI, msgService2)
 	flow2 := NewConversationFlowWithTools(stateManager, interventionMockGenAI, "", nil, interventionTool2)
 
@@ -114,12 +130,14 @@ func TestConversationFlow_WithBothTools(t *testing.T) {
 
 	// Create both tools
 	schedulerTool := NewSchedulerTool(timer, &MockMessagingService{})
-	interventionTool := NewOneMinuteInterventionTool(stateManager, mockGenAI, &MockMessagingService{})
+	interventionTool := NewOneMinuteInterventionTool(stateManager, mockGenAI, &MockMessagingServiceForIntervention{})
 
 	// Create conversation flow with both tools
 	flow := NewConversationFlowWithTools(stateManager, mockGenAI, "", schedulerTool, interventionTool)
 
 	ctx := context.Background()
+	// Add phone number to context for intervention tool
+	ctx = context.WithValue(ctx, phoneNumberContextKey, "+1234567890")
 	participantID := "test-participant-both-tools"
 
 	// Test that both tools are available
@@ -139,9 +157,11 @@ func TestInterventionTool_CanBeCalledDirectly(t *testing.T) {
 	// Test that the intervention tool can be called directly (for scheduler integration)
 	stateManager := NewMockStateManager()
 	genaiClient := &MockGenAIClientWithTools{}
-	tool := NewOneMinuteInterventionTool(stateManager, genaiClient, &MockMessagingService{})
+	tool := NewOneMinuteInterventionTool(stateManager, genaiClient, &MockMessagingServiceForIntervention{})
 
 	ctx := context.Background()
+	// Add phone number to context for intervention tool
+	ctx = context.WithValue(ctx, phoneNumberContextKey, "+1234567890")
 	participantID := "test-direct-call"
 
 	// Set up some conversation history first
@@ -179,16 +199,20 @@ func TestConversationFlow_InterventionToolIntegration(t *testing.T) {
 	// Create mocks
 	stateManager := NewMockStateManager()
 	timer := &MockTimer{}
-	mockGenAI := &MockGenAIClientWithTools{}
+
+	// Use the specialized intervention client that actually triggers tool calls
+	mockGenAI := &MockGenAIInterventionClient{}
 
 	// Create both tools
 	schedulerTool := NewSchedulerTool(timer, &MockMessagingService{})
-	interventionTool := NewOneMinuteInterventionTool(stateManager, mockGenAI, &MockMessagingService{})
+	interventionTool := NewOneMinuteInterventionTool(stateManager, mockGenAI, &MockMessagingServiceForIntervention{})
 
 	// Create conversation flow with both tools
 	flow := NewConversationFlowWithTools(stateManager, mockGenAI, "", schedulerTool, interventionTool)
 
 	ctx := context.Background()
+	// Add phone number to context for intervention tool
+	ctx = context.WithValue(ctx, phoneNumberContextKey, "+1234567890")
 	participantID := "test-participant-integration"
 
 	// Test that both tools can be used in sequence
