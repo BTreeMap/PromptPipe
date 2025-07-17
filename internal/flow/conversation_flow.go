@@ -620,6 +620,37 @@ func (f *ConversationFlow) executeSchedulerTool(ctx context.Context, participant
 		"promptUserPrompt", params.PromptUserPrompt,
 		"habitDescription", params.HabitDescription)
 
+	// Auto-detect and fix missing type field based on provided parameters
+	if params.Type == "" {
+		if params.FixedTime != "" {
+			params.Type = models.SchedulerTypeFixed
+			slog.Info("ConversationFlow auto-detected scheduler type as 'fixed'", 
+				"participantID", participantID, 
+				"reason", "fixed_time provided")
+		} else if params.RandomStartTime != "" && params.RandomEndTime != "" {
+			params.Type = models.SchedulerTypeRandom
+			slog.Info("ConversationFlow auto-detected scheduler type as 'random'", 
+				"participantID", participantID, 
+				"reason", "random start and end times provided")
+		} else {
+			slog.Error("ConversationFlow cannot determine scheduler type", 
+				"participantID", participantID,
+				"fixedTime", params.FixedTime,
+				"randomStartTime", params.RandomStartTime,
+				"randomEndTime", params.RandomEndTime)
+			return &models.ToolResult{
+				Success: false,
+				Message: "Cannot determine scheduler type. Please specify either a fixed time or random time window.",
+				Error:   "type field missing and cannot be auto-detected",
+			}, fmt.Errorf("type field missing and cannot be auto-detected")
+		}
+		
+		// Log the corrected parameters
+		slog.Debug("ConversationFlow corrected scheduler parameters", 
+			"participantID", participantID,
+			"correctedType", params.Type)
+	}
+
 	// Check if phone number is available in context
 	phoneNumber, hasPhone := GetPhoneNumberFromContext(ctx)
 	slog.Debug("ConversationFlow scheduler tool context check",
