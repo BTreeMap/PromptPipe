@@ -16,6 +16,22 @@ import (
 	"github.com/openai/openai-go"
 )
 
+// Context key for storing phone number in context
+type contextKey string
+
+const phoneNumberContextKey contextKey = "phone_number"
+
+// GetPhoneNumberContextKey returns the context key used for storing phone numbers
+func GetPhoneNumberContextKey() contextKey {
+	return phoneNumberContextKey
+}
+
+// GetPhoneNumberFromContext retrieves the phone number from the context
+func GetPhoneNumberFromContext(ctx context.Context) (string, bool) {
+	phoneNumber, ok := ctx.Value(phoneNumberContextKey).(string)
+	return phoneNumber, ok && phoneNumber != ""
+}
+
 // ConversationMessage represents a single message in the conversation history.
 type ConversationMessage struct {
 	Role      string    `json:"role"`      // "user" or "assistant"
@@ -551,6 +567,16 @@ func (f *ConversationFlow) executeInterventionTool(ctx context.Context, particip
 			Message: "Failed to parse intervention parameters",
 			Error:   err.Error(),
 		}, fmt.Errorf("failed to unmarshal intervention parameters: %w", err)
+	}
+
+	// Get phone number from context
+	phoneNumber, ok := ctx.Value(phoneNumberContextKey).(string)
+	if !ok || phoneNumber == "" {
+		return &models.ToolResult{
+			Success: false,
+			Message: "Phone number not available for intervention",
+			Error:   "phone number not found in context",
+		}, fmt.Errorf("phone number not found in context")
 	}
 
 	// Execute the intervention tool

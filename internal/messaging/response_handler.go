@@ -555,6 +555,9 @@ func CreateConversationHook(participantID string, msgService Service) ResponseAc
 	return func(ctx context.Context, from, responseText string, timestamp int64) (bool, error) {
 		slog.Debug("ConversationHook processing response", "from", from, "responseText", responseText, "participantID", participantID)
 
+		// Add phone number to context for intervention tool
+		ctx = context.WithValue(ctx, flow.GetPhoneNumberContextKey(), from)
+
 		// Get the conversation flow generator from the flow registry
 		generator, exists := flow.Get(models.PromptTypeConversation)
 		if !exists {

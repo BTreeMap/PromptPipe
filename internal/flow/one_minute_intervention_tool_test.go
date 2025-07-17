@@ -9,9 +9,10 @@ import (
 )
 
 func TestOneMinuteInterventionTool_GetToolDefinition(t *testing.T) {
-	stateManager := NewMockStateManager()
+	stateManager := &MockStateManager{}
 	genaiClient := &MockGenAIClientWithTools{}
-	tool := NewOneMinuteInterventionTool(stateManager, genaiClient)
+	msgService := &MockMessagingService{}
+	tool := NewOneMinuteInterventionTool(stateManager, genaiClient, msgService)
 
 	definition := tool.GetToolDefinition()
 
@@ -29,11 +30,13 @@ func TestOneMinuteInterventionTool_GetToolDefinition(t *testing.T) {
 }
 
 func TestOneMinuteInterventionTool_ExecuteOneMinuteIntervention(t *testing.T) {
-	stateManager := NewMockStateManager()
+	stateManager := &MockStateManager{}
 	genaiClient := &MockGenAIClientWithTools{}
-	tool := NewOneMinuteInterventionTool(stateManager, genaiClient)
+	msgService := &MockMessagingService{}
+	tool := NewOneMinuteInterventionTool(stateManager, genaiClient, msgService)
 
 	ctx := context.Background()
+	ctx = context.WithValue(ctx, phoneNumberContextKey, "+1234567890") // Add phone number to context
 	participantID := "test-participant"
 
 	params := models.OneMinuteInterventionToolParams{
@@ -68,11 +71,13 @@ func TestOneMinuteInterventionTool_ExecuteOneMinuteIntervention(t *testing.T) {
 }
 
 func TestOneMinuteInterventionTool_FlexibleParameters(t *testing.T) {
-	stateManager := NewMockStateManager()
+	stateManager := &MockStateManager{}
 	genaiClient := &MockGenAIClientWithTools{}
-	tool := NewOneMinuteInterventionTool(stateManager, genaiClient)
+	msgService := &MockMessagingService{}
+	tool := NewOneMinuteInterventionTool(stateManager, genaiClient, msgService)
 
 	ctx := context.Background()
+	ctx = context.WithValue(ctx, phoneNumberContextKey, "+1234567890") // Add phone number to context
 	participantID := "test-participant"
 
 	// Test with minimal parameters
@@ -102,9 +107,10 @@ func TestOneMinuteInterventionTool_FlexibleParameters(t *testing.T) {
 }
 
 func TestOneMinuteInterventionTool_BuildInterventionSystemPrompt(t *testing.T) {
-	stateManager := NewMockStateManager()
+	stateManager := &MockStateManager{}
 	genaiClient := &MockGenAIClientWithTools{}
-	tool := NewOneMinuteInterventionTool(stateManager, genaiClient)
+	msgService := &MockMessagingService{}
+	tool := NewOneMinuteInterventionTool(stateManager, genaiClient, msgService)
 
 	// Test with intervention focus
 	params := models.OneMinuteInterventionToolParams{

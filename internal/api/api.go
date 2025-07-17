@@ -314,7 +314,7 @@ func (s *Server) initializeConversationFlow() error {
 	// Create intervention tool
 	var interventionTool *flow.OneMinuteInterventionTool
 	if s.gaClient != nil {
-		interventionTool = flow.NewOneMinuteInterventionTool(stateManager, s.gaClient)
+		interventionTool = flow.NewOneMinuteInterventionTool(stateManager, s.gaClient, s.msgService)
 	}
 
 	// Create conversation flow with both scheduler and intervention tool support

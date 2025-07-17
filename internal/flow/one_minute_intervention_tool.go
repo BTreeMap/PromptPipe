@@ -18,13 +18,15 @@ import (
 type OneMinuteInterventionTool struct {
 	stateManager StateManager
 	genaiClient  genai.ClientInterface
+	msgService   MessagingService
 }
 
 // NewOneMinuteInterventionTool creates a new intervention tool instance.
-func NewOneMinuteInterventionTool(stateManager StateManager, genaiClient genai.ClientInterface) *OneMinuteInterventionTool {
+func NewOneMinuteInterventionTool(stateManager StateManager, genaiClient genai.ClientInterface, msgService MessagingService) *OneMinuteInterventionTool {
 	return &OneMinuteInterventionTool{
 		stateManager: stateManager,
 		genaiClient:  genaiClient,
+		msgService:   msgService,
 	}
 }
 
@@ -34,17 +36,17 @@ func (oit *OneMinuteInterventionTool) GetToolDefinition() openai.ChatCompletionT
 		Type: "function",
 		Function: shared.FunctionDefinitionParam{
 			Name:        "initiate_intervention",
-			Description: openai.String("Initiate a health intervention session for the user based on their conversation history and current needs"),
+			Description: openai.String("Initiate a personalized health intervention session for the user based on their conversation history and current needs"),
 			Parameters: shared.FunctionParameters{
 				"type": "object",
 				"properties": map[string]interface{}{
 					"intervention_focus": map[string]interface{}{
 						"type":        "string",
-						"description": "The focus or type of intervention to initiate (e.g., 'breathing exercise', 'gratitude practice', 'mindful movement', 'stress relief', 'energy boost', etc.). Be flexible and creative based on user needs.",
+						"description": "Focus or theme for the intervention (e.g., 'stress relief', 'energy boost', 'mindfulness', 'breathing', 'movement', or any custom approach that fits the user's needs)",
 					},
 					"personalization_notes": map[string]interface{}{
 						"type":        "string",
-						"description": "Optional notes for personalizing the intervention based on the conversation context, user's current state, or specific preferences mentioned.",
+						"description": "Additional notes or specific instructions to personalize the intervention based on the current conversation context and user's situation",
 					},
 				},
 				"required": []string{}, // All parameters are optional
@@ -56,6 +58,17 @@ func (oit *OneMinuteInterventionTool) GetToolDefinition() openai.ChatCompletionT
 // ExecuteOneMinuteIntervention executes the intervention tool call.
 func (oit *OneMinuteInterventionTool) ExecuteOneMinuteIntervention(ctx context.Context, participantID string, params models.OneMinuteInterventionToolParams) (*models.ToolResult, error) {
 	slog.Info("Executing intervention tool", "participantID", participantID, "interventionFocus", params.InterventionFocus)
+
+	// Get phone number from context
+	phoneNumber, ok := GetPhoneNumberFromContext(ctx)
+	if !ok {
+		slog.Error("OneMinuteInterventionTool: phone number not found in context", "participantID", participantID)
+		return &models.ToolResult{
+			Success: false,
+			Message: "Failed to get participant contact information",
+			Error:   "phone number not available in context",
+		}, nil
+	}
 
 	// Validate parameters
 	if err := params.Validate(); err != nil {
@@ -102,6 +115,18 @@ func (oit *OneMinuteInterventionTool) ExecuteOneMinuteIntervention(ctx context.C
 		}, nil
 	}
 
+	// Send the intervention message to the user
+	if err := oit.msgService.SendMessage(ctx, phoneNumber, interventionMessage); err != nil {
+		slog.Error("OneMinuteInterventionTool failed to send intervention message", "error", err, "participantID", participantID, "phone", phoneNumber)
+		return &models.ToolResult{
+			Success: false,
+			Message: "Failed to send intervention message",
+			Error:   err.Error(),
+		}, nil
+	}
+
+	slog.Info("Intervention message sent successfully", "participantID", participantID, "phone", phoneNumber, "messageLength", len(interventionMessage))
+
 	// Add the intervention start message to conversation history
 	interventionMsg := ConversationMessage{
 		Role:      "assistant",
@@ -143,7 +168,7 @@ func (oit *OneMinuteInterventionTool) buildInterventionSystemPrompt(params model
 	basePrompt := `You are now transitioning into a health intervention mode. Your role is to guide the user through a brief, effective, and personalized healthy activity based on their conversation history and current needs.
 
 INTERVENTION GUIDELINES:
-1. Keep the intervention focused and achievable within a few minutes
+1. Keep the intervention focused and achievable - typically a few minutes but flexible based on the user's needs
 2. Use the conversation history to personalize the intervention  
 3. Be encouraging, gentle, and supportive
 4. Provide clear, step-by-step instructions
@@ -209,7 +234,7 @@ func (oit *OneMinuteInterventionTool) buildInterventionMessages(ctx context.Cont
 	}
 
 	// Add intervention initiation prompt
-	interventionPrompt := "Please initiate the one-minute health intervention now. Create a personalized intervention message based on our conversation history and guide me through a healthy activity."
+	interventionPrompt := "Please initiate the health intervention now. Create a personalized intervention message based on our conversation history and guide me through a healthy activity."
 	messages = append(messages, openai.UserMessage(interventionPrompt))
 
 	return messages, nil

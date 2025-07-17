@@ -60,7 +60,8 @@ func TestConversationFlow_WithInterventionTool(t *testing.T) {
 	mockGenAI.toolCallArgs = string(paramsJSON)
 
 	// Create intervention tool
-	interventionTool := NewOneMinuteInterventionTool(stateManager, mockGenAI)
+	msgService := &MockMessagingService{}
+	interventionTool := NewOneMinuteInterventionTool(stateManager, mockGenAI, msgService)
 
 	// Create conversation flow with intervention tool
 	flow := NewConversationFlowWithTools(stateManager, mockGenAI, "", nil, interventionTool)
@@ -83,7 +84,8 @@ func TestConversationFlow_WithInterventionTool(t *testing.T) {
 	// Test the intervention tool being called
 	// Create a mock that specifically returns intervention tool call
 	interventionMockGenAI := &MockGenAIInterventionClient{}
-	interventionTool2 := NewOneMinuteInterventionTool(stateManager, interventionMockGenAI)
+	msgService2 := &MockMessagingService{}
+	interventionTool2 := NewOneMinuteInterventionTool(stateManager, interventionMockGenAI, msgService2)
 	flow2 := NewConversationFlowWithTools(stateManager, interventionMockGenAI, "", nil, interventionTool2)
 
 	response, err = flow2.ProcessResponse(ctx, participantID, "I think I could use some help with stress relief right now")
@@ -112,7 +114,7 @@ func TestConversationFlow_WithBothTools(t *testing.T) {
 
 	// Create both tools
 	schedulerTool := NewSchedulerTool(timer, &MockMessagingService{})
-	interventionTool := NewOneMinuteInterventionTool(stateManager, mockGenAI)
+	interventionTool := NewOneMinuteInterventionTool(stateManager, mockGenAI, &MockMessagingService{})
 
 	// Create conversation flow with both tools
 	flow := NewConversationFlowWithTools(stateManager, mockGenAI, "", schedulerTool, interventionTool)
@@ -137,7 +139,7 @@ func TestInterventionTool_CanBeCalledDirectly(t *testing.T) {
 	// Test that the intervention tool can be called directly (for scheduler integration)
 	stateManager := NewMockStateManager()
 	genaiClient := &MockGenAIClientWithTools{}
-	tool := NewOneMinuteInterventionTool(stateManager, genaiClient)
+	tool := NewOneMinuteInterventionTool(stateManager, genaiClient, &MockMessagingService{})
 
 	ctx := context.Background()
 	participantID := "test-direct-call"
@@ -171,4 +173,39 @@ func TestInterventionTool_CanBeCalledDirectly(t *testing.T) {
 	}
 
 	t.Logf("Direct intervention tool call test completed successfully")
+}
+
+func TestConversationFlow_InterventionToolIntegration(t *testing.T) {
+	// Create mocks
+	stateManager := NewMockStateManager()
+	timer := &MockTimer{}
+	mockGenAI := &MockGenAIClientWithTools{}
+
+	// Create both tools
+	schedulerTool := NewSchedulerTool(timer, &MockMessagingService{})
+	interventionTool := NewOneMinuteInterventionTool(stateManager, mockGenAI, &MockMessagingService{})
+
+	// Create conversation flow with both tools
+	flow := NewConversationFlowWithTools(stateManager, mockGenAI, "", schedulerTool, interventionTool)
+
+	ctx := context.Background()
+	participantID := "test-participant-integration"
+
+	// Test that both tools can be used in sequence
+	response, err := flow.ProcessResponse(ctx, participantID, "Hi, I need help with my stress and also want to set a timer for breaks")
+	if err != nil {
+		t.Fatalf("ProcessResponse with both tools failed: %v", err)
+	}
+
+	if response == "" {
+		t.Error("Expected non-empty response")
+	}
+
+	// Verify that intervention was triggered
+	interventionData, _ := stateManager.GetStateData(ctx, participantID, models.FlowTypeConversation, "current_intervention")
+	if interventionData == "" {
+		t.Error("Expected intervention data to be stored after tool execution")
+	}
+
+	t.Logf("Intervention tool integration test completed successfully. Response: %s", response)
 }
