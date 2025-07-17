@@ -136,6 +136,14 @@ func (f *ConversationFlow) Generate(ctx context.Context, p models.Prompt) (strin
 // ProcessResponse handles participant responses and maintains conversation state.
 // Returns the AI response that should be sent back to the user.
 func (f *ConversationFlow) ProcessResponse(ctx context.Context, participantID, response string) (string, error) {
+	// Log context information for debugging
+	phoneNumber, hasPhone := GetPhoneNumberFromContext(ctx)
+	slog.Debug("ConversationFlow ProcessResponse context check",
+		"participantID", participantID,
+		"hasPhoneNumber", hasPhone,
+		"phoneNumber", phoneNumber,
+		"responseLength", len(response))
+
 	// Validate dependencies for stateful operations
 	if f.stateManager == nil || f.genaiClient == nil {
 		slog.Error("ConversationFlow dependencies not initialized for state operations")
@@ -251,12 +259,29 @@ func (f *ConversationFlow) processWithTools(ctx context.Context, participantID s
 	tools := []openai.ChatCompletionToolParam{}
 
 	if f.schedulerTool != nil {
-		tools = append(tools, f.schedulerTool.GetToolDefinition())
+		toolDef := f.schedulerTool.GetToolDefinition()
+		tools = append(tools, toolDef)
+		slog.Debug("ConversationFlow added scheduler tool",
+			"participantID", participantID,
+			"toolName", "scheduler")
+	} else {
+		slog.Debug("ConversationFlow scheduler tool not available", "participantID", participantID)
 	}
 
 	if f.oneMinuteInterventionTool != nil {
-		tools = append(tools, f.oneMinuteInterventionTool.GetToolDefinition())
+		toolDef := f.oneMinuteInterventionTool.GetToolDefinition()
+		tools = append(tools, toolDef)
+		slog.Debug("ConversationFlow added intervention tool",
+			"participantID", participantID,
+			"toolName", "initiate_intervention")
+	} else {
+		slog.Debug("ConversationFlow intervention tool not available", "participantID", participantID)
 	}
+
+	slog.Info("ConversationFlow calling GenAI with tools",
+		"participantID", participantID,
+		"toolCount", len(tools),
+		"messageCount", len(messages))
 
 	// Generate response with tools
 	toolResponse, err := f.genaiClient.GenerateWithTools(ctx, messages, tools)
@@ -264,6 +289,12 @@ func (f *ConversationFlow) processWithTools(ctx context.Context, participantID s
 		slog.Error("ConversationFlow tool generation failed", "error", err, "participantID", participantID)
 		return "", fmt.Errorf("failed to generate response with tools: %w", err)
 	}
+
+	slog.Debug("ConversationFlow received tool response",
+		"participantID", participantID,
+		"hasContent", toolResponse.Content != "",
+		"contentLength", len(toolResponse.Content),
+		"toolCallCount", len(toolResponse.ToolCalls))
 
 	// Check if the AI wants to call tools
 	if len(toolResponse.ToolCalls) > 0 {
@@ -309,8 +340,21 @@ func (f *ConversationFlow) handleToolCalls(ctx context.Context, participantID st
 	var toolResults []string
 
 	// Execute each tool call
-	for _, toolCall := range toolResponse.ToolCalls {
-		slog.Info("ConversationFlow executing tool call", "participantID", participantID, "toolName", toolCall.Function.Name, "toolCallID", toolCall.ID)
+	for i, toolCall := range toolResponse.ToolCalls {
+		slog.Info("ConversationFlow executing tool call",
+			"participantID", participantID,
+			"toolName", toolCall.Function.Name,
+			"toolCallID", toolCall.ID,
+			"toolIndex", i,
+			"totalTools", len(toolResponse.ToolCalls))
+
+		// Log the tool call details for debugging
+		slog.Debug("ConversationFlow tool call details",
+			"participantID", participantID,
+			"toolCallID", toolCall.ID,
+			"functionName", toolCall.Function.Name,
+			"argumentsLength", len(toolCall.Function.Arguments),
+			"arguments", string(toolCall.Function.Arguments))
 
 		switch toolCall.Function.Name {
 		case "scheduler":
@@ -543,9 +587,20 @@ Your goal is to have meaningful conversations and assist users with their questi
 
 // executeSchedulerTool executes a scheduler tool call.
 func (f *ConversationFlow) executeSchedulerTool(ctx context.Context, participantID string, toolCall genai.ToolCall) (*models.ToolResult, error) {
+	// Log the raw tool call for debugging
+	slog.Debug("ConversationFlow executeSchedulerTool raw call",
+		"participantID", participantID,
+		"toolCallID", toolCall.ID,
+		"functionName", toolCall.Function.Name,
+		"rawArguments", string(toolCall.Function.Arguments))
+
 	// Parse the scheduler parameters from the tool call
 	var params models.SchedulerToolParams
 	if err := json.Unmarshal(toolCall.Function.Arguments, &params); err != nil {
+		slog.Error("ConversationFlow failed to parse scheduler parameters",
+			"error", err,
+			"participantID", participantID,
+			"rawArguments", string(toolCall.Function.Arguments))
 		return &models.ToolResult{
 			Success: false,
 			Message: "Failed to parse scheduling parameters",
@@ -553,15 +608,45 @@ func (f *ConversationFlow) executeSchedulerTool(ctx context.Context, participant
 		}, fmt.Errorf("failed to unmarshal scheduler parameters: %w", err)
 	}
 
+	// Log parsed parameters for debugging
+	slog.Debug("ConversationFlow parsed scheduler parameters",
+		"participantID", participantID,
+		"type", params.Type,
+		"fixedTime", params.FixedTime,
+		"timezone", params.Timezone,
+		"randomStartTime", params.RandomStartTime,
+		"randomEndTime", params.RandomEndTime,
+		"promptSystemPrompt", params.PromptSystemPrompt,
+		"promptUserPrompt", params.PromptUserPrompt,
+		"habitDescription", params.HabitDescription)
+
+	// Check if phone number is available in context
+	phoneNumber, hasPhone := GetPhoneNumberFromContext(ctx)
+	slog.Debug("ConversationFlow scheduler tool context check",
+		"participantID", participantID,
+		"hasPhoneNumber", hasPhone,
+		"phoneNumber", phoneNumber)
+
 	// Execute the scheduler tool
 	return f.schedulerTool.ExecuteScheduler(ctx, participantID, params)
 }
 
 // executeInterventionTool executes an intervention tool call.
 func (f *ConversationFlow) executeInterventionTool(ctx context.Context, participantID string, toolCall genai.ToolCall) (*models.ToolResult, error) {
+	// Log the raw tool call for debugging
+	slog.Debug("ConversationFlow executeInterventionTool raw call",
+		"participantID", participantID,
+		"toolCallID", toolCall.ID,
+		"functionName", toolCall.Function.Name,
+		"rawArguments", string(toolCall.Function.Arguments))
+
 	// Parse the intervention parameters from the tool call
 	var params models.OneMinuteInterventionToolParams
 	if err := json.Unmarshal(toolCall.Function.Arguments, &params); err != nil {
+		slog.Error("ConversationFlow failed to parse intervention parameters",
+			"error", err,
+			"participantID", participantID,
+			"rawArguments", string(toolCall.Function.Arguments))
 		return &models.ToolResult{
 			Success: false,
 			Message: "Failed to parse intervention parameters",
@@ -569,9 +654,24 @@ func (f *ConversationFlow) executeInterventionTool(ctx context.Context, particip
 		}, fmt.Errorf("failed to unmarshal intervention parameters: %w", err)
 	}
 
+	// Log parsed parameters for debugging
+	slog.Debug("ConversationFlow parsed intervention parameters",
+		"participantID", participantID,
+		"params", fmt.Sprintf("%+v", params))
+
 	// Get phone number from context
 	phoneNumber, ok := ctx.Value(phoneNumberContextKey).(string)
+	slog.Debug("ConversationFlow intervention tool context check",
+		"participantID", participantID,
+		"hasPhoneNumber", ok,
+		"phoneNumber", phoneNumber,
+		"contextValue", ctx.Value(phoneNumberContextKey))
+
 	if !ok || phoneNumber == "" {
+		slog.Error("ConversationFlow intervention tool missing phone number",
+			"participantID", participantID,
+			"contextHasPhoneNumber", ok,
+			"phoneNumber", phoneNumber)
 		return &models.ToolResult{
 			Success: false,
 			Message: "Phone number not available for intervention",
