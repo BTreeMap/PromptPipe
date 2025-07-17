@@ -337,7 +337,9 @@ func (f *ConversationFlow) handleToolCalls(ctx context.Context, participantID st
 	}
 	history.Messages = append(history.Messages, assistantMsg)
 
-	var toolResults []string
+	// Two separate arrays for clear separation of concerns
+	var userMessages []string   // Messages to send to the user
+	var historyRecords []string // Records to add to conversation history
 
 	// Execute each tool call
 	for i, toolCall := range toolResponse.ToolCalls {
@@ -362,13 +364,17 @@ func (f *ConversationFlow) handleToolCalls(ctx context.Context, participantID st
 			if err != nil {
 				slog.Error("ConversationFlow scheduler tool execution failed", "error", err, "participantID", participantID, "toolCallID", toolCall.ID)
 				errorMsg := fmt.Sprintf("❌ Sorry, I couldn't set up your scheduling: %s", err.Error())
-				toolResults = append(toolResults, errorMsg)
+				userMessages = append(userMessages, errorMsg)
+				historyRecords = append(historyRecords, errorMsg)
 			} else if !result.Success {
 				slog.Warn("ConversationFlow scheduler tool returned error", "error", result.Error, "participantID", participantID, "toolCallID", toolCall.ID)
 				errorMsg := fmt.Sprintf("❌ %s", result.Message)
-				toolResults = append(toolResults, errorMsg)
+				userMessages = append(userMessages, errorMsg)
+				historyRecords = append(historyRecords, errorMsg)
 			} else {
-				toolResults = append(toolResults, result.Message)
+				// Scheduler success: send message to user and record in history
+				userMessages = append(userMessages, result.Message)
+				historyRecords = append(historyRecords, result.Message)
 			}
 
 		case "initiate_intervention":
@@ -376,72 +382,66 @@ func (f *ConversationFlow) handleToolCalls(ctx context.Context, participantID st
 			if err != nil {
 				slog.Error("ConversationFlow intervention tool execution failed", "error", err, "participantID", participantID, "toolCallID", toolCall.ID)
 				errorMsg := fmt.Sprintf("❌ Sorry, I couldn't start your intervention: %s", err.Error())
-				toolResults = append(toolResults, errorMsg)
+				userMessages = append(userMessages, errorMsg)
+				historyRecords = append(historyRecords, errorMsg)
 			} else if !result.Success {
 				slog.Warn("ConversationFlow intervention tool returned error", "error", result.Error, "participantID", participantID, "toolCallID", toolCall.ID)
 				errorMsg := fmt.Sprintf("❌ %s", result.Message)
-				toolResults = append(toolResults, errorMsg)
+				userMessages = append(userMessages, errorMsg)
+				historyRecords = append(historyRecords, errorMsg)
 			} else {
-				// For intervention tool, record the execution in history but don't send acknowledgment to user
-				// The tool already sent the intervention content directly to the user
+				// Intervention success: record in history but don't send message to user
+				// (the tool already sent the intervention content directly)
 				slog.Info("ConversationFlow intervention tool executed successfully",
 					"participantID", participantID,
 					"toolCallID", toolCall.ID,
 					"successMessage", result.Message)
 
-				// Add a special history-only entry to record the intervention execution
-				// This ensures the AI knows an intervention was sent without sending a message to the user
-				interventionRecord := ConversationMessage{
-					Role:      "assistant",
-					Content:   fmt.Sprintf("[INTERVENTION_SENT: %s]", result.Message),
-					Timestamp: time.Now(),
-				}
-				history.Messages = append(history.Messages, interventionRecord)
-
-				// Don't add anything to toolResults - this prevents sending a message to the user
+				// No user message (intervention was sent directly)
+				// Record in history so AI knows intervention was sent
+				historyRecords = append(historyRecords, fmt.Sprintf("[INTERVENTION_SENT: %s]", result.Message))
 			}
 
 		default:
 			slog.Warn("ConversationFlow unknown tool call", "toolName", toolCall.Function.Name, "participantID", participantID)
 			errorMsg := fmt.Sprintf("❌ Sorry, I don't know how to use the tool '%s'", toolCall.Function.Name)
-			toolResults = append(toolResults, errorMsg)
+			userMessages = append(userMessages, errorMsg)
+			historyRecords = append(historyRecords, errorMsg)
 		}
 	}
 
-	// Combine tool results into a single response
-	finalResponse := ""
-	if len(toolResults) == 1 {
-		finalResponse = toolResults[0]
-	} else if len(toolResults) > 1 {
-		finalResponse = strings.Join(toolResults, "\n\n")
-	} else {
-		// No tool results means all tools executed successfully but didn't produce user-facing content
-		// This happens when intervention tools are called (they handle messaging directly)
-		// Return empty string to avoid sending any redundant acknowledgment
-		finalResponse = ""
+	// Build final user response
+	finalUserResponse := ""
+	if len(userMessages) == 1 {
+		finalUserResponse = userMessages[0]
+	} else if len(userMessages) > 1 {
+		finalUserResponse = strings.Join(userMessages, "\n\n")
 	}
+	// If empty, no message is sent to user
 
-	// Add tool execution result to history only if there's content to add
-	// Note: intervention tools add their own history entries directly, so we always need to save history
-	if finalResponse != "" {
-		toolResultMsg := ConversationMessage{
+	// Add history records to conversation history
+	for _, record := range historyRecords {
+		historyMsg := ConversationMessage{
 			Role:      "assistant",
-			Content:   finalResponse,
+			Content:   record,
 			Timestamp: time.Now(),
 		}
-		history.Messages = append(history.Messages, toolResultMsg)
+		history.Messages = append(history.Messages, historyMsg)
 	}
 
-	// Save updated history (always save, even if finalResponse is empty,
-	// because intervention tools may have added entries directly to history)
+	// Save updated history
 	err := f.saveConversationHistory(ctx, participantID, history)
 	if err != nil {
 		slog.Error("ConversationFlow failed to save conversation history after tool execution", "error", err, "participantID", participantID)
 		// Don't fail the request if we can't save history, but log the error
 	}
 
-	slog.Info("ConversationFlow completed tool execution", "participantID", participantID, "toolCount", len(toolResponse.ToolCalls), "responseLength", len(finalResponse))
-	return finalResponse, nil
+	slog.Info("ConversationFlow completed tool execution",
+		"participantID", participantID,
+		"toolCount", len(toolResponse.ToolCalls),
+		"userResponseLength", len(finalUserResponse),
+		"historyRecordCount", len(historyRecords))
+	return finalUserResponse, nil
 }
 
 // transitionToState safely transitions to a new state with logging
