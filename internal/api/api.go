@@ -311,14 +311,20 @@ func (s *Server) initializeConversationFlow() error {
 		schedulerTool = flow.NewSchedulerTool(s.timer, s.msgService)
 	}
 
-	// Create conversation flow with scheduler tool support
+	// Create intervention tool
+	var interventionTool *flow.OneMinuteInterventionTool
+	if s.gaClient != nil {
+		interventionTool = flow.NewOneMinuteInterventionTool(stateManager, s.gaClient)
+	}
+
+	// Create conversation flow with both scheduler and intervention tool support
 	// Handle typed nil interface issue - if gaClient is a nil pointer, pass nil interface
 	var genaiClientInterface genai.ClientInterface
 	if s.gaClient != nil {
 		genaiClientInterface = s.gaClient
 	}
 
-	conversationFlow := flow.NewConversationFlowWithScheduler(stateManager, genaiClientInterface, systemPromptFile, schedulerTool)
+	conversationFlow := flow.NewConversationFlowWithTools(stateManager, genaiClientInterface, systemPromptFile, schedulerTool, interventionTool)
 
 	// Load system prompt
 	if err := conversationFlow.LoadSystemPrompt(); err != nil {

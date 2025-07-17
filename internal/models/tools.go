@@ -14,6 +14,8 @@ type ToolType string
 const (
 	// ToolTypeScheduler allows the LLM to schedule daily prompts for users.
 	ToolTypeScheduler ToolType = "scheduler"
+	// ToolTypeOneMinuteIntervention allows the LLM to initiate one-minute health interventions.
+	ToolTypeOneMinuteIntervention ToolType = "one_minute_intervention"
 )
 
 // SchedulerType defines how the scheduler should send daily prompts.
@@ -138,4 +140,16 @@ type ToolResult struct {
 	Success    bool   `json:"success"`         // Whether the tool execution succeeded
 	Message    string `json:"message"`         // Human-readable result message
 	Error      string `json:"error,omitempty"` // Error message if success is false
+}
+
+// OneMinuteInterventionToolParams defines the parameters for the intervention tool call.
+type OneMinuteInterventionToolParams struct {
+	InterventionFocus     string `json:"intervention_focus,omitempty"`     // Focus or type of intervention (flexible)
+	PersonalizationNotes  string `json:"personalization_notes,omitempty"`  // Notes for personalizing the intervention
+}
+
+// Validate ensures the intervention tool parameters are valid.
+func (omt *OneMinuteInterventionToolParams) Validate() error {
+	// All parameters are optional and flexible
+	return nil
 }

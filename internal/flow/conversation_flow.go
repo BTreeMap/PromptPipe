@@ -30,11 +30,12 @@ type ConversationHistory struct {
 
 // ConversationFlow implements a stateful conversation flow that maintains history and uses GenAI.
 type ConversationFlow struct {
-	stateManager     StateManager
-	genaiClient      genai.ClientInterface
-	systemPrompt     string
-	systemPromptFile string
-	schedulerTool    *SchedulerTool // Tool for scheduling daily prompts
+	stateManager               StateManager
+	genaiClient                genai.ClientInterface
+	systemPrompt               string
+	systemPromptFile           string
+	schedulerTool              *SchedulerTool                // Tool for scheduling daily prompts
+	oneMinuteInterventionTool  *OneMinuteInterventionTool    // Tool for initiating one-minute interventions
 }
 
 // NewConversationFlow creates a new conversation flow with dependencies.
@@ -55,6 +56,18 @@ func NewConversationFlowWithScheduler(stateManager StateManager, genaiClient gen
 		genaiClient:      genaiClient,
 		systemPromptFile: systemPromptFile,
 		schedulerTool:    schedulerTool,
+	}
+}
+
+// NewConversationFlowWithTools creates a new conversation flow with both scheduler and intervention tools.
+func NewConversationFlowWithTools(stateManager StateManager, genaiClient genai.ClientInterface, systemPromptFile string, schedulerTool *SchedulerTool, interventionTool *OneMinuteInterventionTool) *ConversationFlow {
+	slog.Debug("Creating ConversationFlow with tools", "systemPromptFile", systemPromptFile, "hasGenAI", genaiClient != nil, "hasSchedulerTool", schedulerTool != nil, "hasInterventionTool", interventionTool != nil)
+	return &ConversationFlow{
+		stateManager:              stateManager,
+		genaiClient:               genaiClient,
+		systemPromptFile:          systemPromptFile,
+		schedulerTool:             schedulerTool,
+		oneMinuteInterventionTool: interventionTool,
 	}
 }
 
@@ -181,8 +194,8 @@ func (f *ConversationFlow) processConversationMessage(ctx context.Context, parti
 		return "", fmt.Errorf("failed to build OpenAI messages: %w", err)
 	}
 
-	// Check if scheduler tool is available and we should enable tool calling
-	if f.schedulerTool != nil && f.genaiClient != nil {
+	// Check if any tools are available and we should enable tool calling
+	if (f.schedulerTool != nil || f.oneMinuteInterventionTool != nil) && f.genaiClient != nil {
 		// Use tool-enabled generation
 		return f.processWithTools(ctx, participantID, messages, history)
 	}
@@ -219,8 +232,14 @@ func (f *ConversationFlow) processWithTools(ctx context.Context, participantID s
 	slog.Debug("ConversationFlow processWithTools", "participantID", participantID, "messageCount", len(messages))
 
 	// Create tool definitions
-	tools := []openai.ChatCompletionToolParam{
-		f.schedulerTool.GetToolDefinition(),
+	tools := []openai.ChatCompletionToolParam{}
+	
+	if f.schedulerTool != nil {
+		tools = append(tools, f.schedulerTool.GetToolDefinition())
+	}
+	
+	if f.oneMinuteInterventionTool != nil {
+		tools = append(tools, f.oneMinuteInterventionTool.GetToolDefinition())
 	}
 
 	// Generate response with tools
@@ -286,6 +305,20 @@ func (f *ConversationFlow) handleToolCalls(ctx context.Context, participantID st
 				toolResults = append(toolResults, errorMsg)
 			} else if !result.Success {
 				slog.Warn("ConversationFlow scheduler tool returned error", "error", result.Error, "participantID", participantID, "toolCallID", toolCall.ID)
+				errorMsg := fmt.Sprintf("❌ %s", result.Message)
+				toolResults = append(toolResults, errorMsg)
+			} else {
+				toolResults = append(toolResults, result.Message)
+			}
+
+		case "initiate_intervention":
+			result, err := f.executeInterventionTool(ctx, participantID, toolCall)
+			if err != nil {
+				slog.Error("ConversationFlow intervention tool execution failed", "error", err, "participantID", participantID, "toolCallID", toolCall.ID)
+				errorMsg := fmt.Sprintf("❌ Sorry, I couldn't start your intervention: %s", err.Error())
+				toolResults = append(toolResults, errorMsg)
+			} else if !result.Success {
+				slog.Warn("ConversationFlow intervention tool returned error", "error", result.Error, "participantID", participantID, "toolCallID", toolCall.ID)
 				errorMsg := fmt.Sprintf("❌ %s", result.Message)
 				toolResults = append(toolResults, errorMsg)
 			} else {
@@ -506,4 +539,20 @@ func (f *ConversationFlow) executeSchedulerTool(ctx context.Context, participant
 
 	// Execute the scheduler tool
 	return f.schedulerTool.ExecuteScheduler(ctx, participantID, params)
+}
+
+// executeInterventionTool executes an intervention tool call.
+func (f *ConversationFlow) executeInterventionTool(ctx context.Context, participantID string, toolCall genai.ToolCall) (*models.ToolResult, error) {
+	// Parse the intervention parameters from the tool call
+	var params models.OneMinuteInterventionToolParams
+	if err := json.Unmarshal(toolCall.Function.Arguments, &params); err != nil {
+		return &models.ToolResult{
+			Success: false,
+			Message: "Failed to parse intervention parameters",
+			Error:   err.Error(),
+		}, fmt.Errorf("failed to unmarshal intervention parameters: %w", err)
+	}
+
+	// Execute the intervention tool
+	return f.oneMinuteInterventionTool.ExecuteOneMinuteIntervention(ctx, participantID, params)
 }
