@@ -119,11 +119,11 @@ func (oit *OneMinuteInterventionTool) ExecuteOneMinuteIntervention(ctx context.C
 
 	// Store intervention metadata for potential follow-up
 	interventionData := map[string]interface{}{
-		"focus":        params.InterventionFocus,
-		"notes":        params.PersonalizationNotes,
-		"started_at":   time.Now().Format(time.RFC3339),
+		"focus":      params.InterventionFocus,
+		"notes":      params.PersonalizationNotes,
+		"started_at": time.Now().Format(time.RFC3339),
 	}
-	
+
 	if interventionDataJSON, err := json.Marshal(interventionData); err == nil {
 		oit.stateManager.SetStateData(ctx, participantID, models.FlowTypeConversation, "current_intervention", string(interventionDataJSON))
 	}

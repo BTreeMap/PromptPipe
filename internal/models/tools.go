@@ -144,8 +144,8 @@ type ToolResult struct {
 
 // OneMinuteInterventionToolParams defines the parameters for the intervention tool call.
 type OneMinuteInterventionToolParams struct {
-	InterventionFocus     string `json:"intervention_focus,omitempty"`     // Focus or type of intervention (flexible)
-	PersonalizationNotes  string `json:"personalization_notes,omitempty"`  // Notes for personalizing the intervention
+	InterventionFocus    string `json:"intervention_focus,omitempty"`    // Focus or type of intervention (flexible)
+	PersonalizationNotes string `json:"personalization_notes,omitempty"` // Notes for personalizing the intervention
 }
 
 // Validate ensures the intervention tool parameters are valid.

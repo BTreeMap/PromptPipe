@@ -30,12 +30,12 @@ type ConversationHistory struct {
 
 // ConversationFlow implements a stateful conversation flow that maintains history and uses GenAI.
 type ConversationFlow struct {
-	stateManager               StateManager
-	genaiClient                genai.ClientInterface
-	systemPrompt               string
-	systemPromptFile           string
-	schedulerTool              *SchedulerTool                // Tool for scheduling daily prompts
-	oneMinuteInterventionTool  *OneMinuteInterventionTool    // Tool for initiating one-minute interventions
+	stateManager              StateManager
+	genaiClient               genai.ClientInterface
+	systemPrompt              string
+	systemPromptFile          string
+	schedulerTool             *SchedulerTool             // Tool for scheduling daily prompts
+	oneMinuteInterventionTool *OneMinuteInterventionTool // Tool for initiating one-minute interventions
 }
 
 // NewConversationFlow creates a new conversation flow with dependencies.
@@ -233,11 +233,11 @@ func (f *ConversationFlow) processWithTools(ctx context.Context, participantID s
 
 	// Create tool definitions
 	tools := []openai.ChatCompletionToolParam{}
-	
+
 	if f.schedulerTool != nil {
 		tools = append(tools, f.schedulerTool.GetToolDefinition())
 	}
-	
+
 	if f.oneMinuteInterventionTool != nil {
 		tools = append(tools, f.oneMinuteInterventionTool.GetToolDefinition())
 	}
