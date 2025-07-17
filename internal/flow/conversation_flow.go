@@ -382,14 +382,23 @@ func (f *ConversationFlow) handleToolCalls(ctx context.Context, participantID st
 				errorMsg := fmt.Sprintf("❌ %s", result.Message)
 				toolResults = append(toolResults, errorMsg)
 			} else {
-				// For intervention tool, don't add any response to toolResults
+				// For intervention tool, record the execution in history but don't send acknowledgment to user
 				// The tool already sent the intervention content directly to the user
-				// No acknowledgment needed since user already received the content
-				slog.Info("ConversationFlow intervention tool executed successfully", 
-					"participantID", participantID, 
+				slog.Info("ConversationFlow intervention tool executed successfully",
+					"participantID", participantID,
 					"toolCallID", toolCall.ID,
 					"successMessage", result.Message)
-				// Don't add anything to toolResults - let the intervention speak for itself
+
+				// Add a special history-only entry to record the intervention execution
+				// This ensures the AI knows an intervention was sent without sending a message to the user
+				interventionRecord := ConversationMessage{
+					Role:      "assistant",
+					Content:   fmt.Sprintf("[INTERVENTION_SENT: %s]", result.Message),
+					Timestamp: time.Now(),
+				}
+				history.Messages = append(history.Messages, interventionRecord)
+
+				// Don't add anything to toolResults - this prevents sending a message to the user
 			}
 
 		default:
@@ -413,6 +422,7 @@ func (f *ConversationFlow) handleToolCalls(ctx context.Context, participantID st
 	}
 
 	// Add tool execution result to history only if there's content to add
+	// Note: intervention tools add their own history entries directly, so we always need to save history
 	if finalResponse != "" {
 		toolResultMsg := ConversationMessage{
 			Role:      "assistant",
@@ -422,7 +432,8 @@ func (f *ConversationFlow) handleToolCalls(ctx context.Context, participantID st
 		history.Messages = append(history.Messages, toolResultMsg)
 	}
 
-	// Save updated history
+	// Save updated history (always save, even if finalResponse is empty,
+	// because intervention tools may have added entries directly to history)
 	err := f.saveConversationHistory(ctx, participantID, history)
 	if err != nil {
 		slog.Error("ConversationFlow failed to save conversation history after tool execution", "error", err, "participantID", participantID)
