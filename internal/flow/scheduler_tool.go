@@ -219,7 +219,7 @@ func (st *SchedulerTool) ExecuteScheduler(ctx context.Context, participantID str
 		}, nil
 	}
 
-	successMessage := fmt.Sprintf("✅ Perfect! I've scheduled your daily habit reminders to be sent %s. You'll receive personalized messages about: %s\n\nYour reminders are now active and will start tomorrow!",
+	successMessage := fmt.Sprintf("✅ Perfect! I've scheduled your daily habit reminders to be sent %s. You'll receive personalized messages about: %s\n\nYour reminders are all set and will kick off tomorrow! If you'd like to try out a personalized message right now, just say the word.",
 		scheduleDescription, params.HabitDescription)
 
 	slog.Info("Scheduler tool executed successfully", "participantID", participantID, "timerID", timerID, "schedule", scheduleDescription)
