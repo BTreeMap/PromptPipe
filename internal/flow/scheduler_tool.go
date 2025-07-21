@@ -121,7 +121,7 @@ func (st *SchedulerTool) ExecuteScheduler(ctx context.Context, participantID str
 
 	// Get the participant's phone number from participantID
 	phoneNumber, hasPhone := GetPhoneNumberFromContext(ctx)
-	slog.Debug("ConversationFlow ProcessResponse context check",
+	slog.Debug("SchedulerTool ExecuteScheduler phone number check",
 		"participantID", participantID,
 		"hasPhoneNumber", hasPhone,
 		"phoneNumber", phoneNumber)
