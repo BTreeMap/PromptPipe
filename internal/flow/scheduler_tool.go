@@ -120,12 +120,16 @@ func (st *SchedulerTool) ExecuteScheduler(ctx context.Context, participantID str
 	}
 
 	// Get the participant's phone number from participantID
-	phoneNumber, err := st.getParticipantPhoneNumber(ctx, participantID)
-	if err != nil {
+	phoneNumber, hasPhone := GetPhoneNumberFromContext(ctx)
+	slog.Debug("ConversationFlow ProcessResponse context check",
+		"participantID", participantID,
+		"hasPhoneNumber", hasPhone,
+		"phoneNumber", phoneNumber)
+	if !hasPhone {
 		return &models.ToolResult{
 			Success: false,
 			Message: "Failed to get participant phone number",
-			Error:   err.Error(),
+			Error:   "Participant phone number is required for scheduling",
 		}, nil
 	}
 
@@ -298,21 +302,6 @@ func (st *SchedulerTool) buildRandomScheduleInfo(startTime, endTime, timezone st
 		EndTime:       end,
 		Timezone:      timezone,
 	}, nil
-}
-
-// getParticipantPhoneNumber retrieves the phone number for a participant.
-// This is a placeholder implementation that would need to interact with the store.
-func (st *SchedulerTool) getParticipantPhoneNumber(ctx context.Context, participantID string) (string, error) {
-	// For now, assume participantID is the phone number or we can derive it
-	// TODO: Implement actual lookup from store
-	// This would typically query the participant table to get phone number
-	if st.msgService != nil {
-		// Use the messaging service to validate/canonicalize if available
-		return st.msgService.ValidateAndCanonicalizeRecipient(participantID)
-	}
-
-	// Simple fallback - assume participantID is already a phone number
-	return participantID, nil
 }
 
 // executeRandomScheduledPrompt handles the random scheduling logic.
