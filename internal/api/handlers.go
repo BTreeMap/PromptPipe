@@ -17,7 +17,7 @@ func (s *Server) sendHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Body != nil {
 		defer r.Body.Close()
 	}
-	slog.Debug("sendHandler invoked", "method", r.Method, "path", r.URL.Path)
+	slog.Debug("Server.sendHandler: processing send request", "method", r.Method, "path", r.URL.Path)
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", http.MethodPost)
 		slog.Warn("sendHandler method not allowed", "method", r.Method)
@@ -30,7 +30,7 @@ func (s *Server) sendHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSONResponse(w, http.StatusBadRequest, models.Error("Invalid JSON format"))
 		return
 	}
-	slog.Debug("sendHandler parsed prompt", "to", p.To, "type", p.Type)
+	slog.Debug("Server.sendHandler: parsed prompt", "to", p.To, "type", p.Type)
 
 	// Default to static type if not specified
 	if p.Type == "" {
@@ -74,7 +74,7 @@ func (s *Server) sendHandler(w http.ResponseWriter, r *http.Request) {
 		slog.Debug("Response handler registered for prompt", "type", p.Type, "to", p.To)
 	}
 
-	slog.Info("Message sent successfully", "to", p.To)
+	slog.Info("Server.sendHandler: message sent successfully", "to", p.To)
 	writeJSONResponse(w, http.StatusOK, models.SuccessWithMessage("Message sent successfully", nil))
 }
 

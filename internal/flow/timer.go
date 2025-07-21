@@ -30,7 +30,7 @@ type SimpleTimer struct {
 
 // NewSimpleTimer creates a new SimpleTimer.
 func NewSimpleTimer() *SimpleTimer {
-	slog.Debug("Creating SimpleTimer")
+	slog.Debug("SimpleTimer.NewSimpleTimer: creating timer instance")
 	return &SimpleTimer{
 		timers: make(map[string]*timerEntry),
 	}
@@ -43,13 +43,13 @@ func (t *SimpleTimer) ScheduleAfter(delay time.Duration, fn func()) (string, err
 	id := fmt.Sprintf("timer_%d", t.nextID)
 	t.mu.Unlock()
 
-	slog.Debug("SimpleTimer ScheduleAfter", "id", id, "delay", delay)
+	slog.Debug("SimpleTimer.ScheduleAfter: scheduling function", "id", id, "delay", delay)
 
 	now := time.Now()
 	expiresAt := now.Add(delay)
 
 	timer := time.AfterFunc(delay, func() {
-		slog.Debug("SimpleTimer executing scheduled function", "id", id)
+		slog.Debug("SimpleTimer.ScheduleAfter: executing scheduled function", "id", id)
 		fn()
 		// Clean up timer reference
 		t.mu.Lock()

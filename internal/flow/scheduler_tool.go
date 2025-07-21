@@ -108,7 +108,7 @@ func (st *SchedulerTool) GetToolDefinition() openai.ChatCompletionToolParam {
 
 // ExecuteScheduler executes the scheduler tool call.
 func (st *SchedulerTool) ExecuteScheduler(ctx context.Context, participantID string, params models.SchedulerToolParams) (*models.ToolResult, error) {
-	slog.Info("Executing scheduler tool", "participantID", participantID, "type", params.Type)
+	slog.Info("SchedulerTool.ExecuteScheduler: executing scheduler tool", "participantID", participantID, "type", params.Type)
 
 	// Validate parameters
 	if err := params.Validate(); err != nil {
@@ -121,7 +121,7 @@ func (st *SchedulerTool) ExecuteScheduler(ctx context.Context, participantID str
 
 	// Get the participant's phone number from participantID
 	phoneNumber, hasPhone := GetPhoneNumberFromContext(ctx)
-	slog.Debug("SchedulerTool ExecuteScheduler phone number check",
+	slog.Debug("SchedulerTool.ExecuteScheduler: checking phone number context",
 		"participantID", participantID,
 		"hasPhoneNumber", hasPhone,
 		"phoneNumber", phoneNumber)

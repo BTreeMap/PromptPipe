@@ -18,13 +18,13 @@ type StoreBasedStateManager struct {
 
 // NewStoreBasedStateManager creates a new StateManager backed by a Store.
 func NewStoreBasedStateManager(st store.Store) *StoreBasedStateManager {
-	slog.Debug("Creating StoreBasedStateManager")
+	slog.Debug("StateManager.NewStoreBasedStateManager: creating state manager with store backend")
 	return &StoreBasedStateManager{store: st}
 }
 
 // GetCurrentState retrieves the current state for a participant in a flow.
 func (sm *StoreBasedStateManager) GetCurrentState(ctx context.Context, participantID string, flowType models.FlowType) (models.StateType, error) {
-	slog.Debug("StateManager GetCurrentState", "participantID", participantID, "flowType", flowType)
+	slog.Debug("StateManager.GetCurrentState: retrieving current state", "participantID", participantID, "flowType", flowType)
 
 	flowState, err := sm.store.GetFlowState(participantID, string(flowType))
 	if err != nil {
@@ -33,11 +33,11 @@ func (sm *StoreBasedStateManager) GetCurrentState(ctx context.Context, participa
 	}
 
 	if flowState == nil {
-		slog.Debug("StateManager GetCurrentState not found", "participantID", participantID, "flowType", flowType)
+		slog.Debug("StateManager.GetCurrentState: no state found", "participantID", participantID, "flowType", flowType)
 		return "", nil
 	}
 
-	slog.Debug("StateManager GetCurrentState found", "participantID", participantID, "flowType", flowType, "state", flowState.CurrentState)
+	slog.Debug("StateManager.GetCurrentState: state found", "participantID", participantID, "flowType", flowType, "state", flowState.CurrentState)
 	return flowState.CurrentState, nil
 }
 

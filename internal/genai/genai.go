@@ -131,7 +131,7 @@ func NewClient(opts ...Option) (*Client, error) {
 		maxTokens:   cfg.MaxTokens,
 	}
 
-	slog.Debug("GenAI client created", "model", cfg.Model, "temperature", cfg.Temperature, "maxTokens", cfg.MaxTokens)
+	slog.Debug("GenAI.NewClient: client created successfully", "model", cfg.Model, "temperature", cfg.Temperature, "maxTokens", cfg.MaxTokens)
 	return client, nil
 }
 
@@ -143,7 +143,7 @@ func (c *Client) GeneratePrompt(system, user string) (string, error) {
 
 // GeneratePromptWithContext generates content based on provided system and user prompts with context.
 func (c *Client) GeneratePromptWithContext(ctx context.Context, system, user string) (string, error) {
-	slog.Debug("GeneratePrompt invoked", "system", system, "user", user, "model", c.model)
+	slog.Debug("GenAI.GeneratePrompt: generating prompt", "system", system, "user", user, "model", c.model)
 
 	// Prepare chat completion parameters with configured options
 	params := openai.ChatCompletionNewParams{
