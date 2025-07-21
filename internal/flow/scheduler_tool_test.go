@@ -60,7 +60,7 @@ func (m *MockMessagingService) ValidateAndCanonicalizeRecipient(recipient string
 
 func (m *MockMessagingService) SendMessage(ctx context.Context, to, message string) error {
 	// Mock sending - just log the operation
-	slog.Debug("Mock message sent", "to", to, "messageLength", len(message))
+	slog.Debug("MockMessagingService.SendMessage: sending mock message", "to", to, "messageLength", len(message))
 	return nil
 }
 
@@ -115,7 +115,8 @@ func TestSchedulerTool_ExecuteScheduler_Fixed(t *testing.T) {
 	msgService := &MockMessagingService{}
 	tool := NewSchedulerTool(timer, msgService)
 
-	ctx := context.Background()
+	// Add phone number to context as the scheduler tool expects it
+	ctx := context.WithValue(context.Background(), phoneNumberContextKey, "+1234567890")
 	participantID := "test-participant"
 
 	params := models.SchedulerToolParams{
@@ -161,7 +162,8 @@ func TestSchedulerTool_ExecuteScheduler_Random(t *testing.T) {
 	msgService := &MockMessagingService{}
 	tool := NewSchedulerTool(timer, msgService)
 
-	ctx := context.Background()
+	// Add phone number to context as the scheduler tool expects it
+	ctx := context.WithValue(context.Background(), phoneNumberContextKey, "+1234567890")
 	participantID := "test-participant"
 
 	params := models.SchedulerToolParams{
@@ -198,7 +200,8 @@ func TestSchedulerTool_ExecuteScheduler_InvalidParams(t *testing.T) {
 	msgService := &MockMessagingService{}
 	tool := NewSchedulerTool(timer, msgService)
 
-	ctx := context.Background()
+	// Add phone number to context so we can test parameter validation specifically
+	ctx := context.WithValue(context.Background(), phoneNumberContextKey, "+1234567890")
 	participantID := "test-participant"
 
 	// Test with missing required fields

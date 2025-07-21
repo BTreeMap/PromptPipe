@@ -114,6 +114,10 @@ func TestConversationFlow_WithSchedulerTool(t *testing.T) {
 
 	participantID := "test-participant-tools"
 
+	// Add phone number to context for scheduler tool to work
+	phoneNumber := "+1234567890"
+	ctx = context.WithValue(ctx, GetPhoneNumberContextKey(), phoneNumber)
+
 	// Test basic conversation without tools
 	response, err := flow.ProcessResponse(ctx, participantID, "Hi, I want to start a new habit")
 	if err != nil {
@@ -238,6 +242,10 @@ func TestConversationFlow_ToolExecutionError(t *testing.T) {
 
 	participantID := "test-participant-error"
 
+	// Add phone number to context for consistency
+	phoneNumber := "+1234567890"
+	ctx = context.WithValue(ctx, GetPhoneNumberContextKey(), phoneNumber)
+
 	// Process a message that should trigger tool use but fail
 	response, err := flow.ProcessResponse(ctx, participantID, "Please schedule my reminders")
 	if err != nil {
@@ -277,6 +285,10 @@ func TestConversationFlow_UnknownTool(t *testing.T) {
 	flow := NewConversationFlowWithScheduler(stateManager, mockGenAI, "", schedulerTool)
 
 	participantID := "test-participant-unknown"
+
+	// Add phone number to context for consistency
+	phoneNumber := "+1234567890"
+	ctx = context.WithValue(ctx, GetPhoneNumberContextKey(), phoneNumber)
 
 	// Process a message that should trigger unknown tool use
 	response, err := flow.ProcessResponse(ctx, participantID, "Please use an unknown tool")

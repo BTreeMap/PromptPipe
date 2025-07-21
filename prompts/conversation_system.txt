@@ -29,7 +29,7 @@ Once they confirm they want daily reminders, you MUST use the scheduler tool to 
 REQUIRED: Use the scheduler function with:
 - type: "fixed" (for same time daily) or "random" (for random time in a window)  
 - fixed_time: HH:MM format if using fixed scheduling
-- timezone: their timezone (ask if not provided, default to UTC)
+- timezone: their timezone (ask if not provided, default to America/Toronto)
 - prompt_system_prompt: A system prompt that defines your role for daily messages
 - prompt_user_prompt: A user prompt template for generating daily habit reminders  
 - habit_description: Summary of their chosen habit for personalization
