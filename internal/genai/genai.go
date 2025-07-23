@@ -4,11 +4,10 @@ package genai
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"time"
@@ -164,11 +163,12 @@ func NewClient(opts ...Option) (*Client, error) {
 
 // generateRandomHex generates a random hexadecimal string of specified length.
 func generateRandomHex(length int) (string, error) {
-	bytes := make([]byte, length/2)
-	if _, err := rand.Read(bytes); err != nil {
-		return "", err
+	const hexChars = "0123456789abcdef"
+	result := make([]byte, length)
+	for i := range result {
+		result[i] = hexChars[rand.Intn(16)]
 	}
-	return hex.EncodeToString(bytes), nil
+	return string(result), nil
 }
 
 // logAPICall logs the API call parameters and response to a debug file if debug mode is enabled.
