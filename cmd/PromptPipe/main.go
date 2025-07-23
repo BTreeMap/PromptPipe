@@ -141,7 +141,7 @@ type Flags struct {
 	openaiKey     *string
 	apiAddr       *string
 	defaultCron   *string
-	debug         *bool   // Enable debug mode for API call logging
+	debug         *bool // Enable debug mode for API call logging
 }
 
 // initializeLogger sets up structured logging with debug level
@@ -378,7 +378,7 @@ func parseBoolEnv(key string, defaultValue bool) bool {
 	if val == "" {
 		return defaultValue
 	}
-	
+
 	switch strings.ToLower(val) {
 	case "true", "1", "yes", "on":
 		return true

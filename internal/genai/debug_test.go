@@ -26,7 +26,7 @@ func TestDebugLogging(t *testing.T) {
 			{Message: openai.ChatCompletionMessage{Content: "Test response"}},
 		},
 	}
-	
+
 	client := &Client{
 		chat:        &mockChatService{resp: mockResp},
 		model:       "test-model",
@@ -106,7 +106,7 @@ func TestDebugLoggingDisabled(t *testing.T) {
 			{Message: openai.ChatCompletionMessage{Content: "Test response"}},
 		},
 	}
-	
+
 	client := &Client{
 		chat:        &mockChatService{resp: mockResp},
 		model:       "test-model",

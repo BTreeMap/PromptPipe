@@ -246,10 +246,10 @@ func (c *Client) GeneratePromptWithContext(ctx context.Context, system, user str
 	}
 
 	resp, err := c.chat.Create(ctx, params)
-	
+
 	// Log API call for debugging
 	c.logAPICall("GeneratePromptWithContext", params, resp, err)
-	
+
 	if err != nil {
 		slog.Error("GenAI chat.Create failed", "error", err, "model", c.model)
 		return "", fmt.Errorf("failed to create chat completion: %w", err)
@@ -279,10 +279,10 @@ func (c *Client) GenerateWithMessages(ctx context.Context, messages []openai.Cha
 	}
 
 	resp, err := c.chat.Create(ctx, params)
-	
+
 	// Log API call for debugging
 	c.logAPICall("GenerateWithMessages", params, resp, err)
-	
+
 	if err != nil {
 		slog.Error("GenAI GenerateWithMessages failed", "error", err, "model", c.model)
 		return "", fmt.Errorf("failed to create chat completion: %w", err)
@@ -331,10 +331,10 @@ func (c *Client) GenerateWithTools(ctx context.Context, messages []openai.ChatCo
 	}
 
 	resp, err := c.chat.Create(ctx, params)
-	
+
 	// Log API call for debugging
 	c.logAPICall("GenerateWithTools", params, resp, err)
-	
+
 	if err != nil {
 		slog.Error("GenAI GenerateWithTools failed", "error", err, "model", c.model)
 		return nil, fmt.Errorf("failed to create chat completion with tools: %w", err)
