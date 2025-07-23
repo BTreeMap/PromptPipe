@@ -11,9 +11,9 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/BTreeMap/PromptPipe/internal/util"
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
-	"github.com/BTreeMap/PromptPipe/internal/util"
 )
 
 // Default configuration constants
@@ -160,8 +160,6 @@ func NewClient(opts ...Option) (*Client, error) {
 	slog.Debug("GenAI.NewClient: client created successfully", "model", cfg.Model, "temperature", cfg.Temperature, "maxTokens", cfg.MaxTokens, "debugMode", cfg.DebugMode)
 	return client, nil
 }
-
-
 
 // logAPICall logs the API call parameters and response to a debug file if debug mode is enabled.
 func (c *Client) logAPICall(method string, params interface{}, response interface{}, err error) {
