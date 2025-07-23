@@ -7,13 +7,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"math/rand"
 	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
+	"github.com/BTreeMap/PromptPipe/internal/util"
 )
 
 // Default configuration constants
@@ -161,15 +161,7 @@ func NewClient(opts ...Option) (*Client, error) {
 	return client, nil
 }
 
-// generateRandomHex generates a random hexadecimal string of specified length.
-func generateRandomHex(length int) (string, error) {
-	const hexChars = "0123456789abcdef"
-	result := make([]byte, length)
-	for i := range result {
-		result[i] = hexChars[rand.Intn(16)]
-	}
-	return string(result), nil
-}
+
 
 // logAPICall logs the API call parameters and response to a debug file if debug mode is enabled.
 func (c *Client) logAPICall(method string, params interface{}, response interface{}, err error) {
@@ -179,11 +171,7 @@ func (c *Client) logAPICall(method string, params interface{}, response interfac
 
 	// Generate timestamp and random hex string for filename
 	timestamp := time.Now().Format("2006-01-02.15-04-05")
-	randomHex, hexErr := generateRandomHex(16)
-	if hexErr != nil {
-		slog.Warn("Failed to generate random hex for debug log filename", "error", hexErr)
-		return
-	}
+	randomHex := util.GenerateRandomHex(16)
 
 	filename := fmt.Sprintf("%s.%s.json", timestamp, randomHex)
 	debugDir := filepath.Join(c.stateDir, "debug")

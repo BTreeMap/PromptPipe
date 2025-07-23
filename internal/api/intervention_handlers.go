@@ -3,8 +3,6 @@ package api
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -14,6 +12,7 @@ import (
 	"github.com/BTreeMap/PromptPipe/internal/flow"
 	"github.com/BTreeMap/PromptPipe/internal/messaging"
 	"github.com/BTreeMap/PromptPipe/internal/models"
+	"github.com/BTreeMap/PromptPipe/internal/util"
 )
 
 // enrollParticipantHandler handles POST /intervention/participants
@@ -645,20 +644,12 @@ func (s *Server) interventionStatsHandler(w http.ResponseWriter, r *http.Request
 
 // generateParticipantID generates a unique participant ID
 func generateParticipantID() (string, error) {
-	bytes := make([]byte, 16)
-	if _, err := rand.Read(bytes); err != nil {
-		return "", err
-	}
-	return "p_" + hex.EncodeToString(bytes), nil
+	return util.GenerateParticipantID(), nil
 }
 
 // generateResponseID generates a unique response ID
 func generateResponseID() (string, error) {
-	bytes := make([]byte, 16)
-	if _, err := rand.Read(bytes); err != nil {
-		return "", err
-	}
-	return "r_" + hex.EncodeToString(bytes), nil
+	return util.GenerateResponseID(), nil
 }
 
 // determineResponseType determines the response type based on the current state
