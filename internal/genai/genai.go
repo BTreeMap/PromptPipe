@@ -4,9 +4,14 @@ package genai
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
+	"time"
 
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
@@ -48,6 +53,8 @@ type Client struct {
 	model       string
 	temperature float64
 	maxTokens   int
+	debugMode   bool   // Enable debug mode for API call logging
+	stateDir    string // State directory for debug log files
 }
 
 // chatServiceWrapper implements ChatService interface for OpenAI client
@@ -72,6 +79,8 @@ type Opts struct {
 	Model       string  // overrides default model
 	Temperature float64 // overrides default temperature
 	MaxTokens   int     // overrides default max tokens
+	DebugMode   bool    // Enable debug mode for API call logging
+	StateDir    string  // State directory for debug log files
 }
 
 // Option defines a configuration option for the GenAI client.
@@ -105,6 +114,20 @@ func WithMaxTokens(tokens int) Option {
 	}
 }
 
+// WithDebugMode enables debug mode for API call logging.
+func WithDebugMode(enabled bool) Option {
+	return func(o *Opts) {
+		o.DebugMode = enabled
+	}
+}
+
+// WithStateDir sets the state directory for debug log files.
+func WithStateDir(stateDir string) Option {
+	return func(o *Opts) {
+		o.StateDir = stateDir
+	}
+}
+
 // NewClient initializes a new GenAI client using the provided options.
 func NewClient(opts ...Option) (*Client, error) {
 	// Apply options with defaults
@@ -112,6 +135,8 @@ func NewClient(opts ...Option) (*Client, error) {
 		Model:       DefaultModel,
 		Temperature: DefaultTemperature,
 		MaxTokens:   DefaultMaxTokens,
+		DebugMode:   false,
+		StateDir:    "",
 	}
 	for _, opt := range opts {
 		opt(&cfg)
@@ -129,10 +154,74 @@ func NewClient(opts ...Option) (*Client, error) {
 		model:       cfg.Model,
 		temperature: cfg.Temperature,
 		maxTokens:   cfg.MaxTokens,
+		debugMode:   cfg.DebugMode,
+		stateDir:    cfg.StateDir,
 	}
 
-	slog.Debug("GenAI.NewClient: client created successfully", "model", cfg.Model, "temperature", cfg.Temperature, "maxTokens", cfg.MaxTokens)
+	slog.Debug("GenAI.NewClient: client created successfully", "model", cfg.Model, "temperature", cfg.Temperature, "maxTokens", cfg.MaxTokens, "debugMode", cfg.DebugMode)
 	return client, nil
+}
+
+// generateRandomHex generates a random hexadecimal string of specified length.
+func generateRandomHex(length int) (string, error) {
+	bytes := make([]byte, length/2)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(bytes), nil
+}
+
+// logAPICall logs the API call parameters and response to a debug file if debug mode is enabled.
+func (c *Client) logAPICall(method string, params interface{}, response interface{}, err error) {
+	if !c.debugMode || c.stateDir == "" {
+		return
+	}
+
+	// Generate timestamp and random hex string for filename
+	timestamp := time.Now().Format("2006-01-02.15-04-05")
+	randomHex, hexErr := generateRandomHex(16)
+	if hexErr != nil {
+		slog.Warn("Failed to generate random hex for debug log filename", "error", hexErr)
+		return
+	}
+
+	filename := fmt.Sprintf("%s.%s.json", timestamp, randomHex)
+	debugDir := filepath.Join(c.stateDir, "debug")
+	filePath := filepath.Join(debugDir, filename)
+
+	// Ensure debug directory exists
+	if mkdirErr := os.MkdirAll(debugDir, 0755); mkdirErr != nil {
+		slog.Warn("Failed to create debug directory", "error", mkdirErr, "path", debugDir)
+		return
+	}
+
+	// Create debug log entry
+	logEntry := map[string]interface{}{
+		"timestamp": time.Now().UTC().Format(time.RFC3339),
+		"method":    method,
+		"model":     c.model,
+		"params":    params,
+		"response":  response,
+		"error":     nil,
+	}
+
+	if err != nil {
+		logEntry["error"] = err.Error()
+	}
+
+	// Write to file
+	logData, jsonErr := json.MarshalIndent(logEntry, "", "  ")
+	if jsonErr != nil {
+		slog.Warn("Failed to marshal debug log entry", "error", jsonErr)
+		return
+	}
+
+	if writeErr := os.WriteFile(filePath, logData, 0644); writeErr != nil {
+		slog.Warn("Failed to write debug log file", "error", writeErr, "path", filePath)
+		return
+	}
+
+	slog.Debug("GenAI API call logged", "file", filename, "method", method)
 }
 
 // GeneratePrompt generates content based on provided system and user prompts.
@@ -157,6 +246,10 @@ func (c *Client) GeneratePromptWithContext(ctx context.Context, system, user str
 	}
 
 	resp, err := c.chat.Create(ctx, params)
+	
+	// Log API call for debugging
+	c.logAPICall("GeneratePromptWithContext", params, resp, err)
+	
 	if err != nil {
 		slog.Error("GenAI chat.Create failed", "error", err, "model", c.model)
 		return "", fmt.Errorf("failed to create chat completion: %w", err)
@@ -186,6 +279,10 @@ func (c *Client) GenerateWithMessages(ctx context.Context, messages []openai.Cha
 	}
 
 	resp, err := c.chat.Create(ctx, params)
+	
+	// Log API call for debugging
+	c.logAPICall("GenerateWithMessages", params, resp, err)
+	
 	if err != nil {
 		slog.Error("GenAI GenerateWithMessages failed", "error", err, "model", c.model)
 		return "", fmt.Errorf("failed to create chat completion: %w", err)
@@ -234,6 +331,10 @@ func (c *Client) GenerateWithTools(ctx context.Context, messages []openai.ChatCo
 	}
 
 	resp, err := c.chat.Create(ctx, params)
+	
+	// Log API call for debugging
+	c.logAPICall("GenerateWithTools", params, resp, err)
+	
 	if err != nil {
 		slog.Error("GenAI GenerateWithTools failed", "error", err, "model", c.model)
 		return nil, fmt.Errorf("failed to create chat completion with tools: %w", err)

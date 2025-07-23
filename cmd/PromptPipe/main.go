@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 
 	"github.com/BTreeMap/PromptPipe/internal/api"
@@ -123,6 +124,10 @@ type Config struct {
 	// DefaultCron is the default cron schedule for prompts.
 	// Environment variable: DEFAULT_SCHEDULE
 	DefaultCron string
+
+	// DebugMode enables debug logging of API calls.
+	// Environment variable: PROMPTPIPE_DEBUG
+	DebugMode bool
 }
 
 // Flags holds command line flag values for database and other configuration.
@@ -136,6 +141,7 @@ type Flags struct {
 	openaiKey     *string
 	apiAddr       *string
 	defaultCron   *string
+	debug         *bool   // Enable debug mode for API call logging
 }
 
 // initializeLogger sets up structured logging with debug level
@@ -173,6 +179,7 @@ func loadEnvironmentConfig() Config {
 		OpenAIKey:        os.Getenv("OPENAI_API_KEY"),
 		APIAddr:          os.Getenv("API_ADDR"),
 		DefaultCron:      os.Getenv("DEFAULT_SCHEDULE"),
+		DebugMode:        parseBoolEnv("PROMPTPIPE_DEBUG", false),
 	}
 
 	// Set default state directory if not specified
@@ -211,7 +218,8 @@ func loadEnvironmentConfig() Config {
 		"PROMPTPIPE_STATE_DIR", config.StateDir,
 		"OPENAI_API_KEY_SET", config.OpenAIKey != "",
 		"API_ADDR", config.APIAddr,
-		"DEFAULT_SCHEDULE", config.DefaultCron)
+		"DEFAULT_SCHEDULE", config.DefaultCron,
+		"PROMPTPIPE_DEBUG", config.DebugMode)
 
 	return config
 }
@@ -228,6 +236,7 @@ func parseCommandLineFlags(config Config) Flags {
 		openaiKey:     flag.String("openai-api-key", config.OpenAIKey, "OpenAI API key (overrides $OPENAI_API_KEY)"),
 		apiAddr:       flag.String("api-addr", config.APIAddr, "API server address (overrides $API_ADDR)"),
 		defaultCron:   flag.String("default-cron", config.DefaultCron, "default cron schedule for prompts (overrides $DEFAULT_SCHEDULE)"),
+		debug:         flag.Bool("debug", config.DebugMode, "enable debug mode for API call logging (overrides $PROMPTPIPE_DEBUG)"),
 	}
 
 	flag.Parse()
@@ -240,7 +249,8 @@ func parseCommandLineFlags(config Config) Flags {
 		"appDBDSN_set", *flags.appDBDSN != "",
 		"openaiKeySet", *flags.openaiKey != "",
 		"apiAddr", *flags.apiAddr,
-		"defaultCron", *flags.defaultCron)
+		"defaultCron", *flags.defaultCron,
+		"debug", *flags.debug)
 
 	// Update database DSNs if not explicitly set but state directory has changed
 	if *flags.whatsappDBDSN == config.WhatsAppDBDSN && config.WhatsAppDBDSN == "file:"+filepath.Join(config.StateDir, DefaultWhatsAppDBFileName)+"?_foreign_keys=on" && *flags.stateDir != config.StateDir {
@@ -342,6 +352,10 @@ func buildGenAIOptions(flags Flags) []genai.Option {
 	if *flags.openaiKey != "" {
 		genaiOpts = append(genaiOpts, genai.WithAPIKey(*flags.openaiKey))
 	}
+	if *flags.debug {
+		genaiOpts = append(genaiOpts, genai.WithDebugMode(true))
+		genaiOpts = append(genaiOpts, genai.WithStateDir(*flags.stateDir))
+	}
 	return genaiOpts
 }
 
@@ -355,4 +369,23 @@ func buildAPIOptions(flags Flags) []api.Option {
 		apiOpts = append(apiOpts, api.WithDefaultCron(*flags.defaultCron))
 	}
 	return apiOpts
+}
+
+// parseBoolEnv parses a boolean environment variable with a default value.
+// It accepts "true", "1", "yes", "on" (case insensitive) as true values.
+func parseBoolEnv(key string, defaultValue bool) bool {
+	val := os.Getenv(key)
+	if val == "" {
+		return defaultValue
+	}
+	
+	switch strings.ToLower(val) {
+	case "true", "1", "yes", "on":
+		return true
+	case "false", "0", "no", "off":
+		return false
+	default:
+		slog.Warn("Invalid boolean value for environment variable", "key", key, "value", val, "defaulting_to", defaultValue)
+		return defaultValue
+	}
 }
