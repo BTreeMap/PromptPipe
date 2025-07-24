@@ -27,7 +27,7 @@ func NewHookRegistry() *HookRegistry {
 
 	// Register default hook factories
 	registry.registerDefaultFactories()
-	
+
 	return registry
 }
 
@@ -109,7 +109,7 @@ func (hr *HookRegistry) CreateHook(hookType models.HookType, params map[string]s
 func (hr *HookRegistry) ListRegisteredTypes() []models.HookType {
 	hr.mu.RLock()
 	defer hr.mu.RUnlock()
-	
+
 	types := make([]models.HookType, 0, len(hr.factories))
 	for hookType := range hr.factories {
 		types = append(types, hookType)

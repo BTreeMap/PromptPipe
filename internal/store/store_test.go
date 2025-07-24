@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/BTreeMap/PromptPipe/internal/models"
 )
@@ -243,6 +244,266 @@ func TestSQLiteStore(t *testing.T) {
 	responses, _ = s.GetResponses()
 	if len(responses) != 0 {
 		t.Errorf("ClearResponses: expected 0 responses, got %d", len(responses))
+	}
+}
+
+func TestInMemoryStore_HookPersistence(t *testing.T) {
+	s := NewInMemoryStore()
+
+	// Test saving a hook
+	hook := models.RegisteredHook{
+		PhoneNumber: "+1234567890",
+		HookType:    models.HookTypeIntervention,
+		Parameters: map[string]string{
+			"participant_id": "test-participant",
+			"phone_number":   "+1234567890",
+		},
+		CreatedAt: time.Now(),
+	}
+
+	err := s.SaveRegisteredHook(hook)
+	if err != nil {
+		t.Fatalf("SaveRegisteredHook failed: %v", err)
+	}
+
+	// Test getting the hook
+	retrievedHook, err := s.GetRegisteredHook("+1234567890")
+	if err != nil {
+		t.Fatalf("GetRegisteredHook failed: %v", err)
+	}
+
+	if retrievedHook == nil {
+		t.Fatal("Retrieved hook is nil")
+	}
+
+	if retrievedHook.PhoneNumber != hook.PhoneNumber {
+		t.Errorf("Expected phone number '%s', got '%s'", hook.PhoneNumber, retrievedHook.PhoneNumber)
+	}
+
+	if retrievedHook.HookType != hook.HookType {
+		t.Errorf("Expected hook type '%s', got '%s'", hook.HookType, retrievedHook.HookType)
+	}
+
+	if retrievedHook.Parameters["participant_id"] != hook.Parameters["participant_id"] {
+		t.Errorf("Expected participant_id '%s', got '%s'",
+			hook.Parameters["participant_id"], retrievedHook.Parameters["participant_id"])
+	}
+
+	// Test listing hooks
+	hooks, err := s.ListRegisteredHooks()
+	if err != nil {
+		t.Fatalf("ListRegisteredHooks failed: %v", err)
+	}
+
+	if len(hooks) != 1 {
+		t.Errorf("Expected 1 hook, got %d", len(hooks))
+	}
+
+	if hooks[0].PhoneNumber != hook.PhoneNumber {
+		t.Errorf("Listed hook has wrong phone number: expected '%s', got '%s'",
+			hook.PhoneNumber, hooks[0].PhoneNumber)
+	}
+
+	// Test deleting the hook
+	err = s.DeleteRegisteredHook("+1234567890")
+	if err != nil {
+		t.Fatalf("DeleteRegisteredHook failed: %v", err)
+	}
+
+	// Verify hook is deleted
+	deletedHook, err := s.GetRegisteredHook("+1234567890")
+	if err != nil {
+		t.Fatalf("GetRegisteredHook after deletion failed: %v", err)
+	}
+
+	if deletedHook != nil {
+		t.Error("Hook should have been deleted")
+	}
+
+	// Verify list is empty
+	hooks, err = s.ListRegisteredHooks()
+	if err != nil {
+		t.Fatalf("ListRegisteredHooks after deletion failed: %v", err)
+	}
+
+	if len(hooks) != 0 {
+		t.Errorf("Expected 0 hooks after deletion, got %d", len(hooks))
+	}
+}
+
+func TestInMemoryStore_HookPersistence_MultipleHooks(t *testing.T) {
+	s := NewInMemoryStore()
+
+	// Create multiple hooks
+	hook1 := models.RegisteredHook{
+		PhoneNumber: "+1111111111",
+		HookType:    models.HookTypeIntervention,
+		Parameters: map[string]string{
+			"participant_id": "participant-1",
+			"phone_number":   "+1111111111",
+		},
+		CreatedAt: time.Now(),
+	}
+
+	hook2 := models.RegisteredHook{
+		PhoneNumber: "+2222222222",
+		HookType:    models.HookTypeStatic,
+		Parameters: map[string]string{
+			"message": "Static response message",
+		},
+		CreatedAt: time.Now(),
+	}
+
+	// Save both hooks
+	err := s.SaveRegisteredHook(hook1)
+	if err != nil {
+		t.Fatalf("SaveRegisteredHook hook1 failed: %v", err)
+	}
+
+	err = s.SaveRegisteredHook(hook2)
+	if err != nil {
+		t.Fatalf("SaveRegisteredHook hook2 failed: %v", err)
+	}
+
+	// List all hooks
+	hooks, err := s.ListRegisteredHooks()
+	if err != nil {
+		t.Fatalf("ListRegisteredHooks failed: %v", err)
+	}
+
+	if len(hooks) != 2 {
+		t.Errorf("Expected 2 hooks, got %d", len(hooks))
+	}
+
+	// Verify both hooks exist
+	retrievedHook1, err := s.GetRegisteredHook("+1111111111")
+	if err != nil {
+		t.Fatalf("GetRegisteredHook hook1 failed: %v", err)
+	}
+	if retrievedHook1 == nil {
+		t.Fatal("Hook1 should exist")
+	}
+
+	retrievedHook2, err := s.GetRegisteredHook("+2222222222")
+	if err != nil {
+		t.Fatalf("GetRegisteredHook hook2 failed: %v", err)
+	}
+	if retrievedHook2 == nil {
+		t.Fatal("Hook2 should exist")
+	}
+
+	// Delete one hook
+	err = s.DeleteRegisteredHook("+1111111111")
+	if err != nil {
+		t.Fatalf("DeleteRegisteredHook hook1 failed: %v", err)
+	}
+
+	// Verify only one hook remains
+	hooks, err = s.ListRegisteredHooks()
+	if err != nil {
+		t.Fatalf("ListRegisteredHooks after deletion failed: %v", err)
+	}
+
+	if len(hooks) != 1 {
+		t.Errorf("Expected 1 hook after deletion, got %d", len(hooks))
+	}
+
+	if hooks[0].PhoneNumber != "+2222222222" {
+		t.Errorf("Wrong hook remained: expected '+2222222222', got '%s'", hooks[0].PhoneNumber)
+	}
+}
+
+func TestInMemoryStore_HookPersistence_UpdateHook(t *testing.T) {
+	s := NewInMemoryStore()
+
+	// Save initial hook
+	hook := models.RegisteredHook{
+		PhoneNumber: "+1234567890",
+		HookType:    models.HookTypeIntervention,
+		Parameters: map[string]string{
+			"participant_id": "test-participant",
+			"phone_number":   "+1234567890",
+		},
+		CreatedAt: time.Now(),
+	}
+
+	err := s.SaveRegisteredHook(hook)
+	if err != nil {
+		t.Fatalf("SaveRegisteredHook failed: %v", err)
+	}
+
+	// Update the hook (same phone number, different parameters)
+	updatedHook := models.RegisteredHook{
+		PhoneNumber: "+1234567890",
+		HookType:    models.HookTypeStatic,
+		Parameters: map[string]string{
+			"message": "Updated static message",
+		},
+		CreatedAt: time.Now().Add(time.Hour),
+	}
+
+	err = s.SaveRegisteredHook(updatedHook)
+	if err != nil {
+		t.Fatalf("SaveRegisteredHook update failed: %v", err)
+	}
+
+	// Verify hook was updated
+	retrievedHook, err := s.GetRegisteredHook("+1234567890")
+	if err != nil {
+		t.Fatalf("GetRegisteredHook after update failed: %v", err)
+	}
+
+	if retrievedHook == nil {
+		t.Fatal("Updated hook is nil")
+	}
+
+	if retrievedHook.HookType != models.HookTypeStatic {
+		t.Errorf("Expected hook type '%s', got '%s'", models.HookTypeStatic, retrievedHook.HookType)
+	}
+
+	if retrievedHook.Parameters["message"] != "Updated static message" {
+		t.Errorf("Expected message 'Updated static message', got '%s'",
+			retrievedHook.Parameters["message"])
+	}
+
+	// Verify still only one hook exists
+	hooks, err := s.ListRegisteredHooks()
+	if err != nil {
+		t.Fatalf("ListRegisteredHooks after update failed: %v", err)
+	}
+
+	if len(hooks) != 1 {
+		t.Errorf("Expected 1 hook after update, got %d", len(hooks))
+	}
+}
+
+func TestInMemoryStore_HookPersistence_NonExistentHook(t *testing.T) {
+	s := NewInMemoryStore()
+
+	// Try to get a non-existent hook
+	hook, err := s.GetRegisteredHook("+9999999999")
+	if err != nil {
+		t.Fatalf("GetRegisteredHook for non-existent hook failed: %v", err)
+	}
+
+	if hook != nil {
+		t.Error("Expected nil for non-existent hook")
+	}
+
+	// Try to delete a non-existent hook (should not error)
+	err = s.DeleteRegisteredHook("+9999999999")
+	if err != nil {
+		t.Fatalf("DeleteRegisteredHook for non-existent hook failed: %v", err)
+	}
+
+	// List should be empty
+	hooks, err := s.ListRegisteredHooks()
+	if err != nil {
+		t.Fatalf("ListRegisteredHooks for empty store failed: %v", err)
+	}
+
+	if len(hooks) != 0 {
+		t.Errorf("Expected 0 hooks for empty store, got %d", len(hooks))
 	}
 }
 

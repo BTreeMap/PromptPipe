@@ -758,7 +758,7 @@ type HookType string
 const (
 	// HookTypeIntervention for micro health intervention hooks
 	HookTypeIntervention HookType = "intervention"
-	// HookTypeConversation for conversation flow hooks  
+	// HookTypeConversation for conversation flow hooks
 	HookTypeConversation HookType = "conversation"
 	// HookTypeBranch for branch prompt hooks
 	HookTypeBranch HookType = "branch"
