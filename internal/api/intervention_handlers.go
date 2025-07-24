@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/BTreeMap/PromptPipe/internal/flow"
-	"github.com/BTreeMap/PromptPipe/internal/messaging"
 	"github.com/BTreeMap/PromptPipe/internal/models"
 	"github.com/BTreeMap/PromptPipe/internal/util"
 )
@@ -102,13 +101,16 @@ func (s *Server) enrollParticipantHandler(w http.ResponseWriter, r *http.Request
 		// Note: We don't fail the enrollment if state init fails, but we log it
 	}
 
-	// Register response hook for this participant
-	interventionHook := messaging.CreateInterventionHook(participantID, canonicalPhone, stateManager, s.msgService, s.timer)
-	if err := s.respHandler.RegisterHook(canonicalPhone, interventionHook); err != nil {
-		slog.Error("enrollParticipantHandler hook registration failed", "error", err, "participantID", participantID)
+	// Register persistent response hook for this participant
+	hookParams := map[string]string{
+		"participant_id": participantID,
+		"phone_number":   canonicalPhone,
+	}
+	if err := s.respHandler.RegisterPersistentHook(canonicalPhone, models.HookTypeIntervention, hookParams); err != nil {
+		slog.Error("enrollParticipantHandler persistent hook registration failed", "error", err, "participantID", participantID)
 		// Note: We don't fail the enrollment if hook registration fails, but we log it
 	} else {
-		slog.Debug("Intervention hook registered", "participantID", participantID, "phone", canonicalPhone)
+		slog.Debug("Persistent intervention hook registered", "participantID", participantID, "phone", canonicalPhone)
 	}
 
 	// Send immediate welcome message

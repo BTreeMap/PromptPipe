@@ -43,6 +43,11 @@ type Store interface {
 	GetConversationParticipantByPhone(phoneNumber string) (*models.ConversationParticipant, error)
 	ListConversationParticipants() ([]models.ConversationParticipant, error)
 	DeleteConversationParticipant(id string) error
+	// Response hook persistence management
+	SaveRegisteredHook(hook models.RegisteredHook) error
+	GetRegisteredHook(phoneNumber string) (*models.RegisteredHook, error)
+	ListRegisteredHooks() ([]models.RegisteredHook, error)
+	DeleteRegisteredHook(phoneNumber string) error
 }
 
 // Opts holds configuration options for store implementations.
@@ -129,6 +134,7 @@ type InMemoryStore struct {
 	interventionParticipants map[string]models.InterventionParticipant // key: participant ID
 	conversationParticipants map[string]models.ConversationParticipant // key: participant ID
 	interventionResponses    []models.InterventionResponse             // chronological list
+	registeredHooks          map[string]models.RegisteredHook          // key: phone number
 	mu                       sync.RWMutex
 }
 
@@ -142,6 +148,7 @@ func NewInMemoryStore() *InMemoryStore {
 		interventionParticipants: make(map[string]models.InterventionParticipant),
 		conversationParticipants: make(map[string]models.ConversationParticipant),
 		interventionResponses:    make([]models.InterventionResponse, 0),
+		registeredHooks:          make(map[string]models.RegisteredHook),
 	}
 }
 
@@ -399,5 +406,49 @@ func (s *InMemoryStore) DeleteConversationParticipant(id string) error {
 	defer s.mu.Unlock()
 	delete(s.conversationParticipants, id)
 	slog.Debug("InMemoryStore DeleteConversationParticipant succeeded", "id", id)
+	return nil
+}
+
+// SaveRegisteredHook stores a registered hook.
+func (s *InMemoryStore) SaveRegisteredHook(hook models.RegisteredHook) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.registeredHooks[hook.PhoneNumber] = hook
+	slog.Debug("InMemoryStore SaveRegisteredHook succeeded", "phoneNumber", hook.PhoneNumber)
+	return nil
+}
+
+// GetRegisteredHook retrieves a registered hook by phone number.
+func (s *InMemoryStore) GetRegisteredHook(phoneNumber string) (*models.RegisteredHook, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if hook, exists := s.registeredHooks[phoneNumber]; exists {
+		slog.Debug("InMemoryStore GetRegisteredHook found", "phoneNumber", phoneNumber)
+		// Return a copy to prevent external modifications
+		hookCopy := hook
+		return &hookCopy, nil
+	}
+	slog.Debug("InMemoryStore GetRegisteredHook not found", "phoneNumber", phoneNumber)
+	return nil, nil
+}
+
+// ListRegisteredHooks retrieves all registered hooks.
+func (s *InMemoryStore) ListRegisteredHooks() ([]models.RegisteredHook, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	result := make([]models.RegisteredHook, 0, len(s.registeredHooks))
+	for _, hook := range s.registeredHooks {
+		result = append(result, hook)
+	}
+	slog.Debug("InMemoryStore ListRegisteredHooks succeeded", "count", len(result))
+	return result, nil
+}
+
+// DeleteRegisteredHook removes a registered hook by phone number.
+func (s *InMemoryStore) DeleteRegisteredHook(phoneNumber string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.registeredHooks, phoneNumber)
+	slog.Debug("InMemoryStore DeleteRegisteredHook succeeded", "phoneNumber", phoneNumber)
 	return nil
 }

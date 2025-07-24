@@ -76,3 +76,15 @@ CREATE TABLE IF NOT EXISTS conversation_participants (
 -- Index for conversation participant lookups
 CREATE INDEX IF NOT EXISTS idx_conversation_participants_phone ON conversation_participants(phone_number);
 CREATE INDEX IF NOT EXISTS idx_conversation_participants_status ON conversation_participants(status);
+
+-- SQL migration for registered hooks
+CREATE TABLE IF NOT EXISTS registered_hooks (
+    phone_number TEXT PRIMARY KEY,
+    hook_type TEXT NOT NULL,
+    parameters JSONB NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+-- Index for hook type lookups
+CREATE INDEX IF NOT EXISTS idx_registered_hooks_type ON registered_hooks(hook_type);

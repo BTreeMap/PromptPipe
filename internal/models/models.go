@@ -751,3 +751,39 @@ func NewHourlySchedule(minute int) *Schedule {
 		Minute: &minute,
 	}
 }
+
+// HookType defines the type of response hook for persistence
+type HookType string
+
+const (
+	// HookTypeIntervention for micro health intervention hooks
+	HookTypeIntervention HookType = "intervention"
+	// HookTypeConversation for conversation flow hooks  
+	HookTypeConversation HookType = "conversation"
+	// HookTypeBranch for branch prompt hooks
+	HookTypeBranch HookType = "branch"
+	// HookTypeGenAI for GenAI prompt hooks
+	HookTypeGenAI HookType = "genai"
+	// HookTypeStatic for static prompt hooks
+	HookTypeStatic HookType = "static"
+)
+
+// RegisteredHook represents a persisted response hook registration
+type RegisteredHook struct {
+	PhoneNumber string            `json:"phone_number" db:"phone_number"`
+	HookType    HookType          `json:"hook_type" db:"hook_type"`
+	Parameters  map[string]string `json:"parameters" db:"parameters"` // JSON-serialized parameters
+	CreatedAt   time.Time         `json:"created_at" db:"created_at"`
+	UpdatedAt   time.Time         `json:"updated_at" db:"updated_at"`
+}
+
+// Validate validates a RegisteredHook
+func (h *RegisteredHook) Validate() error {
+	if h.PhoneNumber == "" {
+		return errors.New("phone_number cannot be empty")
+	}
+	if h.HookType == "" {
+		return errors.New("hook_type cannot be empty")
+	}
+	return nil
+}

@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/BTreeMap/PromptPipe/internal/flow"
 	"github.com/BTreeMap/PromptPipe/internal/models"
@@ -29,8 +30,14 @@ type ResponseHandler struct {
 	msgService Service
 	// defaultMessage is sent when no hook handles a response
 	defaultMessage string
-	// store is used for validating active participants
+	// store is used for validating active participants and persisting hooks
 	store store.Store
+	// hookRegistry provides factory functions for recreating hooks from persistence
+	hookRegistry *HookRegistry
+	// stateManager is used for creating hooks that require state management
+	stateManager flow.StateManager
+	// timer is used for creating hooks that require timer functionality
+	timer models.Timer
 }
 
 // NewResponseHandler creates a new ResponseHandler with the given messaging service.
@@ -40,6 +47,7 @@ func NewResponseHandler(msgService Service, store store.Store) *ResponseHandler 
 		msgService:     msgService,
 		defaultMessage: "📝 Your message has been recorded. Thank you for your response!",
 		store:          store,
+		hookRegistry:   NewHookRegistry(),
 	}
 }
 
@@ -413,6 +421,236 @@ func (rh *ResponseHandler) AutoRegisterResponseHandler(prompt models.Prompt) boo
 
 	slog.Info("Auto-registered response handler", "type", prompt.Type, "to", prompt.To)
 	return true
+}
+
+// SetDependencies sets the state manager and timer for hook creation
+// This should be called during server initialization
+func (rh *ResponseHandler) SetDependencies(stateManager flow.StateManager, timer models.Timer) {
+	rh.mu.Lock()
+	defer rh.mu.Unlock()
+	rh.stateManager = stateManager
+	rh.timer = timer
+	slog.Debug("ResponseHandler dependencies set", "hasStateManager", stateManager != nil, "hasTimer", timer != nil)
+}
+
+// RegisterPersistentHook registers a response action that will be persisted to the database
+func (rh *ResponseHandler) RegisterPersistentHook(recipient string, hookType models.HookType, params map[string]string) error {
+	// Validate and canonicalize recipient
+	canonicalRecipient, err := rh.msgService.ValidateAndCanonicalizeRecipient(recipient)
+	if err != nil {
+		slog.Error("ResponseHandler RegisterPersistentHook validation failed", "error", err, "recipient", recipient)
+		return fmt.Errorf("invalid recipient: %w", err)
+	}
+
+	// Create the hook using the registry
+	action, err := rh.hookRegistry.CreateHook(hookType, params, rh.stateManager, rh.msgService, rh.timer)
+	if err != nil {
+		slog.Error("ResponseHandler RegisterPersistentHook creation failed", "error", err, "recipient", canonicalRecipient, "hookType", hookType)
+		return fmt.Errorf("failed to create hook: %w", err)
+	}
+
+	// Register the hook in memory
+	rh.mu.Lock()
+	rh.hooks[canonicalRecipient] = action
+	rh.mu.Unlock()
+
+	// Persist the hook to database
+	registeredHook := models.RegisteredHook{
+		PhoneNumber: canonicalRecipient,
+		HookType:    hookType,
+		Parameters:  params,
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
+	}
+
+	if err := rh.store.SaveRegisteredHook(registeredHook); err != nil {
+		// Remove from memory if database save failed
+		rh.mu.Lock()
+		delete(rh.hooks, canonicalRecipient)
+		rh.mu.Unlock()
+
+		slog.Error("ResponseHandler RegisterPersistentHook persistence failed", "error", err, "recipient", canonicalRecipient)
+		return fmt.Errorf("failed to persist hook: %w", err)
+	}
+
+	slog.Debug("ResponseHandler persistent hook registered", "recipient", canonicalRecipient, "hookType", hookType)
+	return nil
+}
+
+// RecoverPersistentHooks restores hooks from the database using the HookRegistry
+// This method implements best-effort recovery: it will warn but not error if recreation fails
+func (rh *ResponseHandler) RecoverPersistentHooks(ctx context.Context) error {
+	slog.Info("Starting persistent hook recovery")
+
+	// Get all registered hooks from the database
+	registeredHooks, err := rh.store.ListRegisteredHooks()
+	if err != nil {
+		slog.Error("Failed to list registered hooks from database", "error", err)
+		return fmt.Errorf("failed to list registered hooks: %w", err)
+	}
+
+	if len(registeredHooks) == 0 {
+		slog.Info("No persistent hooks found in database")
+		return nil
+	}
+
+	var recoveredCount int
+	var failedCount int
+
+	for _, registeredHook := range registeredHooks {
+		slog.Debug("Attempting to recover hook",
+			"phoneNumber", registeredHook.PhoneNumber,
+			"hookType", registeredHook.HookType)
+
+		// Attempt to recreate the hook using the registry
+		action, err := rh.hookRegistry.CreateHook(
+			registeredHook.HookType,
+			registeredHook.Parameters,
+			rh.stateManager,
+			rh.msgService,
+			rh.timer,
+		)
+
+		if err != nil {
+			slog.Warn("Failed to recreate hook during recovery - skipping",
+				"error", err,
+				"phoneNumber", registeredHook.PhoneNumber,
+				"hookType", registeredHook.HookType,
+				"parameters", registeredHook.Parameters)
+			failedCount++
+			continue
+		}
+
+		// Register the recreated hook in memory
+		rh.mu.Lock()
+		rh.hooks[registeredHook.PhoneNumber] = action
+		rh.mu.Unlock()
+
+		recoveredCount++
+		slog.Debug("Successfully recovered hook",
+			"phoneNumber", registeredHook.PhoneNumber,
+			"hookType", registeredHook.HookType)
+	}
+
+	slog.Info("Persistent hook recovery completed",
+		"total", len(registeredHooks),
+		"recovered", recoveredCount,
+		"failed", failedCount)
+
+	// Don't return error even if some hooks failed to recover
+	// This is best-effort recovery as per requirements
+	return nil
+}
+
+// CleanupStaleHooks removes hooks from the database for participants who are no longer active
+// This should be called periodically to maintain database hygiene
+func (rh *ResponseHandler) CleanupStaleHooks(ctx context.Context) error {
+	slog.Info("Starting stale hook cleanup")
+
+	// Get all registered hooks from the database
+	registeredHooks, err := rh.store.ListRegisteredHooks()
+	if err != nil {
+		slog.Error("Failed to list registered hooks for cleanup", "error", err)
+		return fmt.Errorf("failed to list registered hooks: %w", err)
+	}
+
+	if len(registeredHooks) == 0 {
+		slog.Debug("No hooks to cleanup")
+		return nil
+	}
+
+	// Get lists of active participants from both flow types
+	interventionParticipants, err := rh.store.ListInterventionParticipants()
+	if err != nil {
+		slog.Error("Failed to list intervention participants for cleanup", "error", err)
+		return fmt.Errorf("failed to list intervention participants: %w", err)
+	}
+
+	conversationParticipants, err := rh.store.ListConversationParticipants()
+	if err != nil {
+		slog.Error("Failed to list conversation participants for cleanup", "error", err)
+		return fmt.Errorf("failed to list conversation participants: %w", err)
+	}
+
+	// Create a map of active phone numbers for quick lookup
+	activePhones := make(map[string]bool)
+
+	// Add active intervention participants
+	for _, participant := range interventionParticipants {
+		if participant.Status == models.ParticipantStatusActive {
+			canonical, err := rh.msgService.ValidateAndCanonicalizeRecipient(participant.PhoneNumber)
+			if err != nil {
+				slog.Warn("Failed to canonicalize intervention participant phone during cleanup",
+					"error", err, "phone", participant.PhoneNumber, "id", participant.ID)
+				continue
+			}
+			activePhones[canonical] = true
+		}
+	}
+
+	// Add active conversation participants
+	for _, participant := range conversationParticipants {
+		if participant.Status == models.ConversationStatusActive {
+			canonical, err := rh.msgService.ValidateAndCanonicalizeRecipient(participant.PhoneNumber)
+			if err != nil {
+				slog.Warn("Failed to canonicalize conversation participant phone during cleanup",
+					"error", err, "phone", participant.PhoneNumber, "id", participant.ID)
+				continue
+			}
+			activePhones[canonical] = true
+		}
+	}
+
+	var cleanedCount int
+
+	// Remove hooks for participants who are no longer active
+	for _, hook := range registeredHooks {
+		if !activePhones[hook.PhoneNumber] {
+			if err := rh.store.DeleteRegisteredHook(hook.PhoneNumber); err != nil {
+				slog.Warn("Failed to delete stale hook from database",
+					"error", err, "phoneNumber", hook.PhoneNumber)
+				continue
+			}
+
+			// Also remove from memory if present
+			rh.mu.Lock()
+			delete(rh.hooks, hook.PhoneNumber)
+			rh.mu.Unlock()
+
+			cleanedCount++
+			slog.Debug("Cleaned up stale hook", "phoneNumber", hook.PhoneNumber, "hookType", hook.HookType)
+		}
+	}
+
+	slog.Info("Stale hook cleanup completed",
+		"total_hooks", len(registeredHooks),
+		"cleaned", cleanedCount)
+
+	return nil
+}
+
+// UnregisterPersistentHook removes a persistent hook from both memory and database
+func (rh *ResponseHandler) UnregisterPersistentHook(recipient string) error {
+	// Validate and canonicalize recipient
+	canonicalRecipient, err := rh.msgService.ValidateAndCanonicalizeRecipient(recipient)
+	if err != nil {
+		slog.Error("ResponseHandler UnregisterPersistentHook validation failed", "error", err, "recipient", recipient)
+		return fmt.Errorf("invalid recipient: %w", err)
+	}
+
+	// Remove from memory
+	rh.mu.Lock()
+	delete(rh.hooks, canonicalRecipient)
+	rh.mu.Unlock()
+
+	// Remove from database
+	if err := rh.store.DeleteRegisteredHook(canonicalRecipient); err != nil {
+		slog.Error("Failed to delete persistent hook from database", "error", err, "recipient", canonicalRecipient)
+		return fmt.Errorf("failed to delete persistent hook: %w", err)
+	}
+
+	slog.Debug("ResponseHandler persistent hook unregistered", "recipient", canonicalRecipient)
+	return nil
 }
 
 // ValidateAndCleanupHooks removes hooks for participants who are no longer active.

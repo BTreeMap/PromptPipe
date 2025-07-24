@@ -611,3 +611,116 @@ func (s *SQLiteStore) DeleteConversationParticipant(id string) error {
 	slog.Debug("SQLiteStore DeleteConversationParticipant succeeded", "id", id)
 	return nil
 }
+
+// Hook persistence management methods - SQLite implementation
+
+// SaveRegisteredHook stores or updates a registered hook.
+func (s *SQLiteStore) SaveRegisteredHook(hook models.RegisteredHook) error {
+	// Convert parameters map to JSON string for SQLite
+	parametersJSON, err := json.Marshal(hook.Parameters)
+	if err != nil {
+		slog.Error("SQLiteStore SaveRegisteredHook JSON marshal failed", "error", err, "phoneNumber", hook.PhoneNumber)
+		return fmt.Errorf("failed to marshal parameters: %w", err)
+	}
+
+	query := `
+		INSERT OR REPLACE INTO registered_hooks (phone_number, hook_type, parameters, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?)`
+
+	_, err = s.db.Exec(query, hook.PhoneNumber, string(hook.HookType), string(parametersJSON), hook.CreatedAt, hook.UpdatedAt)
+	if err != nil {
+		slog.Error("SQLiteStore SaveRegisteredHook failed", "error", err, "phoneNumber", hook.PhoneNumber)
+		return err
+	}
+	slog.Debug("SQLiteStore SaveRegisteredHook succeeded", "phoneNumber", hook.PhoneNumber, "hookType", hook.HookType)
+	return nil
+}
+
+// GetRegisteredHook retrieves a registered hook by phone number.
+func (s *SQLiteStore) GetRegisteredHook(phoneNumber string) (*models.RegisteredHook, error) {
+	query := `SELECT phone_number, hook_type, parameters, created_at, updated_at 
+			  FROM registered_hooks WHERE phone_number = ?`
+
+	var hook models.RegisteredHook
+	var hookType string
+	var parametersJSON string
+
+	err := s.db.QueryRow(query, phoneNumber).Scan(
+		&hook.PhoneNumber, &hookType, &parametersJSON, &hook.CreatedAt, &hook.UpdatedAt)
+
+	if err == sql.ErrNoRows {
+		slog.Debug("SQLiteStore GetRegisteredHook not found", "phoneNumber", phoneNumber)
+		return nil, nil
+	}
+	if err != nil {
+		slog.Error("SQLiteStore GetRegisteredHook failed", "error", err, "phoneNumber", phoneNumber)
+		return nil, err
+	}
+
+	// Parse JSON parameters
+	if err := json.Unmarshal([]byte(parametersJSON), &hook.Parameters); err != nil {
+		slog.Error("SQLiteStore GetRegisteredHook JSON unmarshal failed", "error", err, "phoneNumber", phoneNumber)
+		return nil, fmt.Errorf("failed to unmarshal parameters: %w", err)
+	}
+
+	hook.HookType = models.HookType(hookType)
+	slog.Debug("SQLiteStore GetRegisteredHook found", "phoneNumber", phoneNumber, "hookType", hook.HookType)
+	return &hook, nil
+}
+
+// ListRegisteredHooks retrieves all registered hooks.
+func (s *SQLiteStore) ListRegisteredHooks() ([]models.RegisteredHook, error) {
+	query := `SELECT phone_number, hook_type, parameters, created_at, updated_at 
+			  FROM registered_hooks ORDER BY created_at DESC`
+
+	rows, err := s.db.Query(query)
+	if err != nil {
+		slog.Error("SQLiteStore ListRegisteredHooks failed", "error", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	var hooks []models.RegisteredHook
+	for rows.Next() {
+		var hook models.RegisteredHook
+		var hookType string
+		var parametersJSON string
+
+		err := rows.Scan(
+			&hook.PhoneNumber, &hookType, &parametersJSON, &hook.CreatedAt, &hook.UpdatedAt)
+		if err != nil {
+			slog.Error("SQLiteStore ListRegisteredHooks scan failed", "error", err)
+			return nil, err
+		}
+
+		// Parse JSON parameters
+		if err := json.Unmarshal([]byte(parametersJSON), &hook.Parameters); err != nil {
+			slog.Error("SQLiteStore ListRegisteredHooks JSON unmarshal failed", "error", err, "phoneNumber", hook.PhoneNumber)
+			continue // Skip this hook and continue with others
+		}
+
+		hook.HookType = models.HookType(hookType)
+		hooks = append(hooks, hook)
+	}
+
+	if err := rows.Err(); err != nil {
+		slog.Error("SQLiteStore ListRegisteredHooks rows error", "error", err)
+		return nil, err
+	}
+
+	slog.Debug("SQLiteStore ListRegisteredHooks succeeded", "count", len(hooks))
+	return hooks, nil
+}
+
+// DeleteRegisteredHook removes a registered hook by phone number.
+func (s *SQLiteStore) DeleteRegisteredHook(phoneNumber string) error {
+	query := `DELETE FROM registered_hooks WHERE phone_number = ?`
+
+	_, err := s.db.Exec(query, phoneNumber)
+	if err != nil {
+		slog.Error("SQLiteStore DeleteRegisteredHook failed", "error", err, "phoneNumber", phoneNumber)
+		return err
+	}
+	slog.Debug("SQLiteStore DeleteRegisteredHook succeeded", "phoneNumber", phoneNumber)
+	return nil
+}

@@ -389,6 +389,9 @@ func (s *Server) initializeRecovery() error {
 
 	recoveryManager.RegisterHandlerRecovery(recovery.CreateResponseHandlerRecoveryHandler(handlerRecoveryCallback))
 
+	// Set dependencies for ResponseHandler to enable persistent hook creation
+	s.respHandler.SetDependencies(stateManager, s.timer)
+
 	// Perform recovery
 	ctx := context.Background()
 	if err := recoveryManager.RecoverAll(ctx); err != nil {
@@ -396,11 +399,23 @@ func (s *Server) initializeRecovery() error {
 		// Don't fail startup for recovery errors, just log them
 	}
 
+	// Recover persistent hooks from database
+	if err := s.respHandler.RecoverPersistentHooks(ctx); err != nil {
+		slog.Warn("Failed to recover persistent hooks", "error", err)
+		// Don't fail startup for hook recovery errors, just log them
+	}
+
 	// Validate and cleanup response handler hooks based on active participants
 	// This ensures hooks only exist for currently active participants
 	if err := s.respHandler.ValidateAndCleanupHooks(ctx); err != nil {
 		slog.Warn("Response handler validation completed with errors", "error", err)
 		// Don't fail startup for validation errors, just log them
+	}
+
+	// Clean up stale hooks from database
+	if err := s.respHandler.CleanupStaleHooks(ctx); err != nil {
+		slog.Warn("Failed to cleanup stale hooks", "error", err)
+		// Don't fail startup for cleanup errors, just log them
 	}
 
 	slog.Info("Application state recovery system initialized successfully")
