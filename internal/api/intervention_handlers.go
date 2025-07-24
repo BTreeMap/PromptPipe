@@ -292,12 +292,12 @@ func (s *Server) deleteParticipantHandler(w http.ResponseWriter, r *http.Request
 		// Note: We don't fail the delete if state cleanup fails
 	}
 
-	// Unregister response hook
-	if err := s.respHandler.UnregisterHook(participant.PhoneNumber); err != nil {
-		slog.Error("deleteParticipantHandler hook cleanup failed", "error", err, "participantID", participantID)
+	// Unregister persistent response hook
+	if err := s.respHandler.UnregisterPersistentHook(participant.PhoneNumber); err != nil {
+		slog.Error("deleteParticipantHandler persistent hook cleanup failed", "error", err, "participantID", participantID)
 		// Note: We don't fail the delete if hook cleanup fails
 	} else {
-		slog.Debug("Response hook unregistered", "participantID", participantID, "phone", participant.PhoneNumber)
+		slog.Debug("Persistent response hook unregistered", "participantID", participantID, "phone", participant.PhoneNumber)
 	}
 
 	slog.Info("Participant deleted successfully", "participantID", participantID)

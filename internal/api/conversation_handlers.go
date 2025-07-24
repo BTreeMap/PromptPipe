@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/BTreeMap/PromptPipe/internal/flow"
-	"github.com/BTreeMap/PromptPipe/internal/messaging"
 	"github.com/BTreeMap/PromptPipe/internal/models"
 )
 
@@ -106,13 +105,15 @@ func (s *Server) enrollConversationParticipantHandler(w http.ResponseWriter, r *
 		slog.Debug("No participant background information to store", "participantID", participantID)
 	}
 
-	// Register response hook for this participant using the actual participant ID
-	conversationHook := messaging.CreateConversationHook(participantID, s.msgService)
-	if err := s.respHandler.RegisterHook(canonicalPhone, conversationHook); err != nil {
-		slog.Error("enrollConversationParticipantHandler hook registration failed", "error", err, "participantID", participantID)
+	// Register persistent response hook for this participant using the actual participant ID
+	hookParams := map[string]string{
+		"participant_id": participantID,
+	}
+	if err := s.respHandler.RegisterPersistentHook(canonicalPhone, models.HookTypeConversation, hookParams); err != nil {
+		slog.Error("enrollConversationParticipantHandler persistent hook registration failed", "error", err, "participantID", participantID)
 		// Note: We don't fail the enrollment if hook registration fails, but we log it
 	} else {
-		slog.Debug("Conversation hook registered", "participantID", participantID, "phone", canonicalPhone)
+		slog.Debug("Persistent conversation hook registered", "participantID", participantID, "phone", canonicalPhone)
 	}
 
 	// Generate and send the first LLM message using the conversation flow
@@ -292,9 +293,9 @@ func (s *Server) deleteConversationParticipantHandler(w http.ResponseWriter, r *
 		slog.Info("Unregister notification sent", "participantID", participantID, "phone", participant.PhoneNumber)
 	}
 
-	// Unregister response hook
-	if err := s.respHandler.UnregisterHook(participant.PhoneNumber); err != nil {
-		slog.Warn("deleteConversationParticipantHandler hook unregistration failed", "error", err, "participantID", participantID)
+	// Unregister persistent response hook
+	if err := s.respHandler.UnregisterPersistentHook(participant.PhoneNumber); err != nil {
+		slog.Warn("deleteConversationParticipantHandler persistent hook unregistration failed", "error", err, "participantID", participantID)
 		// Continue with deletion even if hook unregistration fails
 	}
 

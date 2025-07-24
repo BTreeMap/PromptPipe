@@ -716,11 +716,21 @@ func (s *SQLiteStore) ListRegisteredHooks() ([]models.RegisteredHook, error) {
 func (s *SQLiteStore) DeleteRegisteredHook(phoneNumber string) error {
 	query := `DELETE FROM registered_hooks WHERE phone_number = ?`
 
-	_, err := s.db.Exec(query, phoneNumber)
+	result, err := s.db.Exec(query, phoneNumber)
 	if err != nil {
-		slog.Error("SQLiteStore DeleteRegisteredHook failed", "error", err, "phoneNumber", phoneNumber)
-		return err
+		return fmt.Errorf("failed to delete registered hook: %w", err)
 	}
-	slog.Debug("SQLiteStore DeleteRegisteredHook succeeded", "phoneNumber", phoneNumber)
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		slog.Debug("SQLiteStore registered hook not found for deletion", "phoneNumber", phoneNumber)
+	} else {
+		slog.Debug("SQLiteStore registered hook deleted", "phoneNumber", phoneNumber)
+	}
+
 	return nil
 }

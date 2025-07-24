@@ -621,116 +621,134 @@ func (s *PostgresStore) DeleteConversationParticipant(id string) error {
 
 // SaveRegisteredHook stores or updates a registered hook.
 func (s *PostgresStore) SaveRegisteredHook(hook models.RegisteredHook) error {
-	// Convert parameters map to JSON for PostgreSQL JSONB
-	parametersJSON, err := json.Marshal(hook.Parameters)
+	if err := hook.Validate(); err != nil {
+		return fmt.Errorf("invalid hook: %w", err)
+	}
+
+	// Serialize parameters to JSON
+	paramsJSON, err := json.Marshal(hook.Parameters)
 	if err != nil {
-		slog.Error("PostgresStore SaveRegisteredHook JSON marshal failed", "error", err, "phoneNumber", hook.PhoneNumber)
-		return fmt.Errorf("failed to marshal parameters: %w", err)
+		return fmt.Errorf("failed to serialize hook parameters: %w", err)
 	}
 
 	query := `
-		INSERT INTO registered_hooks (phone_number, hook_type, parameters, created_at, updated_at)
+		INSERT INTO registered_hooks 
+		(phone_number, hook_type, parameters, created_at, updated_at)
 		VALUES ($1, $2, $3, $4, $5)
-		ON CONFLICT (phone_number)
+		ON CONFLICT (phone_number) 
 		DO UPDATE SET 
 			hook_type = EXCLUDED.hook_type,
 			parameters = EXCLUDED.parameters,
-			updated_at = EXCLUDED.updated_at`
+			updated_at = EXCLUDED.updated_at
+	`
 
-	_, err = s.db.Exec(query, hook.PhoneNumber, string(hook.HookType), string(parametersJSON), hook.CreatedAt, hook.UpdatedAt)
+	_, err = s.db.Exec(query, hook.PhoneNumber, hook.HookType, string(paramsJSON), hook.CreatedAt, hook.UpdatedAt)
 	if err != nil {
-		slog.Error("PostgresStore SaveRegisteredHook failed", "error", err, "phoneNumber", hook.PhoneNumber)
-		return err
+		return fmt.Errorf("failed to save registered hook: %w", err)
 	}
-	slog.Debug("PostgresStore SaveRegisteredHook succeeded", "phoneNumber", hook.PhoneNumber, "hookType", hook.HookType)
+
+	slog.Debug("PostgresStore registered hook saved", "phoneNumber", hook.PhoneNumber, "hookType", hook.HookType)
 	return nil
 }
 
-// GetRegisteredHook retrieves a registered hook by phone number.
+// GetRegisteredHook retrieves a registered hook by phone number
 func (s *PostgresStore) GetRegisteredHook(phoneNumber string) (*models.RegisteredHook, error) {
-	query := `SELECT phone_number, hook_type, parameters, created_at, updated_at 
-			  FROM registered_hooks WHERE phone_number = $1`
+	query := `
+		SELECT phone_number, hook_type, parameters, created_at, updated_at 
+		FROM registered_hooks 
+		WHERE phone_number = $1
+	`
 
 	var hook models.RegisteredHook
-	var hookType string
-	var parametersJSON string
+	var paramsJSON string
 
 	err := s.db.QueryRow(query, phoneNumber).Scan(
-		&hook.PhoneNumber, &hookType, &parametersJSON, &hook.CreatedAt, &hook.UpdatedAt)
+		&hook.PhoneNumber,
+		&hook.HookType,
+		&paramsJSON,
+		&hook.CreatedAt,
+		&hook.UpdatedAt,
+	)
 
-	if err == sql.ErrNoRows {
-		slog.Debug("PostgresStore GetRegisteredHook not found", "phoneNumber", phoneNumber)
-		return nil, nil
-	}
 	if err != nil {
-		slog.Error("PostgresStore GetRegisteredHook failed", "error", err, "phoneNumber", phoneNumber)
-		return nil, err
+		if err == sql.ErrNoRows {
+			return nil, nil // Not found
+		}
+		return nil, fmt.Errorf("failed to get registered hook: %w", err)
 	}
 
-	// Parse JSON parameters
-	if err := json.Unmarshal([]byte(parametersJSON), &hook.Parameters); err != nil {
-		slog.Error("PostgresStore GetRegisteredHook JSON unmarshal failed", "error", err, "phoneNumber", phoneNumber)
-		return nil, fmt.Errorf("failed to unmarshal parameters: %w", err)
+	// Deserialize parameters from JSON
+	if err := json.Unmarshal([]byte(paramsJSON), &hook.Parameters); err != nil {
+		return nil, fmt.Errorf("failed to deserialize hook parameters: %w", err)
 	}
 
-	hook.HookType = models.HookType(hookType)
-	slog.Debug("PostgresStore GetRegisteredHook found", "phoneNumber", phoneNumber, "hookType", hook.HookType)
 	return &hook, nil
 }
 
-// ListRegisteredHooks retrieves all registered hooks.
+// ListRegisteredHooks retrieves all registered hooks
 func (s *PostgresStore) ListRegisteredHooks() ([]models.RegisteredHook, error) {
-	query := `SELECT phone_number, hook_type, parameters, created_at, updated_at 
-			  FROM registered_hooks ORDER BY created_at DESC`
+	query := `
+		SELECT phone_number, hook_type, parameters, created_at, updated_at 
+		FROM registered_hooks 
+		ORDER BY created_at DESC
+	`
 
 	rows, err := s.db.Query(query)
 	if err != nil {
-		slog.Error("PostgresStore ListRegisteredHooks failed", "error", err)
-		return nil, err
+		return nil, fmt.Errorf("failed to list registered hooks: %w", err)
 	}
 	defer rows.Close()
 
 	var hooks []models.RegisteredHook
 	for rows.Next() {
 		var hook models.RegisteredHook
-		var hookType string
-		var parametersJSON string
+		var paramsJSON string
 
 		err := rows.Scan(
-			&hook.PhoneNumber, &hookType, &parametersJSON, &hook.CreatedAt, &hook.UpdatedAt)
+			&hook.PhoneNumber,
+			&hook.HookType,
+			&paramsJSON,
+			&hook.CreatedAt,
+			&hook.UpdatedAt,
+		)
 		if err != nil {
-			slog.Error("PostgresStore ListRegisteredHooks scan failed", "error", err)
-			return nil, err
+			return nil, fmt.Errorf("failed to scan registered hook: %w", err)
 		}
 
-		// Parse JSON parameters
-		if err := json.Unmarshal([]byte(parametersJSON), &hook.Parameters); err != nil {
-			slog.Error("PostgresStore ListRegisteredHooks JSON unmarshal failed", "error", err, "phoneNumber", hook.PhoneNumber)
-			continue // Skip this hook and continue with others
+		// Deserialize parameters from JSON
+		if err := json.Unmarshal([]byte(paramsJSON), &hook.Parameters); err != nil {
+			return nil, fmt.Errorf("failed to deserialize hook parameters: %w", err)
 		}
 
-		hook.HookType = models.HookType(hookType)
 		hooks = append(hooks, hook)
 	}
 
 	if err := rows.Err(); err != nil {
-		slog.Error("PostgresStore ListRegisteredHooks rows error", "error", err)
-		return nil, err
+		return nil, fmt.Errorf("error reading registered hooks: %w", err)
 	}
 
-	slog.Debug("PostgresStore ListRegisteredHooks succeeded", "count", len(hooks))
 	return hooks, nil
 }
 
-// DeleteRegisteredHook removes a registered hook by phone number.
+// DeleteRegisteredHook deletes a registered hook by phone number
 func (s *PostgresStore) DeleteRegisteredHook(phoneNumber string) error {
 	query := `DELETE FROM registered_hooks WHERE phone_number = $1`
 
-	_, err := s.db.Exec(query, phoneNumber)
+	result, err := s.db.Exec(query, phoneNumber)
 	if err != nil {
-		slog.Error("PostgresStore DeleteRegisteredHook failed", "error", err, "phoneNumber", phoneNumber)
-		return err
+		return fmt.Errorf("failed to delete registered hook: %w", err)
 	}
-	slog.Debug("PostgresStore DeleteRegisteredHook succeeded", "phoneNumber", phoneNumber)
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		slog.Debug("PostgresStore registered hook not found for deletion", "phoneNumber", phoneNumber)
+	} else {
+		slog.Debug("PostgresStore registered hook deleted", "phoneNumber", phoneNumber)
+	}
+
 	return nil
 }
