@@ -29,7 +29,7 @@ type TestSentMessage struct {
 func NewTestMockService() *TestMockService {
 	mockClient := whatsapp.NewMockClient()
 	whatsappService := NewWhatsAppService(mockClient)
-	
+
 	return &TestMockService{
 		WhatsAppService: whatsappService,
 		mockClient:      mockClient,
@@ -263,9 +263,9 @@ func TestHookPersistence_EndToEndFlow(t *testing.T) {
 			// Check if this is an intervention-style message (hook message)
 			// Default messages typically say "Thanks for your message" or contain "recorded"
 			// Hook messages are usually longer and relate to the intervention flow
-			if !strings.Contains(msg.message, "recorded") && 
-			   !strings.Contains(msg.message, "Thank") && 
-			   len(msg.message) > 50 { // Intervention messages are typically longer
+			if !strings.Contains(msg.message, "recorded") &&
+				!strings.Contains(msg.message, "Thank") &&
+				len(msg.message) > 50 { // Intervention messages are typically longer
 				hookMessageSent = true
 				t.Logf("Found potential hook message: %s", msg.message)
 				break
