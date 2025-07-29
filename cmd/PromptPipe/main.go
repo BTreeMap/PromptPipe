@@ -128,20 +128,35 @@ type Config struct {
 	// DebugMode enables debug logging of API calls.
 	// Environment variable: PROMPTPIPE_DEBUG
 	DebugMode bool
+
+	// IntakeBotPromptFile is the path to the intake bot system prompt file
+	// Environment variable: INTAKE_BOT_PROMPT_FILE
+	IntakeBotPromptFile string
+
+	// PromptGeneratorPromptFile is the path to the prompt generator system prompt file
+	// Environment variable: PROMPT_GENERATOR_PROMPT_FILE
+	PromptGeneratorPromptFile string
+
+	// FeedbackTrackerPromptFile is the path to the feedback tracker system prompt file
+	// Environment variable: FEEDBACK_TRACKER_PROMPT_FILE
+	FeedbackTrackerPromptFile string
 }
 
 // Flags holds command line flag values for database and other configuration.
 // This provides clear separation between WhatsApp and application database settings.
 type Flags struct {
-	qrOutput      *string
-	numeric       *bool
-	stateDir      *string
-	whatsappDBDSN *string // WhatsApp/whatsmeow database connection string
-	appDBDSN      *string // Application database connection string
-	openaiKey     *string
-	apiAddr       *string
-	defaultCron   *string
-	debug         *bool // Enable debug mode for API call logging
+	qrOutput                  *string
+	numeric                   *bool
+	stateDir                  *string
+	whatsappDBDSN             *string // WhatsApp/whatsmeow database connection string
+	appDBDSN                  *string // Application database connection string
+	openaiKey                 *string
+	apiAddr                   *string
+	defaultCron               *string
+	debug                     *bool   // Enable debug mode for API call logging
+	intakeBotPromptFile       *string // Path to intake bot system prompt file
+	promptGeneratorPromptFile *string // Path to prompt generator system prompt file
+	feedbackTrackerPromptFile *string // Path to feedback tracker system prompt file
 }
 
 // initializeLogger sets up structured logging with debug level
@@ -173,13 +188,16 @@ func loadEnvironmentConfig() Config {
 	loadEnvFile()
 
 	config := Config{
-		WhatsAppDBDSN:    os.Getenv("WHATSAPP_DB_DSN"),
-		ApplicationDBDSN: os.Getenv("DATABASE_DSN"),
-		StateDir:         os.Getenv("PROMPTPIPE_STATE_DIR"),
-		OpenAIKey:        os.Getenv("OPENAI_API_KEY"),
-		APIAddr:          os.Getenv("API_ADDR"),
-		DefaultCron:      os.Getenv("DEFAULT_SCHEDULE"),
-		DebugMode:        parseBoolEnv("PROMPTPIPE_DEBUG", false),
+		WhatsAppDBDSN:             os.Getenv("WHATSAPP_DB_DSN"),
+		ApplicationDBDSN:          os.Getenv("DATABASE_DSN"),
+		StateDir:                  os.Getenv("PROMPTPIPE_STATE_DIR"),
+		OpenAIKey:                 os.Getenv("OPENAI_API_KEY"),
+		APIAddr:                   os.Getenv("API_ADDR"),
+		DefaultCron:               os.Getenv("DEFAULT_SCHEDULE"),
+		DebugMode:                 parseBoolEnv("PROMPTPIPE_DEBUG", false),
+		IntakeBotPromptFile:       getEnvWithDefault("INTAKE_BOT_PROMPT_FILE", "prompts/intake_bot_system.txt"),
+		PromptGeneratorPromptFile: getEnvWithDefault("PROMPT_GENERATOR_PROMPT_FILE", "prompts/prompt_generator_system.txt"),
+		FeedbackTrackerPromptFile: getEnvWithDefault("FEEDBACK_TRACKER_PROMPT_FILE", "prompts/feedback_tracker_system.txt"),
 	}
 
 	// Set default state directory if not specified
@@ -228,15 +246,18 @@ func loadEnvironmentConfig() Config {
 // This provides clear separation between WhatsApp and application database configuration.
 func parseCommandLineFlags(config Config) Flags {
 	flags := Flags{
-		qrOutput:      flag.String("qr-output", "", "path to write login QR code"),
-		numeric:       flag.Bool("numeric-code", false, "use numeric login code instead of QR code"),
-		stateDir:      flag.String("state-dir", config.StateDir, "state directory for PromptPipe data (overrides $PROMPTPIPE_STATE_DIR)"),
-		whatsappDBDSN: flag.String("whatsapp-db-dsn", config.WhatsAppDBDSN, "WhatsApp/whatsmeow database connection string (overrides $WHATSAPP_DB_DSN)"),
-		appDBDSN:      flag.String("app-db-dsn", config.ApplicationDBDSN, "application database connection string for receipts/responses/flow state (overrides $DATABASE_DSN or $DATABASE_URL)"),
-		openaiKey:     flag.String("openai-api-key", config.OpenAIKey, "OpenAI API key (overrides $OPENAI_API_KEY)"),
-		apiAddr:       flag.String("api-addr", config.APIAddr, "API server address (overrides $API_ADDR)"),
-		defaultCron:   flag.String("default-cron", config.DefaultCron, "default cron schedule for prompts (overrides $DEFAULT_SCHEDULE)"),
-		debug:         flag.Bool("debug", config.DebugMode, "enable debug mode for API call logging (overrides $PROMPTPIPE_DEBUG)"),
+		qrOutput:                  flag.String("qr-output", "", "path to write login QR code"),
+		numeric:                   flag.Bool("numeric-code", false, "use numeric login code instead of QR code"),
+		stateDir:                  flag.String("state-dir", config.StateDir, "state directory for PromptPipe data (overrides $PROMPTPIPE_STATE_DIR)"),
+		whatsappDBDSN:             flag.String("whatsapp-db-dsn", config.WhatsAppDBDSN, "WhatsApp/whatsmeow database connection string (overrides $WHATSAPP_DB_DSN)"),
+		appDBDSN:                  flag.String("app-db-dsn", config.ApplicationDBDSN, "application database connection string for receipts/responses/flow state (overrides $DATABASE_DSN or $DATABASE_URL)"),
+		openaiKey:                 flag.String("openai-api-key", config.OpenAIKey, "OpenAI API key (overrides $OPENAI_API_KEY)"),
+		apiAddr:                   flag.String("api-addr", config.APIAddr, "API server address (overrides $API_ADDR)"),
+		defaultCron:               flag.String("default-cron", config.DefaultCron, "default cron schedule for prompts (overrides $DEFAULT_SCHEDULE)"),
+		debug:                     flag.Bool("debug", config.DebugMode, "enable debug mode for API call logging (overrides $PROMPTPIPE_DEBUG)"),
+		intakeBotPromptFile:       flag.String("intake-bot-prompt-file", config.IntakeBotPromptFile, "path to intake bot system prompt file (overrides $INTAKE_BOT_PROMPT_FILE)"),
+		promptGeneratorPromptFile: flag.String("prompt-generator-prompt-file", config.PromptGeneratorPromptFile, "path to prompt generator system prompt file (overrides $PROMPT_GENERATOR_PROMPT_FILE)"),
+		feedbackTrackerPromptFile: flag.String("feedback-tracker-prompt-file", config.FeedbackTrackerPromptFile, "path to feedback tracker system prompt file (overrides $FEEDBACK_TRACKER_PROMPT_FILE)"),
 	}
 
 	flag.Parse()
@@ -250,7 +271,10 @@ func parseCommandLineFlags(config Config) Flags {
 		"openaiKeySet", *flags.openaiKey != "",
 		"apiAddr", *flags.apiAddr,
 		"defaultCron", *flags.defaultCron,
-		"debug", *flags.debug)
+		"debug", *flags.debug,
+		"intakeBotPromptFile", *flags.intakeBotPromptFile,
+		"promptGeneratorPromptFile", *flags.promptGeneratorPromptFile,
+		"feedbackTrackerPromptFile", *flags.feedbackTrackerPromptFile)
 
 	// Update database DSNs if not explicitly set but state directory has changed
 	if *flags.whatsappDBDSN == config.WhatsAppDBDSN && config.WhatsAppDBDSN == "file:"+filepath.Join(config.StateDir, DefaultWhatsAppDBFileName)+"?_foreign_keys=on" && *flags.stateDir != config.StateDir {
@@ -368,7 +392,24 @@ func buildAPIOptions(flags Flags) []api.Option {
 	if *flags.defaultCron != "" {
 		apiOpts = append(apiOpts, api.WithDefaultCron(*flags.defaultCron))
 	}
+	if *flags.intakeBotPromptFile != "" {
+		apiOpts = append(apiOpts, api.WithIntakeBotPromptFile(*flags.intakeBotPromptFile))
+	}
+	if *flags.promptGeneratorPromptFile != "" {
+		apiOpts = append(apiOpts, api.WithPromptGeneratorPromptFile(*flags.promptGeneratorPromptFile))
+	}
+	if *flags.feedbackTrackerPromptFile != "" {
+		apiOpts = append(apiOpts, api.WithFeedbackTrackerPromptFile(*flags.feedbackTrackerPromptFile))
+	}
 	return apiOpts
+}
+
+// getEnvWithDefault gets an environment variable value or returns a default
+func getEnvWithDefault(key, defaultValue string) string {
+	if val := os.Getenv(key); val != "" {
+		return val
+	}
+	return defaultValue
 }
 
 // parseBoolEnv parses a boolean environment variable with a default value.

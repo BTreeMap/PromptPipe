@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
 	"strings"
 	"time"
 
@@ -35,16 +36,19 @@ type UserProfile struct {
 
 // FeedbackTrackerTool provides LLM tool functionality for tracking user feedback and updating profiles.
 type FeedbackTrackerTool struct {
-	stateManager StateManager
-	genaiClient  genai.ClientInterface
+	stateManager     StateManager
+	genaiClient      genai.ClientInterface
+	systemPromptFile string
+	systemPrompt     string
 }
 
 // NewFeedbackTrackerTool creates a new feedback tracker tool instance.
-func NewFeedbackTrackerTool(stateManager StateManager, genaiClient genai.ClientInterface) *FeedbackTrackerTool {
-	slog.Debug("flow.NewFeedbackTrackerTool: creating feedback tracker tool", "hasStateManager", stateManager != nil, "hasGenAI", genaiClient != nil)
+func NewFeedbackTrackerTool(stateManager StateManager, genaiClient genai.ClientInterface, systemPromptFile string) *FeedbackTrackerTool {
+	slog.Debug("flow.NewFeedbackTrackerTool: creating feedback tracker tool", "hasStateManager", stateManager != nil, "hasGenAI", genaiClient != nil, "systemPromptFile", systemPromptFile)
 	return &FeedbackTrackerTool{
-		stateManager: stateManager,
-		genaiClient:  genaiClient,
+		stateManager:     stateManager,
+		genaiClient:      genaiClient,
+		systemPromptFile: systemPromptFile,
 	}
 }
 
@@ -261,4 +265,31 @@ func (ftt *FeedbackTrackerTool) saveUserProfile(ctx context.Context, participant
 	}
 
 	return ftt.stateManager.SetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyUserProfile, string(profileJSON))
+}
+
+// LoadSystemPrompt loads the system prompt from the configured file.
+func (ftt *FeedbackTrackerTool) LoadSystemPrompt() error {
+	slog.Debug("flow.FeedbackTrackerTool.LoadSystemPrompt: loading system prompt from file", "file", ftt.systemPromptFile)
+
+	if ftt.systemPromptFile == "" {
+		slog.Error("flow.FeedbackTrackerTool.LoadSystemPrompt: system prompt file not configured")
+		return fmt.Errorf("feedback tracker system prompt file not configured")
+	}
+
+	// Check if file exists
+	if _, err := os.Stat(ftt.systemPromptFile); os.IsNotExist(err) {
+		slog.Debug("flow.FeedbackTrackerTool.LoadSystemPrompt: system prompt file does not exist", "file", ftt.systemPromptFile)
+		return fmt.Errorf("feedback tracker system prompt file does not exist: %s", ftt.systemPromptFile)
+	}
+
+	// Read system prompt from file
+	content, err := os.ReadFile(ftt.systemPromptFile)
+	if err != nil {
+		slog.Error("flow.FeedbackTrackerTool.LoadSystemPrompt: failed to read system prompt file", "file", ftt.systemPromptFile, "error", err)
+		return fmt.Errorf("failed to read feedback tracker system prompt file: %w", err)
+	}
+
+	ftt.systemPrompt = strings.TrimSpace(string(content))
+	slog.Info("flow.FeedbackTrackerTool.LoadSystemPrompt: system prompt loaded successfully", "file", ftt.systemPromptFile, "length", len(ftt.systemPrompt))
+	return nil
 }

@@ -46,12 +46,15 @@ const (
 
 // Server holds all dependencies for the API server.
 type Server struct {
-	msgService      messaging.Service
-	respHandler     *messaging.ResponseHandler
-	st              store.Store
-	timer           models.Timer
-	defaultSchedule *models.Schedule
-	gaClient        *genai.Client
+	msgService                messaging.Service
+	respHandler               *messaging.ResponseHandler
+	st                        store.Store
+	timer                     models.Timer
+	defaultSchedule           *models.Schedule
+	gaClient                  *genai.Client
+	intakeBotPromptFile       string // path to intake bot system prompt file
+	promptGeneratorPromptFile string // path to prompt generator system prompt file
+	feedbackTrackerPromptFile string // path to feedback tracker system prompt file
 }
 
 // NewServer creates a new API server instance with the provided dependencies.
@@ -71,8 +74,11 @@ func NewServer(msgService messaging.Service, st store.Store, timer models.Timer,
 
 // Opts holds configuration options for the API server, such as HTTP address and default schedule.
 type Opts struct {
-	Addr            string           // overrides API_ADDR
-	DefaultSchedule *models.Schedule // overrides DEFAULT_SCHEDULE
+	Addr                      string           // overrides API_ADDR
+	DefaultSchedule           *models.Schedule // overrides DEFAULT_SCHEDULE
+	IntakeBotPromptFile       string           // path to intake bot system prompt file
+	PromptGeneratorPromptFile string           // path to prompt generator system prompt file
+	FeedbackTrackerPromptFile string           // path to feedback tracker system prompt file
 }
 
 // Option defines a configuration option for the API server.
@@ -106,6 +112,27 @@ func WithDefaultCron(cron string) Option {
 	}
 }
 
+// WithIntakeBotPromptFile sets the path to the intake bot system prompt file.
+func WithIntakeBotPromptFile(filePath string) Option {
+	return func(o *Opts) {
+		o.IntakeBotPromptFile = filePath
+	}
+}
+
+// WithPromptGeneratorPromptFile sets the path to the prompt generator system prompt file.
+func WithPromptGeneratorPromptFile(filePath string) Option {
+	return func(o *Opts) {
+		o.PromptGeneratorPromptFile = filePath
+	}
+}
+
+// WithFeedbackTrackerPromptFile sets the path to the feedback tracker system prompt file.
+func WithFeedbackTrackerPromptFile(filePath string) Option {
+	return func(o *Opts) {
+		o.FeedbackTrackerPromptFile = filePath
+	}
+}
+
 // Run starts the API server and initializes dependencies, applying module options.
 // It returns an error if initialization fails.
 func Run(waOpts []whatsapp.Option, storeOpts []store.Option, genaiOpts []genai.Option, apiOpts []Option) error {
@@ -134,6 +161,11 @@ func createAndConfigureServer(waOpts []whatsapp.Option, storeOpts []store.Option
 	for _, opt := range apiOpts {
 		opt(&apiCfg)
 	}
+
+	// Store prompt file paths in server
+	server.intakeBotPromptFile = apiCfg.IntakeBotPromptFile
+	server.promptGeneratorPromptFile = apiCfg.PromptGeneratorPromptFile
+	server.feedbackTrackerPromptFile = apiCfg.FeedbackTrackerPromptFile
 
 	// Determine server address with priority: CLI options > default
 	addr := apiCfg.Addr
@@ -292,30 +324,8 @@ func (s *Server) initializeGenAI(genaiOpts []genai.Option) error {
 
 // initializeConversationFlow sets up the conversation flow with system prompt loading and scheduler tool
 func (s *Server) initializeConversationFlow() error {
-	// Get system prompt file path
-	systemPromptFile := flow.GetSystemPromptPath()
-
-	// Create default system prompt file if it doesn't exist
-	if err := flow.CreateDefaultSystemPromptFile(systemPromptFile); err != nil {
-		slog.Warn("Failed to create default system prompt file", "error", err, "path", systemPromptFile)
-	}
-
 	// Create conversation flow with dependencies and scheduler tool
 	stateManager := flow.NewStoreBasedStateManager(s.st)
-
-	// Create scheduler tool for LLM function calling with GenAI support
-	var schedulerTool *flow.SchedulerTool
-	if s.gaClient != nil {
-		schedulerTool = flow.NewSchedulerToolWithGenAI(s.timer, s.msgService, s.gaClient)
-	} else {
-		schedulerTool = flow.NewSchedulerTool(s.timer, s.msgService)
-	}
-
-	// Create intervention tool
-	var interventionTool *flow.OneMinuteInterventionTool
-	if s.gaClient != nil {
-		interventionTool = flow.NewOneMinuteInterventionTool(stateManager, s.gaClient, s.msgService)
-	}
 
 	// Create conversation flow with all tools for the 3-bot architecture
 	// Handle typed nil interface issue - if gaClient is a nil pointer, pass nil interface
@@ -326,22 +336,31 @@ func (s *Server) initializeConversationFlow() error {
 
 	// Use the new 3-bot system prompt
 	systemPromptFile3Bot := "prompts/conversation_system_3bot.txt"
-	conversationFlow := flow.NewConversationFlowWithAllTools(stateManager, genaiClientInterface, systemPromptFile3Bot, s.msgService)
+	conversationFlow := flow.NewConversationFlowWithAllTools(
+		stateManager,
+		genaiClientInterface,
+		systemPromptFile3Bot,
+		s.msgService,
+		s.intakeBotPromptFile,
+		s.promptGeneratorPromptFile,
+		s.feedbackTrackerPromptFile,
+	)
 
-	// Load system prompt (fallback to original if 3-bot prompt doesn't exist)
+	// Load system prompt for the conversation flow (fallback to default if it doesn't exist)
 	if err := conversationFlow.LoadSystemPrompt(); err != nil {
-		slog.Warn("Failed to load 3-bot system prompt, trying original", "error", err, "systemPromptFile", systemPromptFile3Bot)
-		// Fallback to original system prompt
-		conversationFlowFallback := flow.NewConversationFlowWithTools(stateManager, genaiClientInterface, systemPromptFile, schedulerTool, interventionTool)
-		if err := conversationFlowFallback.LoadSystemPrompt(); err != nil {
-			slog.Warn("Failed to load original system prompt, using default", "error", err)
-		}
-		conversationFlow = conversationFlowFallback
+		slog.Warn("Failed to load 3-bot system prompt, using default", "error", err, "systemPromptFile", systemPromptFile3Bot)
+		// Don't fail initialization, just log warning
+	}
+
+	// Load system prompts for all tools
+	if err := conversationFlow.LoadToolSystemPrompts(); err != nil {
+		slog.Warn("Failed to load some tool system prompts", "error", err)
+		// Don't fail initialization, just log warning
 	}
 
 	// Register conversation flow generator
 	flow.Register(models.PromptTypeConversation, conversationFlow)
-	slog.Debug("Conversation flow initialized with 3-bot architecture", "systemPromptFile", systemPromptFile3Bot, "hasGenAI", s.gaClient != nil)
+	slog.Debug("Conversation flow initialized with 3-bot architecture", "systemPromptFile", systemPromptFile3Bot, "hasGenAI", s.gaClient != nil, "intakeBotPromptFile", s.intakeBotPromptFile, "promptGeneratorPromptFile", s.promptGeneratorPromptFile, "feedbackTrackerPromptFile", s.feedbackTrackerPromptFile)
 
 	return nil
 }

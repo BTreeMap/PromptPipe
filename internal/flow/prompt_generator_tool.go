@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
 	"strings"
 
 	"github.com/BTreeMap/PromptPipe/internal/genai"
@@ -16,18 +17,21 @@ import (
 
 // PromptGeneratorTool provides LLM tool functionality for generating personalized habit prompts based on user profiles.
 type PromptGeneratorTool struct {
-	stateManager StateManager
-	genaiClient  genai.ClientInterface
-	msgService   MessagingService
+	stateManager     StateManager
+	genaiClient      genai.ClientInterface
+	msgService       MessagingService
+	systemPromptFile string
+	systemPrompt     string
 }
 
 // NewPromptGeneratorTool creates a new prompt generator tool instance.
-func NewPromptGeneratorTool(stateManager StateManager, genaiClient genai.ClientInterface, msgService MessagingService) *PromptGeneratorTool {
-	slog.Debug("flow.NewPromptGeneratorTool: creating prompt generator tool", "hasStateManager", stateManager != nil, "hasGenAI", genaiClient != nil, "hasMessaging", msgService != nil)
+func NewPromptGeneratorTool(stateManager StateManager, genaiClient genai.ClientInterface, msgService MessagingService, systemPromptFile string) *PromptGeneratorTool {
+	slog.Debug("flow.NewPromptGeneratorTool: creating prompt generator tool", "hasStateManager", stateManager != nil, "hasGenAI", genaiClient != nil, "hasMessaging", msgService != nil, "systemPromptFile", systemPromptFile)
 	return &PromptGeneratorTool{
-		stateManager: stateManager,
-		genaiClient:  genaiClient,
-		msgService:   msgService,
+		stateManager:     stateManager,
+		genaiClient:      genaiClient,
+		msgService:       msgService,
+		systemPromptFile: systemPromptFile,
 	}
 }
 
@@ -153,17 +157,13 @@ func (pgt *PromptGeneratorTool) generatePersonalizedPrompt(ctx context.Context, 
 
 // buildPromptGeneratorSystemPrompt creates the system prompt for habit generation
 func (pgt *PromptGeneratorTool) buildPromptGeneratorSystemPrompt(profile *UserProfile, deliveryMode, personalizationNotes string) string {
-	systemPrompt := `You are a warm, supportive micro-coach bot. Your job is to craft a short, personal, 1-minute healthy habit suggestion using the user's profile.
-
-Core Requirements:
-- All suggestions must be under 30 words and skimmable in under 10 seconds
-- Use the MAP framework: Motivation (why it helps), Ability (1-minute action), Prompt (anchor to existing routine)
-- Format: "After/Before [anchor], try [1-minute action] — it helps you [benefit]. Would that feel doable?"
-- Make it extremely easy to complete in 1 minute
-- Anchor it to the user's specified routine or trigger
-- Connect to their personal motivation
-
-Tone: Warm, encouraging, personal, never pushy.`
+	// Start with the loaded system prompt from file
+	systemPrompt := pgt.systemPrompt
+	if systemPrompt == "" {
+		// Fallback if prompt is not loaded
+		systemPrompt = "You are a warm, supportive micro-coach bot. Your job is to craft short, personal, 1-minute healthy habit suggestions using the user's profile."
+		slog.Warn("flow.buildPromptGeneratorSystemPrompt: using fallback system prompt", "reason", "system prompt not loaded from file")
+	}
 
 	// Add delivery mode context
 	if deliveryMode == "immediate" {
@@ -230,4 +230,31 @@ func (pgt *PromptGeneratorTool) getUserProfile(ctx context.Context, participantI
 	}
 
 	return &profile, nil
+}
+
+// LoadSystemPrompt loads the system prompt from the configured file.
+func (pgt *PromptGeneratorTool) LoadSystemPrompt() error {
+	slog.Debug("flow.PromptGeneratorTool.LoadSystemPrompt: loading system prompt from file", "file", pgt.systemPromptFile)
+
+	if pgt.systemPromptFile == "" {
+		slog.Error("flow.PromptGeneratorTool.LoadSystemPrompt: system prompt file not configured")
+		return fmt.Errorf("prompt generator system prompt file not configured")
+	}
+
+	// Check if file exists
+	if _, err := os.Stat(pgt.systemPromptFile); os.IsNotExist(err) {
+		slog.Debug("flow.PromptGeneratorTool.LoadSystemPrompt: system prompt file does not exist", "file", pgt.systemPromptFile)
+		return fmt.Errorf("prompt generator system prompt file does not exist: %s", pgt.systemPromptFile)
+	}
+
+	// Read system prompt from file
+	content, err := os.ReadFile(pgt.systemPromptFile)
+	if err != nil {
+		slog.Error("flow.PromptGeneratorTool.LoadSystemPrompt: failed to read system prompt file", "file", pgt.systemPromptFile, "error", err)
+		return fmt.Errorf("failed to read prompt generator system prompt file: %w", err)
+	}
+
+	pgt.systemPrompt = strings.TrimSpace(string(content))
+	slog.Info("flow.PromptGeneratorTool.LoadSystemPrompt: system prompt loaded successfully", "file", pgt.systemPromptFile, "length", len(pgt.systemPrompt))
+	return nil
 }

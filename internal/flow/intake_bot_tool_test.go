@@ -12,7 +12,7 @@ func TestIntakeBotTool_GetToolDefinition(t *testing.T) {
 	stateManager := NewMockStateManager()
 	genaiClient := &MockGenAIClientWithTools{}
 	msgService := &MockMessagingService{}
-	tool := NewIntakeBotTool(stateManager, genaiClient, msgService)
+	tool := NewIntakeBotTool(stateManager, genaiClient, msgService, "prompts/intake_bot_system.txt")
 
 	definition := tool.GetToolDefinition()
 
@@ -33,7 +33,7 @@ func TestIntakeBotTool_HandleWelcomeStage(t *testing.T) {
 	stateManager := NewMockStateManager()
 	genaiClient := &MockGenAIClientWithTools{}
 	msgService := &MockMessagingService{}
-	tool := NewIntakeBotTool(stateManager, genaiClient, msgService)
+	tool := NewIntakeBotTool(stateManager, genaiClient, msgService, "prompts/intake_bot_system.txt")
 
 	ctx := context.Background()
 	participantID := "test-participant"
@@ -82,7 +82,7 @@ func TestIntakeBotTool_HandleGoalAreaStage(t *testing.T) {
 	stateManager := NewMockStateManager()
 	genaiClient := &MockGenAIClientWithTools{}
 	msgService := &MockMessagingService{}
-	tool := NewIntakeBotTool(stateManager, genaiClient, msgService)
+	tool := NewIntakeBotTool(stateManager, genaiClient, msgService, "prompts/intake_bot_system.txt")
 
 	ctx := context.Background()
 	participantID := "test-participant"
@@ -122,7 +122,7 @@ func TestIntakeBotTool_HandleMotivationStage(t *testing.T) {
 	stateManager := NewMockStateManager()
 	genaiClient := &MockGenAIClientWithTools{}
 	msgService := &MockMessagingService{}
-	tool := NewIntakeBotTool(stateManager, genaiClient, msgService)
+	tool := NewIntakeBotTool(stateManager, genaiClient, msgService, "prompts/intake_bot_system.txt")
 
 	ctx := context.Background()
 	participantID := "test-participant"
@@ -150,7 +150,7 @@ func TestIntakeBotTool_HandlePreferredTimeStage(t *testing.T) {
 	stateManager := NewMockStateManager()
 	genaiClient := &MockGenAIClientWithTools{}
 	msgService := &MockMessagingService{}
-	tool := NewIntakeBotTool(stateManager, genaiClient, msgService)
+	tool := NewIntakeBotTool(stateManager, genaiClient, msgService, "prompts/intake_bot_system.txt")
 
 	ctx := context.Background()
 	participantID := "test-participant"
@@ -178,7 +178,7 @@ func TestIntakeBotTool_HandlePromptAnchorStage(t *testing.T) {
 	stateManager := NewMockStateManager()
 	genaiClient := &MockGenAIClientWithTools{}
 	msgService := &MockMessagingService{}
-	tool := NewIntakeBotTool(stateManager, genaiClient, msgService)
+	tool := NewIntakeBotTool(stateManager, genaiClient, msgService, "prompts/intake_bot_system.txt")
 
 	ctx := context.Background()
 	participantID := "test-participant"
@@ -206,7 +206,7 @@ func TestIntakeBotTool_HandleAdditionalInfoStage(t *testing.T) {
 	stateManager := NewMockStateManager()
 	genaiClient := &MockGenAIClientWithTools{}
 	msgService := &MockMessagingService{}
-	tool := NewIntakeBotTool(stateManager, genaiClient, msgService)
+	tool := NewIntakeBotTool(stateManager, genaiClient, msgService, "prompts/intake_bot_system.txt")
 
 	ctx := context.Background()
 	participantID := "test-participant"
@@ -246,7 +246,7 @@ func TestIntakeBotTool_HandleCompleteStage(t *testing.T) {
 	stateManager := NewMockStateManager()
 	genaiClient := &MockGenAIClientWithTools{}
 	msgService := &MockMessagingService{}
-	tool := NewIntakeBotTool(stateManager, genaiClient, msgService)
+	tool := NewIntakeBotTool(stateManager, genaiClient, msgService, "prompts/intake_bot_system.txt")
 
 	ctx := context.Background()
 	participantID := "test-participant"
@@ -281,7 +281,7 @@ func TestIntakeBotTool_ExecuteIntakeBot(t *testing.T) {
 	stateManager := NewMockStateManager()
 	genaiClient := &MockGenAIClientWithTools{}
 	msgService := &MockMessagingService{}
-	tool := NewIntakeBotTool(stateManager, genaiClient, msgService)
+	tool := NewIntakeBotTool(stateManager, genaiClient, msgService, "prompts/intake_bot_system.txt")
 
 	ctx := context.Background()
 	participantID := "test-participant"
@@ -321,7 +321,7 @@ func TestIntakeBotTool_ExecuteIntakeBot_InvalidArgs(t *testing.T) {
 	stateManager := NewMockStateManager()
 	genaiClient := &MockGenAIClientWithTools{}
 	msgService := &MockMessagingService{}
-	tool := NewIntakeBotTool(stateManager, genaiClient, msgService)
+	tool := NewIntakeBotTool(stateManager, genaiClient, msgService, "prompts/intake_bot_system.txt")
 
 	ctx := context.Background()
 	participantID := "test-participant"

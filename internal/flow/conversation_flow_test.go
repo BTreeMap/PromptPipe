@@ -52,13 +52,3 @@ func TestConversationFlow_LoadSystemPrompt(t *testing.T) {
 		t.Error("expected error for empty file path, got nil")
 	}
 }
-
-func TestGetSystemPromptPath(t *testing.T) {
-	path := GetSystemPromptPath()
-	if !strings.Contains(path, "prompts") {
-		t.Errorf("expected path to contain 'prompts', got %q", path)
-	}
-	if !strings.Contains(path, "conversation_system.txt") {
-		t.Errorf("expected path to contain 'conversation_system.txt', got %q", path)
-	}
-}

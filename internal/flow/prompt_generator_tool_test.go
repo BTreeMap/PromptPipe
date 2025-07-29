@@ -13,7 +13,7 @@ func TestPromptGeneratorTool_GetToolDefinition(t *testing.T) {
 	stateManager := NewMockStateManager()
 	genaiClient := &MockGenAIClientWithTools{}
 	msgService := &MockMessagingService{}
-	tool := NewPromptGeneratorTool(stateManager, genaiClient, msgService)
+	tool := NewPromptGeneratorTool(stateManager, genaiClient, msgService, "prompts/prompt_generator_system.txt")
 
 	definition := tool.GetToolDefinition()
 
@@ -34,7 +34,7 @@ func TestPromptGeneratorTool_ExecutePromptGenerator(t *testing.T) {
 	stateManager := NewMockStateManager()
 	genaiClient := &MockGenAIClientWithTools{}
 	msgService := &MockMessagingService{}
-	tool := NewPromptGeneratorTool(stateManager, genaiClient, msgService)
+	tool := NewPromptGeneratorTool(stateManager, genaiClient, msgService, "prompts/prompt_generator_system.txt")
 
 	ctx := context.Background()
 	participantID := "test-participant"
@@ -88,7 +88,7 @@ func TestPromptGeneratorTool_ExecutePromptGenerator_IncompleteProfile(t *testing
 	stateManager := NewMockStateManager()
 	genaiClient := &MockGenAIClientWithTools{}
 	msgService := &MockMessagingService{}
-	tool := NewPromptGeneratorTool(stateManager, genaiClient, msgService)
+	tool := NewPromptGeneratorTool(stateManager, genaiClient, msgService, "prompts/prompt_generator_system.txt")
 
 	ctx := context.Background()
 	participantID := "test-participant"
@@ -119,7 +119,7 @@ func TestPromptGeneratorTool_ExecutePromptGenerator_NoProfile(t *testing.T) {
 	stateManager := NewMockStateManager()
 	genaiClient := &MockGenAIClientWithTools{}
 	msgService := &MockMessagingService{}
-	tool := NewPromptGeneratorTool(stateManager, genaiClient, msgService)
+	tool := NewPromptGeneratorTool(stateManager, genaiClient, msgService, "prompts/prompt_generator_system.txt")
 
 	ctx := context.Background()
 	participantID := "test-participant"
@@ -144,7 +144,7 @@ func TestPromptGeneratorTool_ValidateProfile(t *testing.T) {
 	stateManager := NewMockStateManager()
 	genaiClient := &MockGenAIClientWithTools{}
 	msgService := &MockMessagingService{}
-	tool := NewPromptGeneratorTool(stateManager, genaiClient, msgService)
+	tool := NewPromptGeneratorTool(stateManager, genaiClient, msgService, "prompts/prompt_generator_system.txt")
 
 	// Test complete profile
 	completeProfile := &UserProfile{
@@ -204,7 +204,12 @@ func TestPromptGeneratorTool_BuildPromptGeneratorSystemPrompt(t *testing.T) {
 	stateManager := NewMockStateManager()
 	genaiClient := &MockGenAIClientWithTools{}
 	msgService := &MockMessagingService{}
-	tool := NewPromptGeneratorTool(stateManager, genaiClient, msgService)
+	tool := NewPromptGeneratorTool(stateManager, genaiClient, msgService, "../../prompts/prompt_generator_system.txt")
+
+	// Load the system prompt from file
+	if err := tool.LoadSystemPrompt(); err != nil {
+		t.Fatalf("failed to load system prompt: %v", err)
+	}
 
 	profile := &UserProfile{
 		SuccessCount: 3,
@@ -257,7 +262,7 @@ func TestPromptGeneratorTool_ExecutePromptGenerator_InvalidArgs(t *testing.T) {
 	stateManager := NewMockStateManager()
 	genaiClient := &MockGenAIClientWithTools{}
 	msgService := &MockMessagingService{}
-	tool := NewPromptGeneratorTool(stateManager, genaiClient, msgService)
+	tool := NewPromptGeneratorTool(stateManager, genaiClient, msgService, "prompts/prompt_generator_system.txt")
 
 	ctx := context.Background()
 	participantID := "test-participant"

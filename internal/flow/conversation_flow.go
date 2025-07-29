@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -91,18 +90,18 @@ func NewConversationFlowWithTools(stateManager StateManager, genaiClient genai.C
 }
 
 // NewConversationFlowWithAllTools creates a new conversation flow with all tools for the 3-bot architecture.
-func NewConversationFlowWithAllTools(stateManager StateManager, genaiClient genai.ClientInterface, systemPromptFile string, msgService MessagingService) *ConversationFlow {
-	slog.Debug("flow.NewConversationFlowWithAllTools: creating flow with all tools", "systemPromptFile", systemPromptFile, "hasGenAI", genaiClient != nil, "hasMessaging", msgService != nil)
+func NewConversationFlowWithAllTools(stateManager StateManager, genaiClient genai.ClientInterface, systemPromptFile string, msgService MessagingService, intakeBotPromptFile, promptGeneratorPromptFile, feedbackTrackerPromptFile string) *ConversationFlow {
+	slog.Debug("flow.NewConversationFlowWithAllTools: creating flow with all tools", "systemPromptFile", systemPromptFile, "hasGenAI", genaiClient != nil, "hasMessaging", msgService != nil, "intakeBotPromptFile", intakeBotPromptFile, "promptGeneratorPromptFile", promptGeneratorPromptFile, "feedbackTrackerPromptFile", feedbackTrackerPromptFile)
 
 	// Create timer for scheduler
 	timer := NewSimpleTimer()
 
-	// Create all tools
+	// Create all tools with their respective system prompt files
 	schedulerTool := NewSchedulerToolWithGenAI(timer, msgService, genaiClient)
 	interventionTool := NewOneMinuteInterventionTool(stateManager, genaiClient, msgService)
-	intakeBotTool := NewIntakeBotTool(stateManager, genaiClient, msgService)
-	promptGeneratorTool := NewPromptGeneratorTool(stateManager, genaiClient, msgService)
-	feedbackTrackerTool := NewFeedbackTrackerTool(stateManager, genaiClient)
+	intakeBotTool := NewIntakeBotTool(stateManager, genaiClient, msgService, intakeBotPromptFile)
+	promptGeneratorTool := NewPromptGeneratorTool(stateManager, genaiClient, msgService, promptGeneratorPromptFile)
+	feedbackTrackerTool := NewFeedbackTrackerTool(stateManager, genaiClient, feedbackTrackerPromptFile)
 
 	return &ConversationFlow{
 		stateManager:              stateManager,
@@ -147,6 +146,38 @@ func (f *ConversationFlow) LoadSystemPrompt() error {
 
 	f.systemPrompt = strings.TrimSpace(string(content))
 	slog.Info("flow.LoadSystemPrompt: system prompt loaded successfully", "file", f.systemPromptFile, "length", len(f.systemPrompt))
+	return nil
+}
+
+// LoadToolSystemPrompts loads system prompts for all tools.
+func (f *ConversationFlow) LoadToolSystemPrompts() error {
+	slog.Debug("flow.LoadToolSystemPrompts: loading tool system prompts")
+
+	// Load intake bot system prompt
+	if f.intakeBotTool != nil {
+		if err := f.intakeBotTool.LoadSystemPrompt(); err != nil {
+			slog.Warn("flow.LoadToolSystemPrompts: failed to load intake bot system prompt", "error", err)
+			// Continue even if intake bot prompt fails to load
+		}
+	}
+
+	// Load prompt generator system prompt
+	if f.promptGeneratorTool != nil {
+		if err := f.promptGeneratorTool.LoadSystemPrompt(); err != nil {
+			slog.Warn("flow.LoadToolSystemPrompts: failed to load prompt generator system prompt", "error", err)
+			// Continue even if prompt generator prompt fails to load
+		}
+	}
+
+	// Load feedback tracker system prompt
+	if f.feedbackTrackerTool != nil {
+		if err := f.feedbackTrackerTool.LoadSystemPrompt(); err != nil {
+			slog.Warn("flow.LoadToolSystemPrompts: failed to load feedback tracker system prompt", "error", err)
+			// Continue even if feedback tracker prompt fails to load
+		}
+	}
+
+	slog.Info("flow.LoadToolSystemPrompts: tool system prompts loaded")
 	return nil
 }
 
@@ -667,49 +698,6 @@ func (f *ConversationFlow) getParticipantBackground(ctx context.Context, partici
 	formatted := fmt.Sprintf("PARTICIPANT BACKGROUND:\n%s", background)
 	slog.Debug("Formatted participant background", "participantID", participantID, "formattedLength", len(formatted))
 	return formatted, nil
-}
-
-// GetSystemPromptPath returns the default system prompt file path.
-func GetSystemPromptPath() string {
-	// Default to a prompts directory in the project root
-	return filepath.Join("prompts", "conversation_system.txt")
-}
-
-// CreateDefaultSystemPromptFile creates a default system prompt file if it doesn't exist.
-func CreateDefaultSystemPromptFile(filePath string) error {
-	// Check if file already exists
-	if _, err := os.Stat(filePath); err == nil {
-		slog.Debug("System prompt file already exists", "path", filePath)
-		return nil
-	}
-
-	// Create directory if it doesn't exist
-	dir := filepath.Dir(filePath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("failed to create directory %s: %w", dir, err)
-	}
-
-	// Default system prompt content
-	defaultContent := `You are a helpful, knowledgeable, and empathetic AI assistant. You engage in natural conversation with users, providing thoughtful and informative responses.
-
-Key guidelines:
-- Be conversational and friendly
-- Provide helpful and accurate information
-- Ask clarifying questions when needed
-- Remember the context of our conversation
-- Be concise but thorough in your responses
-- Show empathy and understanding
-
-Your goal is to have meaningful conversations and assist users with their questions and needs.`
-
-	// Write default content to file
-	err := os.WriteFile(filePath, []byte(defaultContent), 0644)
-	if err != nil {
-		return fmt.Errorf("failed to write default system prompt file: %w", err)
-	}
-
-	slog.Info("Created default system prompt file", "path", filePath)
-	return nil
 }
 
 // executeSchedulerTool executes a scheduler tool call.

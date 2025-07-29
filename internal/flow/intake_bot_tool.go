@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
 	"strings"
 	"time"
 
@@ -30,18 +31,21 @@ const (
 
 // IntakeBotTool provides LLM tool functionality for conducting intake conversations and building user profiles.
 type IntakeBotTool struct {
-	stateManager StateManager
-	genaiClient  genai.ClientInterface
-	msgService   MessagingService
+	stateManager     StateManager
+	genaiClient      genai.ClientInterface
+	msgService       MessagingService
+	systemPromptFile string
+	systemPrompt     string
 }
 
 // NewIntakeBotTool creates a new intake bot tool instance.
-func NewIntakeBotTool(stateManager StateManager, genaiClient genai.ClientInterface, msgService MessagingService) *IntakeBotTool {
-	slog.Debug("flow.NewIntakeBotTool: creating intake bot tool", "hasStateManager", stateManager != nil, "hasGenAI", genaiClient != nil, "hasMessaging", msgService != nil)
+func NewIntakeBotTool(stateManager StateManager, genaiClient genai.ClientInterface, msgService MessagingService, systemPromptFile string) *IntakeBotTool {
+	slog.Debug("flow.NewIntakeBotTool: creating intake bot tool", "hasStateManager", stateManager != nil, "hasGenAI", genaiClient != nil, "hasMessaging", msgService != nil, "systemPromptFile", systemPromptFile)
 	return &IntakeBotTool{
-		stateManager: stateManager,
-		genaiClient:  genaiClient,
-		msgService:   msgService,
+		stateManager:     stateManager,
+		genaiClient:      genaiClient,
+		msgService:       msgService,
+		systemPromptFile: systemPromptFile,
 	}
 }
 
@@ -343,4 +347,31 @@ func stringToIntakeState(stage string) IntakeState {
 	default:
 		return IntakeState(stage) // Return as-is for error handling
 	}
+}
+
+// LoadSystemPrompt loads the system prompt from the configured file.
+func (ibt *IntakeBotTool) LoadSystemPrompt() error {
+	slog.Debug("flow.IntakeBotTool.LoadSystemPrompt: loading system prompt from file", "file", ibt.systemPromptFile)
+
+	if ibt.systemPromptFile == "" {
+		slog.Error("flow.IntakeBotTool.LoadSystemPrompt: system prompt file not configured")
+		return fmt.Errorf("intake bot system prompt file not configured")
+	}
+
+	// Check if file exists
+	if _, err := os.Stat(ibt.systemPromptFile); os.IsNotExist(err) {
+		slog.Debug("flow.IntakeBotTool.LoadSystemPrompt: system prompt file does not exist", "file", ibt.systemPromptFile)
+		return fmt.Errorf("intake bot system prompt file does not exist: %s", ibt.systemPromptFile)
+	}
+
+	// Read system prompt from file
+	content, err := os.ReadFile(ibt.systemPromptFile)
+	if err != nil {
+		slog.Error("flow.IntakeBotTool.LoadSystemPrompt: failed to read system prompt file", "file", ibt.systemPromptFile, "error", err)
+		return fmt.Errorf("failed to read intake bot system prompt file: %w", err)
+	}
+
+	ibt.systemPrompt = strings.TrimSpace(string(content))
+	slog.Info("flow.IntakeBotTool.LoadSystemPrompt: system prompt loaded successfully", "file", ibt.systemPromptFile, "length", len(ibt.systemPrompt))
+	return nil
 }
