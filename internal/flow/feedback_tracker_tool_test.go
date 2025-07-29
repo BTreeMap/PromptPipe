@@ -12,7 +12,7 @@ import (
 func TestFeedbackTrackerTool_GetToolDefinition(t *testing.T) {
 	stateManager := NewMockStateManager()
 	genaiClient := &MockGenAIClientWithTools{}
-	tool := NewFeedbackTrackerTool(stateManager, genaiClient, "prompts/feedback_tracker_system.txt")
+	tool := NewFeedbackTrackerTool(stateManager, genaiClient, "test-prompt-file.txt")
 
 	definition := tool.GetToolDefinition()
 
@@ -59,7 +59,7 @@ func TestFeedbackTrackerTool_GetToolDefinition(t *testing.T) {
 func TestFeedbackTrackerTool_ExecuteFeedbackTracker_Completed(t *testing.T) {
 	stateManager := NewMockStateManager()
 	genaiClient := &MockGenAIClientWithTools{}
-	tool := NewFeedbackTrackerTool(stateManager, genaiClient, "prompts/feedback_tracker_system.txt")
+	tool := NewFeedbackTrackerTool(stateManager, genaiClient, "test-prompt-file.txt")
 
 	ctx := context.Background()
 	participantID := "test-participant"
@@ -123,7 +123,7 @@ func TestFeedbackTrackerTool_ExecuteFeedbackTracker_Completed(t *testing.T) {
 func TestFeedbackTrackerTool_ExecuteFeedbackTracker_Skipped(t *testing.T) {
 	stateManager := NewMockStateManager()
 	genaiClient := &MockGenAIClientWithTools{}
-	tool := NewFeedbackTrackerTool(stateManager, genaiClient, "prompts/feedback_tracker_system.txt")
+	tool := NewFeedbackTrackerTool(stateManager, genaiClient, "test-prompt-file.txt")
 
 	ctx := context.Background()
 	participantID := "test-participant"
@@ -170,7 +170,7 @@ func TestFeedbackTrackerTool_ExecuteFeedbackTracker_Skipped(t *testing.T) {
 func TestFeedbackTrackerTool_ExecuteFeedbackTracker_Modified(t *testing.T) {
 	stateManager := NewMockStateManager()
 	genaiClient := &MockGenAIClientWithTools{}
-	tool := NewFeedbackTrackerTool(stateManager, genaiClient, "prompts/feedback_tracker_system.txt")
+	tool := NewFeedbackTrackerTool(stateManager, genaiClient, "test-prompt-file.txt")
 
 	ctx := context.Background()
 	participantID := "test-participant"
@@ -223,7 +223,7 @@ func TestFeedbackTrackerTool_ExecuteFeedbackTracker_Modified(t *testing.T) {
 func TestFeedbackTrackerTool_ExecuteFeedbackTracker_InvalidArgs(t *testing.T) {
 	stateManager := NewMockStateManager()
 	genaiClient := &MockGenAIClientWithTools{}
-	tool := NewFeedbackTrackerTool(stateManager, genaiClient, "prompts/feedback_tracker_system.txt")
+	tool := NewFeedbackTrackerTool(stateManager, genaiClient, "test-prompt-file.txt")
 
 	ctx := context.Background()
 	participantID := "test-participant"
@@ -243,7 +243,7 @@ func TestFeedbackTrackerTool_ExecuteFeedbackTracker_InvalidArgs(t *testing.T) {
 func TestFeedbackTrackerTool_ApplyProfileModifications(t *testing.T) {
 	stateManager := NewMockStateManager()
 	genaiClient := &MockGenAIClientWithTools{}
-	tool := NewFeedbackTrackerTool(stateManager, genaiClient, "prompts/feedback_tracker_system.txt")
+	tool := NewFeedbackTrackerTool(stateManager, genaiClient, "test-prompt-file.txt")
 
 	profile := &UserProfile{
 		PreferredTime: "morning",

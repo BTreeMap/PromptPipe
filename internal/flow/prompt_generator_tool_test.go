@@ -13,7 +13,7 @@ func TestPromptGeneratorTool_GetToolDefinition(t *testing.T) {
 	stateManager := NewMockStateManager()
 	genaiClient := &MockGenAIClientWithTools{}
 	msgService := &MockMessagingService{}
-	tool := NewPromptGeneratorTool(stateManager, genaiClient, msgService, "prompts/prompt_generator_system.txt")
+	tool := NewPromptGeneratorTool(stateManager, genaiClient, msgService, "test-prompt-file.txt")
 
 	definition := tool.GetToolDefinition()
 
@@ -34,7 +34,7 @@ func TestPromptGeneratorTool_ExecutePromptGenerator(t *testing.T) {
 	stateManager := NewMockStateManager()
 	genaiClient := &MockGenAIClientWithTools{}
 	msgService := &MockMessagingService{}
-	tool := NewPromptGeneratorTool(stateManager, genaiClient, msgService, "prompts/prompt_generator_system.txt")
+	tool := NewPromptGeneratorTool(stateManager, genaiClient, msgService, "test-prompt-file.txt")
 
 	ctx := context.Background()
 	participantID := "test-participant"
@@ -88,7 +88,7 @@ func TestPromptGeneratorTool_ExecutePromptGenerator_IncompleteProfile(t *testing
 	stateManager := NewMockStateManager()
 	genaiClient := &MockGenAIClientWithTools{}
 	msgService := &MockMessagingService{}
-	tool := NewPromptGeneratorTool(stateManager, genaiClient, msgService, "prompts/prompt_generator_system.txt")
+	tool := NewPromptGeneratorTool(stateManager, genaiClient, msgService, "test-prompt-file.txt")
 
 	ctx := context.Background()
 	participantID := "test-participant"
@@ -119,7 +119,7 @@ func TestPromptGeneratorTool_ExecutePromptGenerator_NoProfile(t *testing.T) {
 	stateManager := NewMockStateManager()
 	genaiClient := &MockGenAIClientWithTools{}
 	msgService := &MockMessagingService{}
-	tool := NewPromptGeneratorTool(stateManager, genaiClient, msgService, "prompts/prompt_generator_system.txt")
+	tool := NewPromptGeneratorTool(stateManager, genaiClient, msgService, "test-prompt-file.txt")
 
 	ctx := context.Background()
 	participantID := "test-participant"
@@ -144,7 +144,7 @@ func TestPromptGeneratorTool_ValidateProfile(t *testing.T) {
 	stateManager := NewMockStateManager()
 	genaiClient := &MockGenAIClientWithTools{}
 	msgService := &MockMessagingService{}
-	tool := NewPromptGeneratorTool(stateManager, genaiClient, msgService, "prompts/prompt_generator_system.txt")
+	tool := NewPromptGeneratorTool(stateManager, genaiClient, msgService, "test-prompt-file.txt")
 
 	// Test complete profile
 	completeProfile := &UserProfile{
@@ -204,12 +204,20 @@ func TestPromptGeneratorTool_BuildPromptGeneratorSystemPrompt(t *testing.T) {
 	stateManager := NewMockStateManager()
 	genaiClient := &MockGenAIClientWithTools{}
 	msgService := &MockMessagingService{}
-	tool := NewPromptGeneratorTool(stateManager, genaiClient, msgService, "../../prompts/prompt_generator_system.txt")
+	tool := NewPromptGeneratorTool(stateManager, genaiClient, msgService, "test-prompt-file.txt")
 
-	// Load the system prompt from file
-	if err := tool.LoadSystemPrompt(); err != nil {
-		t.Fatalf("failed to load system prompt: %v", err)
-	}
+	// Mock the system prompt instead of loading from file
+	tool.systemPrompt = `You are a micro-coach bot that creates personalized 1-minute habit prompts using the MAP framework (Motivation × Ability × Prompt).
+
+## Core Requirements
+- Keep habit suggestions under 30 words
+- Focus on 1-minute actions that feel doable
+- Connect to user's personal motivation
+- Use MAP framework principles
+- Always ask "Would that feel doable?" after suggestions
+
+## Personalization Context
+Use the user's profile and feedback to create targeted suggestions that feel relevant and achievable.`
 
 	profile := &UserProfile{
 		SuccessCount: 3,
@@ -262,7 +270,7 @@ func TestPromptGeneratorTool_ExecutePromptGenerator_InvalidArgs(t *testing.T) {
 	stateManager := NewMockStateManager()
 	genaiClient := &MockGenAIClientWithTools{}
 	msgService := &MockMessagingService{}
-	tool := NewPromptGeneratorTool(stateManager, genaiClient, msgService, "prompts/prompt_generator_system.txt")
+	tool := NewPromptGeneratorTool(stateManager, genaiClient, msgService, "test-prompt-file.txt")
 
 	ctx := context.Background()
 	participantID := "test-participant"
