@@ -317,23 +317,31 @@ func (s *Server) initializeConversationFlow() error {
 		interventionTool = flow.NewOneMinuteInterventionTool(stateManager, s.gaClient, s.msgService)
 	}
 
-	// Create conversation flow with both scheduler and intervention tool support
+	// Create conversation flow with all tools for the 3-bot architecture
 	// Handle typed nil interface issue - if gaClient is a nil pointer, pass nil interface
 	var genaiClientInterface genai.ClientInterface
 	if s.gaClient != nil {
 		genaiClientInterface = s.gaClient
 	}
 
-	conversationFlow := flow.NewConversationFlowWithTools(stateManager, genaiClientInterface, systemPromptFile, schedulerTool, interventionTool)
+	// Use the new 3-bot system prompt
+	systemPromptFile3Bot := "prompts/conversation_system_3bot.txt"
+	conversationFlow := flow.NewConversationFlowWithAllTools(stateManager, genaiClientInterface, systemPromptFile3Bot, s.msgService)
 
-	// Load system prompt
+	// Load system prompt (fallback to original if 3-bot prompt doesn't exist)
 	if err := conversationFlow.LoadSystemPrompt(); err != nil {
-		slog.Warn("Failed to load system prompt, using default", "error", err)
+		slog.Warn("Failed to load 3-bot system prompt, trying original", "error", err, "systemPromptFile", systemPromptFile3Bot)
+		// Fallback to original system prompt
+		conversationFlowFallback := flow.NewConversationFlowWithTools(stateManager, genaiClientInterface, systemPromptFile, schedulerTool, interventionTool)
+		if err := conversationFlowFallback.LoadSystemPrompt(); err != nil {
+			slog.Warn("Failed to load original system prompt, using default", "error", err)
+		}
+		conversationFlow = conversationFlowFallback
 	}
 
 	// Register conversation flow generator
 	flow.Register(models.PromptTypeConversation, conversationFlow)
-	slog.Debug("Conversation flow initialized with scheduler tool", "systemPromptFile", systemPromptFile, "hasGenAI", s.gaClient != nil)
+	slog.Debug("Conversation flow initialized with 3-bot architecture", "systemPromptFile", systemPromptFile3Bot, "hasGenAI", s.gaClient != nil)
 
 	return nil
 }

@@ -52,6 +52,9 @@ type ConversationFlow struct {
 	systemPromptFile          string
 	schedulerTool             *SchedulerTool             // Tool for scheduling daily prompts
 	oneMinuteInterventionTool *OneMinuteInterventionTool // Tool for initiating one-minute interventions
+	intakeBotTool             *IntakeBotTool             // Tool for conducting intake conversations
+	promptGeneratorTool       *PromptGeneratorTool       // Tool for generating personalized habit prompts
+	feedbackTrackerTool       *FeedbackTrackerTool       // Tool for tracking user feedback and updating profiles
 }
 
 // NewConversationFlow creates a new conversation flow with dependencies.
@@ -84,6 +87,32 @@ func NewConversationFlowWithTools(stateManager StateManager, genaiClient genai.C
 		systemPromptFile:          systemPromptFile,
 		schedulerTool:             schedulerTool,
 		oneMinuteInterventionTool: interventionTool,
+	}
+}
+
+// NewConversationFlowWithAllTools creates a new conversation flow with all tools for the 3-bot architecture.
+func NewConversationFlowWithAllTools(stateManager StateManager, genaiClient genai.ClientInterface, systemPromptFile string, msgService MessagingService) *ConversationFlow {
+	slog.Debug("flow.NewConversationFlowWithAllTools: creating flow with all tools", "systemPromptFile", systemPromptFile, "hasGenAI", genaiClient != nil, "hasMessaging", msgService != nil)
+
+	// Create timer for scheduler
+	timer := NewSimpleTimer()
+
+	// Create all tools
+	schedulerTool := NewSchedulerToolWithGenAI(timer, msgService, genaiClient)
+	interventionTool := NewOneMinuteInterventionTool(stateManager, genaiClient, msgService)
+	intakeBotTool := NewIntakeBotTool(stateManager, genaiClient, msgService)
+	promptGeneratorTool := NewPromptGeneratorTool(stateManager, genaiClient, msgService)
+	feedbackTrackerTool := NewFeedbackTrackerTool(stateManager, genaiClient)
+
+	return &ConversationFlow{
+		stateManager:              stateManager,
+		genaiClient:               genaiClient,
+		systemPromptFile:          systemPromptFile,
+		schedulerTool:             schedulerTool,
+		oneMinuteInterventionTool: interventionTool,
+		intakeBotTool:             intakeBotTool,
+		promptGeneratorTool:       promptGeneratorTool,
+		feedbackTrackerTool:       feedbackTrackerTool,
 	}
 }
 
@@ -284,6 +313,36 @@ func (f *ConversationFlow) processWithTools(ctx context.Context, participantID s
 		slog.Debug("flow.intervention tool not available", "participantID", participantID)
 	}
 
+	if f.intakeBotTool != nil {
+		toolDef := f.intakeBotTool.GetToolDefinition()
+		tools = append(tools, toolDef)
+		slog.Debug("flow.added intake bot tool",
+			"participantID", participantID,
+			"toolName", "conduct_intake")
+	} else {
+		slog.Debug("flow.intake bot tool not available", "participantID", participantID)
+	}
+
+	if f.promptGeneratorTool != nil {
+		toolDef := f.promptGeneratorTool.GetToolDefinition()
+		tools = append(tools, toolDef)
+		slog.Debug("flow.added prompt generator tool",
+			"participantID", participantID,
+			"toolName", "generate_habit_prompt")
+	} else {
+		slog.Debug("flow.prompt generator tool not available", "participantID", participantID)
+	}
+
+	if f.feedbackTrackerTool != nil {
+		toolDef := f.feedbackTrackerTool.GetToolDefinition()
+		tools = append(tools, toolDef)
+		slog.Debug("flow.added feedback tracker tool",
+			"participantID", participantID,
+			"toolName", "track_feedback")
+	} else {
+		slog.Debug("flow.feedback tracker tool not available", "participantID", participantID)
+	}
+
 	slog.Info("flow.calling GenAI with tools",
 		"participantID", participantID,
 		"toolCount", len(tools),
@@ -406,6 +465,45 @@ func (f *ConversationFlow) handleToolCalls(ctx context.Context, participantID st
 				// No user message (intervention was sent directly)
 				// Record in history so AI knows intervention was sent
 				historyRecords = append(historyRecords, fmt.Sprintf("[INTERVENTION_SENT: %s]", result.Message))
+			}
+
+		case "conduct_intake":
+			result, err := f.executeIntakeBotTool(ctx, participantID, toolCall)
+			if err != nil {
+				slog.Error("flow.intake bot tool execution failed", "error", err, "participantID", participantID, "toolCallID", toolCall.ID)
+				errorMsg := fmt.Sprintf("❌ Sorry, I couldn't conduct the intake: %s", err.Error())
+				userMessages = append(userMessages, errorMsg)
+				historyRecords = append(historyRecords, errorMsg)
+			} else {
+				// Intake bot success: send response to user and record in history
+				userMessages = append(userMessages, result)
+				historyRecords = append(historyRecords, result)
+			}
+
+		case "generate_habit_prompt":
+			result, err := f.executePromptGeneratorTool(ctx, participantID, toolCall)
+			if err != nil {
+				slog.Error("flow.prompt generator tool execution failed", "error", err, "participantID", participantID, "toolCallID", toolCall.ID)
+				errorMsg := fmt.Sprintf("❌ Sorry, I couldn't generate your habit prompt: %s", err.Error())
+				userMessages = append(userMessages, errorMsg)
+				historyRecords = append(historyRecords, errorMsg)
+			} else {
+				// Prompt generator success: send prompt to user and record in history
+				userMessages = append(userMessages, result)
+				historyRecords = append(historyRecords, result)
+			}
+
+		case "track_feedback":
+			result, err := f.executeFeedbackTrackerTool(ctx, participantID, toolCall)
+			if err != nil {
+				slog.Error("flow.feedback tracker tool execution failed", "error", err, "participantID", participantID, "toolCallID", toolCall.ID)
+				errorMsg := fmt.Sprintf("❌ Sorry, I couldn't track your feedback: %s", err.Error())
+				userMessages = append(userMessages, errorMsg)
+				historyRecords = append(historyRecords, errorMsg)
+			} else {
+				// Feedback tracker success: send summary to user and record in history
+				userMessages = append(userMessages, result)
+				historyRecords = append(historyRecords, result)
 			}
 
 		default:
@@ -767,4 +865,67 @@ func (f *ConversationFlow) executeInterventionTool(ctx context.Context, particip
 
 	// Execute the intervention tool
 	return f.oneMinuteInterventionTool.ExecuteOneMinuteIntervention(ctx, participantID, params)
+}
+
+// executeIntakeBotTool executes an intake bot tool call.
+func (f *ConversationFlow) executeIntakeBotTool(ctx context.Context, participantID string, toolCall genai.ToolCall) (string, error) {
+	slog.Debug("flow.executeIntakeBotTool",
+		"participantID", participantID,
+		"toolCallID", toolCall.ID,
+		"rawArguments", string(toolCall.Function.Arguments))
+
+	// Parse the tool call arguments
+	var args map[string]interface{}
+	if err := json.Unmarshal(toolCall.Function.Arguments, &args); err != nil {
+		slog.Error("flow.failed to parse intake bot parameters",
+			"error", err,
+			"participantID", participantID,
+			"rawArguments", string(toolCall.Function.Arguments))
+		return "", fmt.Errorf("failed to unmarshal intake bot parameters: %w", err)
+	}
+
+	// Execute the intake bot tool
+	return f.intakeBotTool.ExecuteIntakeBot(ctx, participantID, args)
+}
+
+// executePromptGeneratorTool executes a prompt generator tool call.
+func (f *ConversationFlow) executePromptGeneratorTool(ctx context.Context, participantID string, toolCall genai.ToolCall) (string, error) {
+	slog.Debug("flow.executePromptGeneratorTool",
+		"participantID", participantID,
+		"toolCallID", toolCall.ID,
+		"rawArguments", string(toolCall.Function.Arguments))
+
+	// Parse the tool call arguments
+	var args map[string]interface{}
+	if err := json.Unmarshal(toolCall.Function.Arguments, &args); err != nil {
+		slog.Error("flow.failed to parse prompt generator parameters",
+			"error", err,
+			"participantID", participantID,
+			"rawArguments", string(toolCall.Function.Arguments))
+		return "", fmt.Errorf("failed to unmarshal prompt generator parameters: %w", err)
+	}
+
+	// Execute the prompt generator tool
+	return f.promptGeneratorTool.ExecutePromptGenerator(ctx, participantID, args)
+}
+
+// executeFeedbackTrackerTool executes a feedback tracker tool call.
+func (f *ConversationFlow) executeFeedbackTrackerTool(ctx context.Context, participantID string, toolCall genai.ToolCall) (string, error) {
+	slog.Debug("flow.executeFeedbackTrackerTool",
+		"participantID", participantID,
+		"toolCallID", toolCall.ID,
+		"rawArguments", string(toolCall.Function.Arguments))
+
+	// Parse the tool call arguments
+	var args map[string]interface{}
+	if err := json.Unmarshal(toolCall.Function.Arguments, &args); err != nil {
+		slog.Error("flow.failed to parse feedback tracker parameters",
+			"error", err,
+			"participantID", participantID,
+			"rawArguments", string(toolCall.Function.Arguments))
+		return "", fmt.Errorf("failed to unmarshal feedback tracker parameters: %w", err)
+	}
+
+	// Execute the feedback tracker tool
+	return f.feedbackTrackerTool.ExecuteFeedbackTracker(ctx, participantID, args)
 }

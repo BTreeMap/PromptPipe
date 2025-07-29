@@ -75,6 +75,8 @@ const (
 	DataKeyConversationHistory   DataKey = "conversationHistory"
 	DataKeySystemPrompt          DataKey = "systemPrompt"
 	DataKeyParticipantBackground DataKey = "participantBackground"
+	DataKeyUserProfile           DataKey = "userProfile"     // For storing structured user profiles
+	DataKeyLastHabitPrompt       DataKey = "lastHabitPrompt" // For tracking the last habit prompt sent
 )
 
 // Flow assignment values.
