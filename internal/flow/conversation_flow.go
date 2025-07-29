@@ -45,63 +45,45 @@ type ConversationHistory struct {
 }
 
 // ConversationFlow implements a stateful conversation flow that maintains history and uses GenAI.
-// Updated to integrate with the three-bot architecture (intake, prompt generator, feedback tracker).
 type ConversationFlow struct {
 	stateManager              StateManager
 	genaiClient               genai.ClientInterface
 	systemPrompt              string
 	systemPromptFile          string
-	schedulerTool             *SchedulerTool               // Tool for scheduling daily prompts
-	oneMinuteInterventionTool *OneMinuteInterventionTool   // Tool for initiating one-minute interventions
-	coordinator               *ConversationFlowCoordinator // Three-bot architecture coordinator
+	schedulerTool             *SchedulerTool             // Tool for scheduling daily prompts
+	oneMinuteInterventionTool *OneMinuteInterventionTool // Tool for initiating one-minute interventions
 }
 
 // NewConversationFlow creates a new conversation flow with dependencies.
 func NewConversationFlow(stateManager StateManager, genaiClient genai.ClientInterface, systemPromptFile string) *ConversationFlow {
 	slog.Debug("flow.NewConversationFlow: creating flow with dependencies", "systemPromptFile", systemPromptFile)
-
-	// Create a coordinator with a placeholder message service
-	// The actual message service will be injected when needed
-	coordinator := NewConversationFlowCoordinator(stateManager, genaiClient, nil)
-
 	return &ConversationFlow{
 		stateManager:     stateManager,
 		genaiClient:      genaiClient,
 		systemPromptFile: systemPromptFile,
-		coordinator:      coordinator,
 	}
 }
 
 // NewConversationFlowWithScheduler creates a new conversation flow with scheduler tool support.
 func NewConversationFlowWithScheduler(stateManager StateManager, genaiClient genai.ClientInterface, systemPromptFile string, schedulerTool *SchedulerTool) *ConversationFlow {
 	slog.Debug("flow.NewConversationFlowWithScheduler: creating flow with scheduler tool", "systemPromptFile", systemPromptFile, "hasGenAI", genaiClient != nil, "hasSchedulerTool", schedulerTool != nil)
-
-	// Create a coordinator with a placeholder message service
-	coordinator := NewConversationFlowCoordinator(stateManager, genaiClient, nil)
-
 	return &ConversationFlow{
 		stateManager:     stateManager,
 		genaiClient:      genaiClient,
 		systemPromptFile: systemPromptFile,
 		schedulerTool:    schedulerTool,
-		coordinator:      coordinator,
 	}
 }
 
 // NewConversationFlowWithTools creates a new conversation flow with both scheduler and intervention tools.
 func NewConversationFlowWithTools(stateManager StateManager, genaiClient genai.ClientInterface, systemPromptFile string, schedulerTool *SchedulerTool, interventionTool *OneMinuteInterventionTool) *ConversationFlow {
 	slog.Debug("flow.NewConversationFlowWithTools: creating flow with both tools", "systemPromptFile", systemPromptFile, "hasGenAI", genaiClient != nil, "hasSchedulerTool", schedulerTool != nil, "hasInterventionTool", interventionTool != nil)
-
-	// Create a coordinator with a placeholder message service
-	coordinator := NewConversationFlowCoordinator(stateManager, genaiClient, nil)
-
 	return &ConversationFlow{
 		stateManager:              stateManager,
 		genaiClient:               genaiClient,
 		systemPromptFile:          systemPromptFile,
 		schedulerTool:             schedulerTool,
 		oneMinuteInterventionTool: interventionTool,
-		coordinator:               coordinator,
 	}
 }
 
@@ -157,7 +139,6 @@ func (f *ConversationFlow) Generate(ctx context.Context, p models.Prompt) (strin
 
 // ProcessResponse handles participant responses and maintains conversation state.
 // Returns the AI response that should be sent back to the user.
-// Updated to use the three-bot architecture coordinator.
 func (f *ConversationFlow) ProcessResponse(ctx context.Context, participantID, response string) (string, error) {
 	// Log context information for debugging
 	phoneNumber, hasPhone := GetPhoneNumberFromContext(ctx)
@@ -173,39 +154,26 @@ func (f *ConversationFlow) ProcessResponse(ctx context.Context, participantID, r
 		return "", fmt.Errorf("flow dependencies not properly initialized for state operations")
 	}
 
-	// If coordinator exists, use the three-bot architecture
-	if f.coordinator != nil {
-		slog.Debug("flow.ProcessResponse: using three-bot architecture coordinator", "participantID", participantID)
-		return f.coordinator.ProcessResponse(ctx, participantID, response)
-	}
-
-	// Fallback to legacy conversation processing if coordinator is not available
-	slog.Debug("flow.ProcessResponse: using legacy conversation processing", "participantID", participantID)
-	return f.processLegacyConversation(ctx, participantID, response)
-}
-
-// processLegacyConversation provides backward compatibility with the old conversation flow.
-func (f *ConversationFlow) processLegacyConversation(ctx context.Context, participantID, response string) (string, error) {
 	// Load system prompt if not already loaded
 	if f.systemPrompt == "" {
-		slog.Debug("flow.processLegacyConversation: loading system prompt", "participantID", participantID)
+		slog.Debug("flow.ProcessResponse: loading system prompt", "participantID", participantID)
 		if err := f.LoadSystemPrompt(); err != nil {
 			// If system prompt file doesn't exist or fails to load, use a default
 			f.systemPrompt = "You are a helpful AI assistant. Engage in natural conversation with the user."
-			slog.Warn("flow.processLegacyConversation: using default system prompt due to load failure", "error", err)
+			slog.Warn("flow.ProcessResponse: using default system prompt due to load failure", "error", err)
 		}
 	}
 
 	// Get current state
 	currentState, err := f.stateManager.GetCurrentState(ctx, participantID, models.FlowTypeConversation)
 	if err != nil {
-		slog.Error("flow.processLegacyConversation: failed to get current state", "error", err, "participantID", participantID)
+		slog.Error("flow.ProcessResponse: failed to get current state", "error", err, "participantID", participantID)
 		return "", fmt.Errorf("failed to get current state: %w", err)
 	}
 
 	// If no state exists, initialize the conversation
 	if currentState == "" {
-		slog.Debug("flow.processLegacyConversation: initializing new conversation", "participantID", participantID)
+		slog.Debug("flow.ProcessResponse: initializing new conversation", "participantID", participantID)
 		err = f.transitionToState(ctx, participantID, models.StateConversationActive)
 		if err != nil {
 			return "", err
@@ -799,16 +767,4 @@ func (f *ConversationFlow) executeInterventionTool(ctx context.Context, particip
 
 	// Execute the intervention tool
 	return f.oneMinuteInterventionTool.ExecuteOneMinuteIntervention(ctx, participantID, params)
-}
-
-// SetMessageService sets the message service for the coordinator's prompt generator.
-func (f *ConversationFlow) SetMessageService(msgService MessageService) {
-	if f.coordinator != nil && f.coordinator.promptGeneratorBot != nil {
-		f.coordinator.promptGeneratorBot.msgService = msgService
-	}
-}
-
-// GetCoordinator returns the conversation flow coordinator for external access.
-func (f *ConversationFlow) GetCoordinator() *ConversationFlowCoordinator {
-	return f.coordinator
 }
