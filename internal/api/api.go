@@ -326,6 +326,9 @@ func (s *Server) initializeConversationFlow() error {
 
 	conversationFlow := flow.NewConversationFlowWithTools(stateManager, genaiClientInterface, systemPromptFile, schedulerTool, interventionTool)
 
+	// Set the message service for the three-bot coordinator
+	conversationFlow.SetMessageService(s.msgService)
+
 	// Load system prompt
 	if err := conversationFlow.LoadSystemPrompt(); err != nil {
 		slog.Warn("Failed to load system prompt, using default", "error", err)
