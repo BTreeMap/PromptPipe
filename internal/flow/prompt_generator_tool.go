@@ -90,7 +90,7 @@ func (pgt *PromptGeneratorTool) ExecutePromptGenerator(ctx context.Context, part
 
 	// Validate that profile has required information
 	if err := pgt.validateProfile(profile); err != nil {
-		slog.Error("flow.ExecutePromptGenerator: invalid profile", "error", err, "participantID", participantID)
+		slog.Debug("flow.ExecutePromptGenerator: incomplete profile", "error", err, "participantID", participantID)
 		return "", fmt.Errorf("profile incomplete: %w", err)
 	}
 

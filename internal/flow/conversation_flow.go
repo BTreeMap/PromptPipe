@@ -515,9 +515,16 @@ func (f *ConversationFlow) handleToolCalls(ctx context.Context, participantID st
 			result, err := f.executePromptGeneratorTool(ctx, participantID, toolCall)
 			if err != nil {
 				slog.Error("flow.prompt generator tool execution failed", "error", err, "participantID", participantID, "toolCallID", toolCall.ID)
-				errorMsg := fmt.Sprintf("❌ Sorry, I couldn't generate your habit prompt: %s", err.Error())
-				userMessages = append(userMessages, errorMsg)
-				historyRecords = append(historyRecords, errorMsg)
+				// Check if this is a profile incomplete error and suggest intake
+				if strings.Contains(err.Error(), "profile incomplete") {
+					errorMsg := "I need to learn more about your goals first. Let me ask you a few quick questions to personalize your habits."
+					userMessages = append(userMessages, errorMsg)
+					historyRecords = append(historyRecords, fmt.Sprintf("PROFILE_INCOMPLETE: %s", err.Error()))
+				} else {
+					errorMsg := fmt.Sprintf("❌ Sorry, I couldn't generate your habit prompt: %s", err.Error())
+					userMessages = append(userMessages, errorMsg)
+					historyRecords = append(historyRecords, errorMsg)
+				}
 			} else {
 				// Prompt generator success: send prompt to user and record in history
 				userMessages = append(userMessages, result)
@@ -657,6 +664,13 @@ func (f *ConversationFlow) buildOpenAIMessages(ctx context.Context, participantI
 		slog.Debug("No participant background found", "participantID", participantID)
 	}
 
+	// 2.5. Add profile status information to help AI decide when to use intake
+	profileStatus := f.getProfileStatus(ctx, participantID)
+	if profileStatus != "" {
+		messages = append(messages, openai.SystemMessage(profileStatus))
+		slog.Debug("Added profile status to messages", "participantID", participantID, "profileStatus", profileStatus)
+	}
+
 	// 3. Add conversation history (part of stored "history")
 	// Limit history to prevent token overflow (keep last 30 messages for context)
 	historyMessages := history.Messages
@@ -698,6 +712,42 @@ func (f *ConversationFlow) getParticipantBackground(ctx context.Context, partici
 	formatted := fmt.Sprintf("PARTICIPANT BACKGROUND:\n%s", background)
 	slog.Debug("Formatted participant background", "participantID", participantID, "formattedLength", len(formatted))
 	return formatted, nil
+}
+
+// getProfileStatus checks the user's profile completeness and returns status information for the AI
+func (f *ConversationFlow) getProfileStatus(ctx context.Context, participantID string) string {
+	// Try to get user profile
+	profileJSON, err := f.stateManager.GetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyUserProfile)
+	if err != nil || profileJSON == "" {
+		return "PROFILE STATUS: User has no profile. Use conduct_intake to collect their information before generating habit prompts."
+	}
+
+	// Parse the profile to check completeness
+	var profile UserProfile
+	if err := json.Unmarshal([]byte(profileJSON), &profile); err != nil {
+		return "PROFILE STATUS: User profile exists but has parsing issues. Use conduct_intake to rebuild their profile."
+	}
+
+	// Check required fields for habit generation
+	missingFields := []string{}
+	if profile.TargetBehavior == "" {
+		missingFields = append(missingFields, "target behavior")
+	}
+	if profile.MotivationalFrame == "" {
+		missingFields = append(missingFields, "motivation")
+	}
+	if profile.PreferredTime == "" {
+		missingFields = append(missingFields, "preferred time")
+	}
+	if profile.PromptAnchor == "" {
+		missingFields = append(missingFields, "habit anchor")
+	}
+
+	if len(missingFields) > 0 {
+		return fmt.Sprintf("PROFILE STATUS: User profile is incomplete, missing: %s. Use conduct_intake to complete their profile before generating habit prompts.", strings.Join(missingFields, ", "))
+	}
+
+	return "PROFILE STATUS: User profile is complete. You can generate_habit_prompt for this user."
 }
 
 // executeSchedulerTool executes a scheduler tool call.
