@@ -34,8 +34,8 @@ The conversation flow system enables persistent, AI-powered conversational inter
 
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   User/Client   │ -> │  API Gateway    │ -> │   Flow Engine   │
-│  (WhatsApp/SMS) │    │  (HTTP/REST)    │    │ (Conversation)  │
+│   User/Client   │ -> │  Bot Runtime    │ -> │   Flow Engine   │
+│  (WhatsApp/SMS) │    │  (whatsmeow)    │    │ (Conversation)  │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
          ▲                         |                         |
          |                         v                         v
