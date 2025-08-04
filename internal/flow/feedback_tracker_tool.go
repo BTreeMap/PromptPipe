@@ -86,14 +86,24 @@ func (ftt *FeedbackTrackerTool) GetToolDefinition() openai.ChatCompletionToolPar
 	}
 }
 
-// ExecuteFeedbackTracker executes the feedback tracking tool call.
+// ExecuteFeedbackTracker executes the feedback tracking tool call (legacy method - calls history version with empty history).
 func (ftt *FeedbackTrackerTool) ExecuteFeedbackTracker(ctx context.Context, participantID string, args map[string]interface{}) (string, error) {
-	slog.Debug("flow.ExecuteFeedbackTracker: processing feedback", "participantID", participantID, "args", args)
+	return ftt.ExecuteFeedbackTrackerWithHistory(ctx, participantID, args, []openai.ChatCompletionMessageParamUnion{})
+}
+
+// ExecuteFeedbackTrackerWithHistory executes the feedback tracking tool with conversation history.
+func (ftt *FeedbackTrackerTool) ExecuteFeedbackTrackerWithHistory(ctx context.Context, participantID string, args map[string]interface{}, chatHistory []openai.ChatCompletionMessageParamUnion) (string, error) {
+	slog.Debug("flow.ExecuteFeedbackTrackerWithHistory: processing feedback with chat history", "participantID", participantID, "args", args, "historyLength", len(chatHistory))
 
 	// Validate required dependencies
 	if ftt.stateManager == nil {
-		slog.Error("flow.ExecuteFeedbackTracker: state manager not initialized")
+		slog.Error("flow.ExecuteFeedbackTrackerWithHistory: state manager not initialized")
 		return "", fmt.Errorf("state manager not initialized")
+	}
+
+	if ftt.genaiClient == nil {
+		slog.Error("flow.ExecuteFeedbackTrackerWithHistory: genai client not initialized")
+		return "", fmt.Errorf("genai client not initialized")
 	}
 
 	// Extract arguments
@@ -102,40 +112,47 @@ func (ftt *FeedbackTrackerTool) ExecuteFeedbackTracker(ctx context.Context, part
 	barrierReason, _ := args["barrier_reason"].(string)
 	suggestedModification, _ := args["suggested_modification"].(string)
 
-	// Validate required arguments
-	if userResponse == "" || completionStatus == "" {
-		slog.Warn("flow.ExecuteFeedbackTracker: missing required arguments", "participantID", participantID, "userResponse", userResponse, "completionStatus", completionStatus)
-		return "", fmt.Errorf("user_response and completion_status are required")
+	// Validate required parameters
+	if userResponse == "" {
+		return "", fmt.Errorf("user_response is required")
+	}
+	if completionStatus == "" {
+		return "", fmt.Errorf("completion_status is required")
 	}
 
-	// Get current user profile
+	slog.Debug("flow.ExecuteFeedbackTrackerWithHistory: parsed parameters",
+		"participantID", participantID,
+		"userResponse", userResponse,
+		"completionStatus", completionStatus,
+		"barrierReason", barrierReason,
+		"suggestedModification", suggestedModification)
+
+	// Get user profile
 	profile, err := ftt.getUserProfile(ctx, participantID)
 	if err != nil {
-		slog.Error("flow.ExecuteFeedbackTracker: failed to get user profile", "error", err, "participantID", participantID)
+		slog.Error("flow.ExecuteFeedbackTrackerWithHistory: failed to get user profile", "error", err, "participantID", participantID)
 		return "", fmt.Errorf("failed to get user profile: %w", err)
 	}
 
-	// Get the last prompt sent to user
-	lastPrompt, err := ftt.stateManager.GetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyLastHabitPrompt)
-	if err != nil {
-		slog.Warn("flow.ExecuteFeedbackTracker: could not retrieve last prompt", "error", err, "participantID", participantID)
-		lastPrompt = "" // Continue without last prompt
-	}
-
-	// Update profile based on feedback
+	// Update profile with feedback
+	lastPrompt := "" // TODO: Get the last prompt from conversation history or state
 	updatedProfile := ftt.updateProfileWithFeedback(profile, userResponse, completionStatus, barrierReason, suggestedModification, lastPrompt)
 
 	// Save updated profile
 	if err := ftt.saveUserProfile(ctx, participantID, updatedProfile); err != nil {
-		slog.Error("flow.ExecuteFeedbackTracker: failed to save updated profile", "error", err, "participantID", participantID)
+		slog.Error("flow.ExecuteFeedbackTrackerWithHistory: failed to save updated profile", "error", err, "participantID", participantID)
 		return "", fmt.Errorf("failed to save updated profile: %w", err)
 	}
 
-	// Generate response summary for the conversation
-	summary := ftt.generateFeedbackSummary(updatedProfile, completionStatus, userResponse)
+	// Generate personalized feedback response using GenAI with conversation history
+	response, err := ftt.generatePersonalizedFeedback(ctx, participantID, updatedProfile, completionStatus, userResponse, barrierReason, suggestedModification, chatHistory)
+	if err != nil {
+		slog.Error("flow.ExecuteFeedbackTrackerWithHistory: failed to generate personalized feedback", "error", err, "participantID", participantID)
+		return "", fmt.Errorf("failed to generate personalized feedback: %w", err)
+	}
 
-	slog.Info("flow.ExecuteFeedbackTracker: feedback processed successfully", "participantID", participantID, "status", completionStatus, "totalPrompts", updatedProfile.TotalPrompts, "successCount", updatedProfile.SuccessCount)
-	return summary, nil
+	slog.Info("flow.ExecuteFeedbackTrackerWithHistory: feedback processed successfully", "participantID", participantID, "completionStatus", completionStatus)
+	return response, nil
 }
 
 // updateProfileWithFeedback updates the user profile based on their feedback
@@ -292,4 +309,63 @@ func (ftt *FeedbackTrackerTool) LoadSystemPrompt() error {
 	ftt.systemPrompt = strings.TrimSpace(string(content))
 	slog.Info("flow.FeedbackTrackerTool.LoadSystemPrompt: system prompt loaded successfully", "file", ftt.systemPromptFile, "length", len(ftt.systemPrompt))
 	return nil
+}
+
+// generatePersonalizedFeedback generates a personalized feedback response using GenAI with conversation history
+func (ftt *FeedbackTrackerTool) generatePersonalizedFeedback(ctx context.Context, participantID string, profile *UserProfile, completionStatus, userResponse, barrierReason, suggestedModification string, chatHistory []openai.ChatCompletionMessageParamUnion) (string, error) {
+	// Build messages for GenAI
+	messages := []openai.ChatCompletionMessageParamUnion{}
+
+	// Add system prompt
+	if ftt.systemPrompt != "" {
+		messages = append(messages, openai.SystemMessage(ftt.systemPrompt))
+	}
+
+	// Add feedback context
+	feedbackContext := ftt.buildFeedbackContext(profile, completionStatus, userResponse, barrierReason, suggestedModification)
+	messages = append(messages, openai.SystemMessage(feedbackContext))
+
+	// Add conversation history
+	messages = append(messages, chatHistory...)
+
+	// Add current user feedback as a message
+	messages = append(messages, openai.UserMessage(userResponse))
+
+	// Generate personalized response
+	response, err := ftt.genaiClient.GenerateWithMessages(ctx, messages)
+	if err != nil {
+		slog.Error("flow.generatePersonalizedFeedback: GenAI generation failed", "error", err, "participantID", participantID)
+		return "", fmt.Errorf("failed to generate personalized feedback: %w", err)
+	}
+
+	return response, nil
+}
+
+// buildFeedbackContext creates context for the GenAI about the feedback situation
+func (ftt *FeedbackTrackerTool) buildFeedbackContext(profile *UserProfile, completionStatus, userResponse, barrierReason, suggestedModification string) string {
+	context := fmt.Sprintf(`FEEDBACK TRACKING CONTEXT:
+- User's target behavior: %s
+- Motivational frame: %s
+- Completion status: %s
+- Total prompts sent: %d
+- Success count: %d
+- User response: %s`, 
+		profile.TargetBehavior, 
+		profile.MotivationalFrame, 
+		completionStatus, 
+		profile.TotalPrompts, 
+		profile.SuccessCount, 
+		userResponse)
+
+	if barrierReason != "" {
+		context += fmt.Sprintf("\n- Barrier mentioned: %s", barrierReason)
+	}
+
+	if suggestedModification != "" {
+		context += fmt.Sprintf("\n- Suggested modification: %s", suggestedModification)
+	}
+
+	context += "\n\nTASK: Generate a warm, encouraging response that acknowledges their feedback and provides motivational support. If they succeeded, celebrate it. If they faced barriers, empathize and offer encouragement. If they have suggestions, acknowledge them positively. Keep it personal and supportive."
+
+	return context
 }

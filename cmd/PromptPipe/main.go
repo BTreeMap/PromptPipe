@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -140,6 +141,11 @@ type Config struct {
 	// FeedbackTrackerPromptFile is the path to the feedback tracker system prompt file
 	// Environment variable: FEEDBACK_TRACKER_PROMPT_FILE
 	FeedbackTrackerPromptFile string
+
+	// ChatHistoryLimit limits the number of history messages sent to bot tools.
+	// -1: no limit, 0: no history, positive: limit to last N messages
+	// Environment variable: CHAT_HISTORY_LIMIT
+	ChatHistoryLimit int
 }
 
 // Flags holds command line flag values for database and other configuration.
@@ -157,6 +163,7 @@ type Flags struct {
 	intakeBotPromptFile       *string // Path to intake bot system prompt file
 	promptGeneratorPromptFile *string // Path to prompt generator system prompt file
 	feedbackTrackerPromptFile *string // Path to feedback tracker system prompt file
+	chatHistoryLimit          *int    // Limit for number of history messages sent to bot tools
 }
 
 // initializeLogger sets up structured logging with debug level
@@ -198,6 +205,7 @@ func loadEnvironmentConfig() Config {
 		IntakeBotPromptFile:       getEnvWithDefault("INTAKE_BOT_PROMPT_FILE", "prompts/intake_bot_system.txt"),
 		PromptGeneratorPromptFile: getEnvWithDefault("PROMPT_GENERATOR_PROMPT_FILE", "prompts/prompt_generator_system.txt"),
 		FeedbackTrackerPromptFile: getEnvWithDefault("FEEDBACK_TRACKER_PROMPT_FILE", "prompts/feedback_tracker_system.txt"),
+		ChatHistoryLimit:          parseIntEnv("CHAT_HISTORY_LIMIT", -1),
 	}
 
 	// Set default state directory if not specified
@@ -258,6 +266,7 @@ func parseCommandLineFlags(config Config) Flags {
 		intakeBotPromptFile:       flag.String("intake-bot-prompt-file", config.IntakeBotPromptFile, "path to intake bot system prompt file (overrides $INTAKE_BOT_PROMPT_FILE)"),
 		promptGeneratorPromptFile: flag.String("prompt-generator-prompt-file", config.PromptGeneratorPromptFile, "path to prompt generator system prompt file (overrides $PROMPT_GENERATOR_PROMPT_FILE)"),
 		feedbackTrackerPromptFile: flag.String("feedback-tracker-prompt-file", config.FeedbackTrackerPromptFile, "path to feedback tracker system prompt file (overrides $FEEDBACK_TRACKER_PROMPT_FILE)"),
+		chatHistoryLimit:          flag.Int("chat-history-limit", config.ChatHistoryLimit, "limit for number of history messages sent to bot tools: -1=no limit, 0=no history, positive=limit to last N messages (overrides $CHAT_HISTORY_LIMIT)"),
 	}
 
 	flag.Parse()
@@ -274,7 +283,8 @@ func parseCommandLineFlags(config Config) Flags {
 		"debug", *flags.debug,
 		"intakeBotPromptFile", *flags.intakeBotPromptFile,
 		"promptGeneratorPromptFile", *flags.promptGeneratorPromptFile,
-		"feedbackTrackerPromptFile", *flags.feedbackTrackerPromptFile)
+		"feedbackTrackerPromptFile", *flags.feedbackTrackerPromptFile,
+		"chatHistoryLimit", *flags.chatHistoryLimit)
 
 	// Update database DSNs if not explicitly set but state directory has changed
 	if *flags.whatsappDBDSN == config.WhatsAppDBDSN && config.WhatsAppDBDSN == "file:"+filepath.Join(config.StateDir, DefaultWhatsAppDBFileName)+"?_foreign_keys=on" && *flags.stateDir != config.StateDir {
@@ -401,6 +411,8 @@ func buildAPIOptions(flags Flags) []api.Option {
 	if *flags.feedbackTrackerPromptFile != "" {
 		apiOpts = append(apiOpts, api.WithFeedbackTrackerPromptFile(*flags.feedbackTrackerPromptFile))
 	}
+	// Always pass the chat history limit since it has a meaningful default
+	apiOpts = append(apiOpts, api.WithChatHistoryLimit(*flags.chatHistoryLimit))
 	return apiOpts
 }
 
@@ -429,4 +441,21 @@ func parseBoolEnv(key string, defaultValue bool) bool {
 		slog.Warn("Invalid boolean value for environment variable", "key", key, "value", val, "defaulting_to", defaultValue)
 		return defaultValue
 	}
+}
+
+// parseIntEnv parses an integer environment variable with a default value.
+// It accepts positive integers, 0, and negative integers.
+func parseIntEnv(key string, defaultValue int) int {
+	val := os.Getenv(key)
+	if val == "" {
+		return defaultValue
+	}
+
+	intVal, err := strconv.Atoi(val)
+	if err != nil {
+		slog.Warn("Invalid integer value for environment variable", "key", key, "value", val, "defaulting_to", defaultValue)
+		return defaultValue
+	}
+
+	return intVal
 }

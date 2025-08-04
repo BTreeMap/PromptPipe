@@ -114,8 +114,73 @@ func (pgt *PromptGeneratorTool) ExecutePromptGenerator(ctx context.Context, part
 	return completionPrompt, nil
 }
 
+// ExecutePromptGeneratorWithHistory executes the prompt generator tool call with conversation history context.
+func (pgt *PromptGeneratorTool) ExecutePromptGeneratorWithHistory(ctx context.Context, participantID string, args map[string]interface{}, chatHistory []openai.ChatCompletionMessageParamUnion) (string, error) {
+	slog.Debug("flow.ExecutePromptGeneratorWithHistory: processing prompt generation with chat history", 
+		"participantID", participantID, 
+		"args", args, 
+		"historyMessages", len(chatHistory))
+
+	// Validate required dependencies
+	if pgt.stateManager == nil || pgt.genaiClient == nil {
+		slog.Error("flow.ExecutePromptGeneratorWithHistory: dependencies not initialized")
+		return "", fmt.Errorf("dependencies not properly initialized")
+	}
+
+	// Extract arguments
+	deliveryMode, _ := args["delivery_mode"].(string)
+	personalizationNotes, _ := args["personalization_notes"].(string)
+
+	// Validate required arguments
+	if deliveryMode == "" {
+		slog.Warn("flow.ExecutePromptGeneratorWithHistory: missing delivery_mode", "participantID", participantID)
+		return "", fmt.Errorf("delivery_mode is required")
+	}
+
+	// Get user profile
+	profile, err := pgt.getUserProfile(ctx, participantID)
+	if err != nil {
+		slog.Error("flow.ExecutePromptGeneratorWithHistory: failed to get user profile", "error", err, "participantID", participantID)
+		return "", fmt.Errorf("failed to get user profile: %w", err)
+	}
+
+	// Validate that profile has required information
+	if err := pgt.validateProfile(profile); err != nil {
+		slog.Debug("flow.ExecutePromptGeneratorWithHistory: incomplete profile", "error", err, "participantID", participantID)
+		return "", fmt.Errorf("profile incomplete: %w", err)
+	}
+
+	// Generate the personalized prompt with conversation history
+	habitPrompt, err := pgt.generatePersonalizedPromptWithHistory(ctx, profile, deliveryMode, personalizationNotes, chatHistory)
+	if err != nil {
+		slog.Error("flow.ExecutePromptGeneratorWithHistory: failed to generate prompt", "error", err, "participantID", participantID)
+		return "", fmt.Errorf("failed to generate habit prompt: %w", err)
+	}
+
+	// Store the generated prompt for feedback tracking
+	if err := pgt.stateManager.SetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyLastHabitPrompt, habitPrompt); err != nil {
+		slog.Warn("flow.ExecutePromptGeneratorWithHistory: failed to store last prompt", "error", err, "participantID", participantID)
+		// Continue despite storage failure
+	}
+
+	// Create follow-up question for completion tracking
+	completionPrompt := habitPrompt + "\n\nLet me know when you've tried it, or if you'd like to adjust anything!"
+
+	slog.Info("flow.ExecutePromptGeneratorWithHistory: habit prompt generated with history context", 
+		"participantID", participantID, 
+		"deliveryMode", deliveryMode, 
+		"promptLength", len(habitPrompt),
+		"historyMessages", len(chatHistory))
+	return completionPrompt, nil
+}
+
 // generatePersonalizedPrompt creates a personalized habit prompt using the MAP framework
 func (pgt *PromptGeneratorTool) generatePersonalizedPrompt(ctx context.Context, profile *UserProfile, deliveryMode, personalizationNotes string) (string, error) {
+	return pgt.generatePersonalizedPromptWithHistory(ctx, profile, deliveryMode, personalizationNotes, nil)
+}
+
+// generatePersonalizedPromptWithHistory creates a personalized habit prompt using the MAP framework with conversation history context
+func (pgt *PromptGeneratorTool) generatePersonalizedPromptWithHistory(ctx context.Context, profile *UserProfile, deliveryMode, personalizationNotes string, chatHistory []openai.ChatCompletionMessageParamUnion) (string, error) {
 	// Build the system prompt for habit generation
 	systemPrompt := pgt.buildPromptGeneratorSystemPrompt(profile, deliveryMode, personalizationNotes)
 
@@ -137,11 +202,21 @@ func (pgt *PromptGeneratorTool) generatePersonalizedPrompt(ctx context.Context, 
 		profile.AdditionalInfo,
 	)
 
-	// Generate the prompt using GenAI
+	// Build messages with conversation history context
 	messages := []openai.ChatCompletionMessageParamUnion{
 		openai.SystemMessage(systemPrompt),
-		openai.UserMessage(userPrompt),
 	}
+
+	// Add previous chat history for context (if provided)
+	if len(chatHistory) > 0 {
+		messages = append(messages, openai.SystemMessage("Previous conversation context:"))
+		messages = append(messages, chatHistory...)
+		slog.Debug("Added chat history to prompt generator context", 
+			"historyMessages", len(chatHistory))
+	}
+
+	// Add the current request
+	messages = append(messages, openai.UserMessage(userPrompt))
 
 	response, err := pgt.genaiClient.GenerateWithMessages(ctx, messages)
 	if err != nil {

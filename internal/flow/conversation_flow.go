@@ -49,6 +49,7 @@ type ConversationFlow struct {
 	genaiClient               genai.ClientInterface
 	systemPrompt              string
 	systemPromptFile          string
+	chatHistoryLimit          int                        // Limit for number of history messages sent to bot tools (-1: no limit, 0: no history, positive: limit to last N messages)
 	schedulerTool             *SchedulerTool             // Tool for scheduling daily prompts
 	oneMinuteInterventionTool *OneMinuteInterventionTool // Tool for initiating one-minute interventions
 	intakeBotTool             *IntakeBotTool             // Tool for conducting intake conversations
@@ -63,6 +64,7 @@ func NewConversationFlow(stateManager StateManager, genaiClient genai.ClientInte
 		stateManager:     stateManager,
 		genaiClient:      genaiClient,
 		systemPromptFile: systemPromptFile,
+		chatHistoryLimit: -1, // Default: no limit
 	}
 }
 
@@ -73,6 +75,7 @@ func NewConversationFlowWithScheduler(stateManager StateManager, genaiClient gen
 		stateManager:     stateManager,
 		genaiClient:      genaiClient,
 		systemPromptFile: systemPromptFile,
+		chatHistoryLimit: -1, // Default: no limit
 		schedulerTool:    schedulerTool,
 	}
 }
@@ -84,6 +87,7 @@ func NewConversationFlowWithTools(stateManager StateManager, genaiClient genai.C
 		stateManager:              stateManager,
 		genaiClient:               genaiClient,
 		systemPromptFile:          systemPromptFile,
+		chatHistoryLimit:          -1, // Default: no limit
 		schedulerTool:             schedulerTool,
 		oneMinuteInterventionTool: interventionTool,
 	}
@@ -107,6 +111,7 @@ func NewConversationFlowWithAllTools(stateManager StateManager, genaiClient gena
 		stateManager:              stateManager,
 		genaiClient:               genaiClient,
 		systemPromptFile:          systemPromptFile,
+		chatHistoryLimit:          -1, // Default: no limit
 		schedulerTool:             schedulerTool,
 		oneMinuteInterventionTool: interventionTool,
 		intakeBotTool:             intakeBotTool,
@@ -750,6 +755,59 @@ func (f *ConversationFlow) getProfileStatus(ctx context.Context, participantID s
 	return "PROFILE STATUS: User profile is complete. You can generate_habit_prompt for this user."
 }
 
+// getPreviousChatHistory retrieves and formats previous chat history for bot tools.
+// Returns OpenAI messages formatted with proper roles (user/assistant) for context.
+func (f *ConversationFlow) getPreviousChatHistory(ctx context.Context, participantID string, maxMessages int) ([]openai.ChatCompletionMessageParamUnion, error) {
+	// Apply the configured chat history limit
+	effectiveLimit := maxMessages
+	if f.chatHistoryLimit >= 0 {
+		// If chatHistoryLimit is 0 or positive, it overrides the maxMessages parameter
+		if f.chatHistoryLimit == 0 {
+			// No history should be sent
+			slog.Debug("Chat history disabled by configuration", "participantID", participantID, "chatHistoryLimit", f.chatHistoryLimit)
+			return []openai.ChatCompletionMessageParamUnion{}, nil
+		}
+		// Use the smaller of the two limits
+		if f.chatHistoryLimit < maxMessages {
+			effectiveLimit = f.chatHistoryLimit
+		}
+	}
+	// If chatHistoryLimit is -1, use maxMessages as provided (no limit from config)
+
+	// Get conversation history
+	history, err := f.getConversationHistory(ctx, participantID)
+	if err != nil {
+		slog.Warn("Failed to get conversation history for bot tool", "error", err, "participantID", participantID)
+		return []openai.ChatCompletionMessageParamUnion{}, nil // Return empty array instead of failing
+	}
+
+	// Limit history to prevent token overflow
+	historyMessages := history.Messages
+	if len(historyMessages) > effectiveLimit && effectiveLimit > 0 {
+		historyMessages = historyMessages[len(historyMessages)-effectiveLimit:]
+	}
+
+	// Convert to OpenAI message format
+	var messages []openai.ChatCompletionMessageParamUnion
+	for _, msg := range historyMessages {
+		if msg.Role == "user" {
+			messages = append(messages, openai.UserMessage(msg.Content))
+		} else if msg.Role == "assistant" {
+			messages = append(messages, openai.AssistantMessage(msg.Content))
+		}
+	}
+
+	slog.Debug("Retrieved previous chat history for bot tool",
+		"participantID", participantID,
+		"totalHistoryMessages", len(history.Messages),
+		"includedMessages", len(messages),
+		"requestedMaxMessages", maxMessages,
+		"configuredLimit", f.chatHistoryLimit,
+		"effectiveLimit", effectiveLimit)
+
+	return messages, nil
+}
+
 // executeSchedulerTool executes a scheduler tool call.
 func (f *ConversationFlow) executeSchedulerTool(ctx context.Context, participantID string, toolCall genai.ToolCall) (*models.ToolResult, error) {
 	// Log the raw tool call for debugging
@@ -922,8 +980,16 @@ func (f *ConversationFlow) executeIntakeBotTool(ctx context.Context, participant
 		return "", fmt.Errorf("failed to unmarshal intake bot parameters: %w", err)
 	}
 
-	// Execute the intake bot tool
-	return f.intakeBotTool.ExecuteIntakeBot(ctx, participantID, args)
+	// Get previous chat history for context (configurable limit, default fallback for safety)
+	chatHistory, err := f.getPreviousChatHistory(ctx, participantID, 50)
+	if err != nil {
+		slog.Warn("flow.failed to get chat history for intake bot", "error", err, "participantID", participantID)
+		// Continue without history rather than failing
+		chatHistory = []openai.ChatCompletionMessageParamUnion{}
+	}
+
+	// Execute the intake bot tool with conversation history
+	return f.intakeBotTool.ExecuteIntakeBotWithHistory(ctx, participantID, args, chatHistory)
 }
 
 // executePromptGeneratorTool executes a prompt generator tool call.
@@ -943,8 +1009,16 @@ func (f *ConversationFlow) executePromptGeneratorTool(ctx context.Context, parti
 		return "", fmt.Errorf("failed to unmarshal prompt generator parameters: %w", err)
 	}
 
-	// Execute the prompt generator tool
-	return f.promptGeneratorTool.ExecutePromptGenerator(ctx, participantID, args)
+	// Get previous chat history for context (configurable limit, default fallback for safety)
+	chatHistory, err := f.getPreviousChatHistory(ctx, participantID, 50)
+	if err != nil {
+		slog.Warn("flow.failed to get chat history for prompt generator", "error", err, "participantID", participantID)
+		// Continue without history rather than failing
+		chatHistory = []openai.ChatCompletionMessageParamUnion{}
+	}
+
+	// Execute the prompt generator tool with conversation history
+	return f.promptGeneratorTool.ExecutePromptGeneratorWithHistory(ctx, participantID, args, chatHistory)
 }
 
 // executeFeedbackTrackerTool executes a feedback tracker tool call.
@@ -964,6 +1038,21 @@ func (f *ConversationFlow) executeFeedbackTrackerTool(ctx context.Context, parti
 		return "", fmt.Errorf("failed to unmarshal feedback tracker parameters: %w", err)
 	}
 
-	// Execute the feedback tracker tool
-	return f.feedbackTrackerTool.ExecuteFeedbackTracker(ctx, participantID, args)
+	// Get previous chat history for context (configurable limit, default fallback for safety)
+	chatHistory, err := f.getPreviousChatHistory(ctx, participantID, 50)
+	if err != nil {
+		slog.Warn("flow.failed to get chat history for feedback tracker", "error", err, "participantID", participantID)
+		// Continue without history rather than failing
+		chatHistory = []openai.ChatCompletionMessageParamUnion{}
+	}
+
+	// Execute the feedback tracker tool with conversation history
+	return f.feedbackTrackerTool.ExecuteFeedbackTrackerWithHistory(ctx, participantID, args, chatHistory)
+}
+
+// SetChatHistoryLimit sets the limit for number of history messages sent to bot tools.
+// -1: no limit, 0: no history, positive: limit to last N messages
+func (f *ConversationFlow) SetChatHistoryLimit(limit int) {
+	f.chatHistoryLimit = limit
+	slog.Debug("ConversationFlow: chat history limit set", "limit", limit)
 }

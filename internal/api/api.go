@@ -55,6 +55,7 @@ type Server struct {
 	intakeBotPromptFile       string // path to intake bot system prompt file
 	promptGeneratorPromptFile string // path to prompt generator system prompt file
 	feedbackTrackerPromptFile string // path to feedback tracker system prompt file
+	chatHistoryLimit          int    // limit for number of history messages sent to bot tools
 }
 
 // NewServer creates a new API server instance with the provided dependencies.
@@ -79,6 +80,7 @@ type Opts struct {
 	IntakeBotPromptFile       string           // path to intake bot system prompt file
 	PromptGeneratorPromptFile string           // path to prompt generator system prompt file
 	FeedbackTrackerPromptFile string           // path to feedback tracker system prompt file
+	ChatHistoryLimit          int              // limit for number of history messages sent to bot tools
 }
 
 // Option defines a configuration option for the API server.
@@ -133,6 +135,14 @@ func WithFeedbackTrackerPromptFile(filePath string) Option {
 	}
 }
 
+// WithChatHistoryLimit sets the limit for number of history messages sent to bot tools.
+// -1: no limit, 0: no history, positive: limit to last N messages
+func WithChatHistoryLimit(limit int) Option {
+	return func(o *Opts) {
+		o.ChatHistoryLimit = limit
+	}
+}
+
 // Run starts the API server and initializes dependencies, applying module options.
 // It returns an error if initialization fails.
 func Run(waOpts []whatsapp.Option, storeOpts []store.Option, genaiOpts []genai.Option, apiOpts []Option) error {
@@ -162,10 +172,11 @@ func createAndConfigureServer(waOpts []whatsapp.Option, storeOpts []store.Option
 		opt(&apiCfg)
 	}
 
-	// Store prompt file paths in server
+	// Store prompt file paths and configuration in server
 	server.intakeBotPromptFile = apiCfg.IntakeBotPromptFile
 	server.promptGeneratorPromptFile = apiCfg.PromptGeneratorPromptFile
 	server.feedbackTrackerPromptFile = apiCfg.FeedbackTrackerPromptFile
+	server.chatHistoryLimit = apiCfg.ChatHistoryLimit
 
 	// Determine server address with priority: CLI options > default
 	addr := apiCfg.Addr
@@ -346,6 +357,9 @@ func (s *Server) initializeConversationFlow() error {
 		s.feedbackTrackerPromptFile,
 	)
 
+	// Set the chat history limit
+	conversationFlow.SetChatHistoryLimit(s.chatHistoryLimit)
+
 	// Load system prompt for the conversation flow (fallback to default if it doesn't exist)
 	if err := conversationFlow.LoadSystemPrompt(); err != nil {
 		slog.Warn("Failed to load 3-bot system prompt, using default", "error", err, "systemPromptFile", systemPromptFile3Bot)
@@ -360,7 +374,7 @@ func (s *Server) initializeConversationFlow() error {
 
 	// Register conversation flow generator
 	flow.Register(models.PromptTypeConversation, conversationFlow)
-	slog.Debug("Conversation flow initialized with 3-bot architecture", "systemPromptFile", systemPromptFile3Bot, "hasGenAI", s.gaClient != nil, "intakeBotPromptFile", s.intakeBotPromptFile, "promptGeneratorPromptFile", s.promptGeneratorPromptFile, "feedbackTrackerPromptFile", s.feedbackTrackerPromptFile)
+	slog.Debug("Conversation flow initialized with 3-bot architecture", "systemPromptFile", systemPromptFile3Bot, "hasGenAI", s.gaClient != nil, "intakeBotPromptFile", s.intakeBotPromptFile, "promptGeneratorPromptFile", s.promptGeneratorPromptFile, "feedbackTrackerPromptFile", s.feedbackTrackerPromptFile, "chatHistoryLimit", s.chatHistoryLimit)
 
 	return nil
 }
@@ -532,13 +546,11 @@ func (s *Server) gracefulShutdown(srv *http.Server) error {
 	// Stop messaging service
 	slog.Debug("Stopping messaging service")
 	if err := s.msgService.Stop(); err != nil {
-		slog.Error("Messaging service stop failed", "error", err)
-		shutdownErrors = append(shutdownErrors, fmt.Errorf("messaging service stop: %w", err))
-	} else {
-		slog.Debug("Messaging service stopped")
+		slog.Error("Failed to stop messaging service", "error", err)
+		shutdownErrors = append(shutdownErrors, fmt.Errorf("messaging service shutdown failed: %w", err))
 	}
 
-	// Return any accumulated errors
+	// Check if there were any shutdown errors
 	if len(shutdownErrors) > 0 {
 		slog.Error("Shutdown completed with errors", "error_count", len(shutdownErrors))
 		// Return the first error, but log all of them
