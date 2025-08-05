@@ -254,8 +254,8 @@ func (ibt *IntakeBotTool) handleWelcomeStageWithHistory(ctx context.Context, par
 	if userResponse != "" {
 		// Analyze response to determine if user consented or declined
 		responseLC := strings.ToLower(strings.TrimSpace(userResponse))
-		if strings.Contains(responseLC, "yes") || strings.Contains(responseLC, "ok") || 
-		   strings.Contains(responseLC, "sure") || strings.Contains(responseLC, "okay") {
+		if strings.Contains(responseLC, "yes") || strings.Contains(responseLC, "ok") ||
+			strings.Contains(responseLC, "sure") || strings.Contains(responseLC, "okay") {
 			nextState = IntakeStateGoalArea
 		} else if strings.Contains(responseLC, "no") || strings.Contains(responseLC, "not") {
 			nextState = IntakeStateComplete
@@ -710,7 +710,7 @@ func (ibt *IntakeBotTool) getStageContext(stage IntakeState, userResponse string
 // extractAndStoreTargetBehavior extracts target behavior from user response and stores it in profile
 func (ibt *IntakeBotTool) extractAndStoreTargetBehavior(userResponse string, profile *UserProfile) {
 	responseLC := strings.ToLower(strings.TrimSpace(userResponse))
-	
+
 	if strings.Contains(responseLC, "eat") || strings.Contains(responseLC, "food") || strings.Contains(responseLC, "diet") {
 		profile.TargetBehavior = "healthy eating"
 	} else if strings.Contains(responseLC, "physical") || strings.Contains(responseLC, "exercise") || strings.Contains(responseLC, "move") || strings.Contains(responseLC, "activity") {

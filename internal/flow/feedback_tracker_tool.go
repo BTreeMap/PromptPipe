@@ -134,8 +134,14 @@ func (ftt *FeedbackTrackerTool) ExecuteFeedbackTrackerWithHistory(ctx context.Co
 		return "", fmt.Errorf("failed to get user profile: %w", err)
 	}
 
+	// Get the last prompt from state
+	lastPrompt, err := ftt.stateManager.GetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyLastHabitPrompt)
+	if err != nil {
+		slog.Debug("flow.ExecuteFeedbackTrackerWithHistory: no last prompt found in state", "participantID", participantID)
+		lastPrompt = "" // Use empty string if no last prompt is found
+	}
+
 	// Update profile with feedback
-	lastPrompt := "" // TODO: Get the last prompt from conversation history or state
 	updatedProfile := ftt.updateProfileWithFeedback(profile, userResponse, completionStatus, barrierReason, suggestedModification, lastPrompt)
 
 	// Save updated profile
@@ -349,12 +355,12 @@ func (ftt *FeedbackTrackerTool) buildFeedbackContext(profile *UserProfile, compl
 - Completion status: %s
 - Total prompts sent: %d
 - Success count: %d
-- User response: %s`, 
-		profile.TargetBehavior, 
-		profile.MotivationalFrame, 
-		completionStatus, 
-		profile.TotalPrompts, 
-		profile.SuccessCount, 
+- User response: %s`,
+		profile.TargetBehavior,
+		profile.MotivationalFrame,
+		completionStatus,
+		profile.TotalPrompts,
+		profile.SuccessCount,
 		userResponse)
 
 	if barrierReason != "" {

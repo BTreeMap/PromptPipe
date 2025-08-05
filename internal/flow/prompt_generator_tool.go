@@ -116,9 +116,9 @@ func (pgt *PromptGeneratorTool) ExecutePromptGenerator(ctx context.Context, part
 
 // ExecutePromptGeneratorWithHistory executes the prompt generator tool call with conversation history context.
 func (pgt *PromptGeneratorTool) ExecutePromptGeneratorWithHistory(ctx context.Context, participantID string, args map[string]interface{}, chatHistory []openai.ChatCompletionMessageParamUnion) (string, error) {
-	slog.Debug("flow.ExecutePromptGeneratorWithHistory: processing prompt generation with chat history", 
-		"participantID", participantID, 
-		"args", args, 
+	slog.Debug("flow.ExecutePromptGeneratorWithHistory: processing prompt generation with chat history",
+		"participantID", participantID,
+		"args", args,
 		"historyMessages", len(chatHistory))
 
 	// Validate required dependencies
@@ -166,9 +166,9 @@ func (pgt *PromptGeneratorTool) ExecutePromptGeneratorWithHistory(ctx context.Co
 	// Create follow-up question for completion tracking
 	completionPrompt := habitPrompt + "\n\nLet me know when you've tried it, or if you'd like to adjust anything!"
 
-	slog.Info("flow.ExecutePromptGeneratorWithHistory: habit prompt generated with history context", 
-		"participantID", participantID, 
-		"deliveryMode", deliveryMode, 
+	slog.Info("flow.ExecutePromptGeneratorWithHistory: habit prompt generated with history context",
+		"participantID", participantID,
+		"deliveryMode", deliveryMode,
 		"promptLength", len(habitPrompt),
 		"historyMessages", len(chatHistory))
 	return completionPrompt, nil
@@ -211,7 +211,7 @@ func (pgt *PromptGeneratorTool) generatePersonalizedPromptWithHistory(ctx contex
 	if len(chatHistory) > 0 {
 		messages = append(messages, openai.SystemMessage("Previous conversation context:"))
 		messages = append(messages, chatHistory...)
-		slog.Debug("Added chat history to prompt generator context", 
+		slog.Debug("Added chat history to prompt generator context",
 			"historyMessages", len(chatHistory))
 	}
 
