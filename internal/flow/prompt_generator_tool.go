@@ -144,11 +144,15 @@ func (pgt *PromptGeneratorTool) ExecutePromptGeneratorWithHistory(ctx context.Co
 		return "", fmt.Errorf("failed to get user profile: %w", err)
 	}
 
+	slog.Debug("flow.ExecutePromptGeneratorWithHistory: got user profile", "participantID", participantID)
+
 	// Validate that profile has required information
 	if err := pgt.validateProfile(profile); err != nil {
 		slog.Debug("flow.ExecutePromptGeneratorWithHistory: incomplete profile", "error", err, "participantID", participantID)
 		return "", fmt.Errorf("profile incomplete: %w", err)
 	}
+
+	slog.Debug("flow.ExecutePromptGeneratorWithHistory: profile validation passed", "participantID", participantID)
 
 	// Generate the personalized prompt with conversation history
 	habitPrompt, err := pgt.generatePersonalizedPromptWithHistory(ctx, profile, deliveryMode, personalizationNotes, chatHistory)
@@ -272,18 +276,30 @@ func (pgt *PromptGeneratorTool) buildPromptGeneratorSystemPrompt(profile *UserPr
 
 // validateProfile checks if the profile has the minimum required information
 func (pgt *PromptGeneratorTool) validateProfile(profile *UserProfile) error {
+	slog.Debug("flow.validateProfile: checking profile completeness",
+		"targetBehavior", profile.TargetBehavior,
+		"motivationalFrame", profile.MotivationalFrame,
+		"promptAnchor", profile.PromptAnchor,
+		"preferredTime", profile.PreferredTime)
+
 	if profile.TargetBehavior == "" {
+		slog.Debug("flow.validateProfile: missing target behavior")
 		return fmt.Errorf("target behavior is required")
 	}
 	if profile.MotivationalFrame == "" {
+		slog.Debug("flow.validateProfile: missing motivational frame")
 		return fmt.Errorf("motivational frame is required")
 	}
 	if profile.PromptAnchor == "" {
+		slog.Debug("flow.validateProfile: missing prompt anchor")
 		return fmt.Errorf("prompt anchor is required")
 	}
 	if profile.PreferredTime == "" {
+		slog.Debug("flow.validateProfile: missing preferred time")
 		return fmt.Errorf("preferred time is required")
 	}
+	
+	slog.Debug("flow.validateProfile: profile validation passed")
 	return nil
 }
 
@@ -291,18 +307,30 @@ func (pgt *PromptGeneratorTool) validateProfile(profile *UserProfile) error {
 func (pgt *PromptGeneratorTool) getUserProfile(ctx context.Context, participantID string) (*UserProfile, error) {
 	profileJSON, err := pgt.stateManager.GetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyUserProfile)
 	if err != nil {
+		slog.Debug("flow.getUserProfile: failed to get state data", "error", err, "participantID", participantID)
 		return nil, fmt.Errorf("user profile not found - please complete intake first")
 	}
 
 	// Handle empty string (no profile exists yet)
 	if profileJSON == "" {
+		slog.Debug("flow.getUserProfile: empty profile JSON", "participantID", participantID)
 		return nil, fmt.Errorf("user profile not found - please complete intake first")
 	}
 
+	slog.Debug("flow.getUserProfile: raw profile JSON", "participantID", participantID, "profileJSON", profileJSON)
+
 	var profile UserProfile
 	if err := json.Unmarshal([]byte(profileJSON), &profile); err != nil {
+		slog.Debug("flow.getUserProfile: failed to unmarshal profile", "error", err, "participantID", participantID, "profileJSON", profileJSON)
 		return nil, fmt.Errorf("failed to parse user profile: %w", err)
 	}
+
+	slog.Debug("flow.getUserProfile: parsed profile", 
+		"participantID", participantID,
+		"targetBehavior", profile.TargetBehavior,
+		"motivationalFrame", profile.MotivationalFrame,
+		"promptAnchor", profile.PromptAnchor,
+		"preferredTime", profile.PreferredTime)
 
 	return &profile, nil
 }
