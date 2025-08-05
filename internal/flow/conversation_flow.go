@@ -540,9 +540,9 @@ func (f *ConversationFlow) handleToolCalls(ctx context.Context, participantID st
 				slog.Error("flow.prompt generator tool execution failed", "error", err, "participantID", participantID, "toolCallID", toolCall.ID)
 				// Check if this is a profile incomplete error and suggest intake
 				if strings.Contains(err.Error(), "profile incomplete") {
-					errorMsg := "I need to learn more about your goals first. Let me ask you a few quick questions to personalize your habits."
+					errorMsg := "I need to learn more about your goals first to create personalized habits. Let me start our intake process to gather some quick information."
 					userMessages = append(userMessages, errorMsg)
-					historyRecords = append(historyRecords, fmt.Sprintf("PROFILE_INCOMPLETE: %s", err.Error()))
+					historyRecords = append(historyRecords, fmt.Sprintf("PROFILE_INCOMPLETE: %s - USE conduct_intake TOOL NEXT", err.Error()))
 				} else {
 					errorMsg := fmt.Sprintf("❌ Sorry, I couldn't generate your habit prompt: %s", err.Error())
 					userMessages = append(userMessages, errorMsg)
@@ -742,13 +742,13 @@ func (f *ConversationFlow) getProfileStatus(ctx context.Context, participantID s
 	// Try to get user profile
 	profileJSON, err := f.stateManager.GetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyUserProfile)
 	if err != nil || profileJSON == "" {
-		return "PROFILE STATUS: User has no profile. Use conduct_intake to collect their information before generating habit prompts."
+		return "PROFILE STATUS: User has no profile. IMMEDIATELY use conduct_intake tool to collect their information. DO NOT ask intake questions manually."
 	}
 
 	// Parse the profile to check completeness
 	var profile UserProfile
 	if err := json.Unmarshal([]byte(profileJSON), &profile); err != nil {
-		return "PROFILE STATUS: User profile exists but has parsing issues. Use conduct_intake to rebuild their profile."
+		return "PROFILE STATUS: User profile exists but has parsing issues. IMMEDIATELY use conduct_intake tool to rebuild their profile. DO NOT ask intake questions manually."
 	}
 
 	// Check required fields for habit generation
@@ -767,7 +767,7 @@ func (f *ConversationFlow) getProfileStatus(ctx context.Context, participantID s
 	}
 
 	if len(missingFields) > 0 {
-		return fmt.Sprintf("PROFILE STATUS: User profile is incomplete, missing: %s. Use conduct_intake to complete their profile before generating habit prompts.", strings.Join(missingFields, ", "))
+		return fmt.Sprintf("PROFILE STATUS: User profile is incomplete, missing: %s. IMMEDIATELY use conduct_intake tool to complete their profile. DO NOT ask intake questions manually.", strings.Join(missingFields, ", "))
 	}
 
 	return "PROFILE STATUS: User profile is complete. You can generate_habit_prompt for this user."
