@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/BTreeMap/PromptPipe/internal/models"
+	"github.com/BTreeMap/PromptPipe/internal/util"
 )
 
 // timerEntry tracks information about a scheduled timer
@@ -25,7 +26,6 @@ type timerEntry struct {
 type SimpleTimer struct {
 	timers map[string]*timerEntry
 	mu     sync.RWMutex
-	nextID int64
 }
 
 // NewSimpleTimer creates a new SimpleTimer.
@@ -38,10 +38,8 @@ func NewSimpleTimer() *SimpleTimer {
 
 // ScheduleAfter schedules a function to run after a delay.
 func (t *SimpleTimer) ScheduleAfter(delay time.Duration, fn func()) (string, error) {
-	t.mu.Lock()
-	t.nextID++
-	id := fmt.Sprintf("timer_%d", t.nextID)
-	t.mu.Unlock()
+	// Generate random timer ID with "timer_" prefix for one-time timers
+	id := util.GenerateRandomID("timer_", 16)
 
 	slog.Debug("SimpleTimer.ScheduleAfter: scheduling function", "id", id, "delay", delay)
 
@@ -91,10 +89,8 @@ func (t *SimpleTimer) ScheduleWithSchedule(schedule *models.Schedule, fn func())
 		return "", fmt.Errorf("invalid schedule: %w", err)
 	}
 
-	t.mu.Lock()
-	t.nextID++
-	id := fmt.Sprintf("recurring_%d", t.nextID)
-	t.mu.Unlock()
+	// Generate random timer ID with "sched_" prefix for scheduled/recurring timers
+	id := util.GenerateRandomID("sched_", 16)
 
 	slog.Debug("SimpleTimer ScheduleWithSchedule", "id", id, "schedule", schedule.ToCronString())
 
