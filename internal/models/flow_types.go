@@ -72,11 +72,14 @@ const (
 
 // Data key constants for conversation flow.
 const (
-	DataKeyConversationHistory   DataKey = "conversationHistory"
-	DataKeySystemPrompt          DataKey = "systemPrompt"
-	DataKeyParticipantBackground DataKey = "participantBackground"
-	DataKeyUserProfile           DataKey = "userProfile"     // For storing structured user profiles
-	DataKeyLastHabitPrompt       DataKey = "lastHabitPrompt" // For tracking the last habit prompt sent
+	DataKeyConversationHistory     DataKey = "conversationHistory"
+	DataKeySystemPrompt            DataKey = "systemPrompt"
+	DataKeyParticipantBackground   DataKey = "participantBackground"
+	DataKeyUserProfile             DataKey = "userProfile"             // For storing structured user profiles
+	DataKeyLastHabitPrompt         DataKey = "lastHabitPrompt"         // For tracking the last habit prompt sent
+	DataKeyFeedbackState           DataKey = "feedbackState"           // For tracking feedback collection state
+	DataKeyFeedbackTimerID         DataKey = "feedbackTimerID"         // For tracking initial feedback timer
+	DataKeyFeedbackFollowupTimerID DataKey = "feedbackFollowupTimerID" // For tracking follow-up feedback timer
 )
 
 // Flow assignment values.

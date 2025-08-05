@@ -17,14 +17,24 @@ type MockTimer struct {
 
 type ScheduledCall struct {
 	Schedule *models.Schedule
+	Delay    *time.Duration
+	When     *time.Time
 	Fn       func()
 }
 
 func (m *MockTimer) ScheduleAfter(delay time.Duration, fn func()) (string, error) {
+	m.scheduledCalls = append(m.scheduledCalls, ScheduledCall{
+		Delay: &delay,
+		Fn:    fn,
+	})
 	return "mock-timer-id", nil
 }
 
 func (m *MockTimer) ScheduleAt(when time.Time, fn func()) (string, error) {
+	m.scheduledCalls = append(m.scheduledCalls, ScheduledCall{
+		When: &when,
+		Fn:   fn,
+	})
 	return "mock-timer-id", nil
 }
 

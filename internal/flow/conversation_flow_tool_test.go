@@ -52,7 +52,8 @@ type MockGenAIClientWithTools struct {
 	shouldCallTools bool
 	toolCallID      string
 	toolCallArgs    string
-	expectError     bool // New field to indicate if we should return error responses
+	toolName        string // Make tool name configurable
+	expectError     bool   // New field to indicate if we should return error responses
 }
 
 func (m *MockGenAIClientWithTools) GeneratePrompt(system, user string) (string, error) {
@@ -77,7 +78,13 @@ func (m *MockGenAIClientWithTools) GenerateWithMessages(ctx context.Context, mes
 
 func (m *MockGenAIClientWithTools) GenerateWithTools(ctx context.Context, messages []openai.ChatCompletionMessageParamUnion, tools []openai.ChatCompletionToolParam) (*genai.ToolCallResponse, error) {
 	if m.shouldCallTools {
-		// Return a response that includes a scheduler tool call
+		// Default to scheduler if no tool name is specified
+		toolName := m.toolName
+		if toolName == "" {
+			toolName = "scheduler"
+		}
+
+		// Return a response that includes the specified tool call
 		return &genai.ToolCallResponse{
 			Content: "", // Empty content when making tool calls
 			ToolCalls: []genai.ToolCall{
@@ -85,7 +92,7 @@ func (m *MockGenAIClientWithTools) GenerateWithTools(ctx context.Context, messag
 					ID:   m.toolCallID,
 					Type: "function",
 					Function: genai.FunctionCall{
-						Name:      "scheduler",
+						Name:      toolName,
 						Arguments: json.RawMessage(m.toolCallArgs),
 					},
 				},

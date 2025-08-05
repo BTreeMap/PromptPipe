@@ -56,6 +56,8 @@ type Server struct {
 	promptGeneratorPromptFile string // path to prompt generator system prompt file
 	feedbackTrackerPromptFile string // path to feedback tracker system prompt file
 	chatHistoryLimit          int    // limit for number of history messages sent to bot tools
+	feedbackInitialTimeout    string // timeout for initial feedback response
+	feedbackFollowupDelay     string // delay before follow-up feedback session
 }
 
 // NewServer creates a new API server instance with the provided dependencies.
@@ -81,6 +83,8 @@ type Opts struct {
 	PromptGeneratorPromptFile string           // path to prompt generator system prompt file
 	FeedbackTrackerPromptFile string           // path to feedback tracker system prompt file
 	ChatHistoryLimit          int              // limit for number of history messages sent to bot tools
+	FeedbackInitialTimeout    string           // timeout for initial feedback response
+	FeedbackFollowupDelay     string           // delay before follow-up feedback session
 }
 
 // Option defines a configuration option for the API server.
@@ -143,6 +147,20 @@ func WithChatHistoryLimit(limit int) Option {
 	}
 }
 
+// WithFeedbackInitialTimeout sets the timeout for initial feedback response.
+func WithFeedbackInitialTimeout(timeout string) Option {
+	return func(o *Opts) {
+		o.FeedbackInitialTimeout = timeout
+	}
+}
+
+// WithFeedbackFollowupDelay sets the delay before follow-up feedback session.
+func WithFeedbackFollowupDelay(delay string) Option {
+	return func(o *Opts) {
+		o.FeedbackFollowupDelay = delay
+	}
+}
+
 // Run starts the API server and initializes dependencies, applying module options.
 // It returns an error if initialization fails.
 func Run(waOpts []whatsapp.Option, storeOpts []store.Option, genaiOpts []genai.Option, apiOpts []Option) error {
@@ -177,6 +195,8 @@ func createAndConfigureServer(waOpts []whatsapp.Option, storeOpts []store.Option
 	server.promptGeneratorPromptFile = apiCfg.PromptGeneratorPromptFile
 	server.feedbackTrackerPromptFile = apiCfg.FeedbackTrackerPromptFile
 	server.chatHistoryLimit = apiCfg.ChatHistoryLimit
+	server.feedbackInitialTimeout = apiCfg.FeedbackInitialTimeout
+	server.feedbackFollowupDelay = apiCfg.FeedbackFollowupDelay
 
 	// Determine server address with priority: CLI options > default
 	addr := apiCfg.Addr
@@ -347,7 +367,7 @@ func (s *Server) initializeConversationFlow() error {
 
 	// Use the new 3-bot system prompt
 	systemPromptFile3Bot := "prompts/conversation_system_3bot.txt"
-	conversationFlow := flow.NewConversationFlowWithAllTools(
+	conversationFlow := flow.NewConversationFlowWithAllToolsAndTimeouts(
 		stateManager,
 		genaiClientInterface,
 		systemPromptFile3Bot,
@@ -355,6 +375,8 @@ func (s *Server) initializeConversationFlow() error {
 		s.intakeBotPromptFile,
 		s.promptGeneratorPromptFile,
 		s.feedbackTrackerPromptFile,
+		s.feedbackInitialTimeout,
+		s.feedbackFollowupDelay,
 	)
 
 	// Set the chat history limit

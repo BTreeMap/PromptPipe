@@ -36,10 +36,14 @@ type UserProfile struct {
 
 // FeedbackTrackerTool provides LLM tool functionality for tracking user feedback and updating profiles.
 type FeedbackTrackerTool struct {
-	stateManager     StateManager
-	genaiClient      genai.ClientInterface
-	systemPromptFile string
-	systemPrompt     string
+	stateManager           StateManager
+	genaiClient            genai.ClientInterface
+	systemPromptFile       string
+	systemPrompt           string
+	timer                  models.Timer     // Timer for scheduling feedback timeouts
+	msgService             MessagingService // Messaging service for sending follow-up prompts
+	feedbackInitialTimeout string           // Timeout for initial feedback response (e.g., "15m")
+	feedbackFollowupDelay  string           // Delay before follow-up feedback session (e.g., "3h")
 }
 
 // NewFeedbackTrackerTool creates a new feedback tracker tool instance.
@@ -49,6 +53,27 @@ func NewFeedbackTrackerTool(stateManager StateManager, genaiClient genai.ClientI
 		stateManager:     stateManager,
 		genaiClient:      genaiClient,
 		systemPromptFile: systemPromptFile,
+	}
+}
+
+// NewFeedbackTrackerToolWithTimeouts creates a new feedback tracker tool instance with timeout configuration.
+func NewFeedbackTrackerToolWithTimeouts(stateManager StateManager, genaiClient genai.ClientInterface, systemPromptFile string, timer models.Timer, msgService MessagingService, feedbackInitialTimeout, feedbackFollowupDelay string) *FeedbackTrackerTool {
+	slog.Debug("flow.NewFeedbackTrackerToolWithTimeouts: creating feedback tracker tool with timeouts",
+		"hasStateManager", stateManager != nil,
+		"hasGenAI", genaiClient != nil,
+		"systemPromptFile", systemPromptFile,
+		"hasTimer", timer != nil,
+		"hasMessaging", msgService != nil,
+		"feedbackInitialTimeout", feedbackInitialTimeout,
+		"feedbackFollowupDelay", feedbackFollowupDelay)
+	return &FeedbackTrackerTool{
+		stateManager:           stateManager,
+		genaiClient:            genaiClient,
+		systemPromptFile:       systemPromptFile,
+		timer:                  timer,
+		msgService:             msgService,
+		feedbackInitialTimeout: feedbackInitialTimeout,
+		feedbackFollowupDelay:  feedbackFollowupDelay,
 	}
 }
 
@@ -374,4 +399,196 @@ func (ftt *FeedbackTrackerTool) buildFeedbackContext(profile *UserProfile, compl
 	context += "\n\nTASK: Generate a warm, encouraging response that acknowledges their feedback and provides motivational support. If they succeeded, celebrate it. If they faced barriers, empathize and offer encouragement. If they have suggestions, acknowledge them positively. Keep it personal and supportive."
 
 	return context
+}
+
+// IsSystemPromptLoaded checks if the system prompt is loaded and not empty
+func (ftt *FeedbackTrackerTool) IsSystemPromptLoaded() bool {
+	return ftt.systemPrompt != "" && strings.TrimSpace(ftt.systemPrompt) != ""
+}
+
+// ScheduleFeedbackCollection schedules automatic feedback collection after a habit prompt.
+// This should be called after a prompt generator session completes.
+func (ftt *FeedbackTrackerTool) ScheduleFeedbackCollection(ctx context.Context, participantID string) error {
+	slog.Debug("flow.FeedbackTrackerTool.ScheduleFeedbackCollection: scheduling feedback collection", "participantID", participantID, "initialTimeout", ftt.feedbackInitialTimeout)
+
+	if ftt.timer == nil {
+		slog.Warn("flow.FeedbackTrackerTool.ScheduleFeedbackCollection: timer not configured, skipping feedback scheduling", "participantID", participantID)
+		return nil
+	}
+
+	if ftt.msgService == nil {
+		slog.Warn("flow.FeedbackTrackerTool.ScheduleFeedbackCollection: messaging service not configured, skipping feedback scheduling", "participantID", participantID)
+		return nil
+	}
+
+	// Parse initial timeout duration
+	initialTimeout, err := time.ParseDuration(ftt.feedbackInitialTimeout)
+	if err != nil {
+		slog.Error("flow.FeedbackTrackerTool.ScheduleFeedbackCollection: invalid initial timeout format", "timeout", ftt.feedbackInitialTimeout, "error", err)
+		return fmt.Errorf("invalid feedback initial timeout format: %w", err)
+	}
+
+	// Set state to indicate we're waiting for feedback
+	if err := ftt.stateManager.SetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyFeedbackState, "waiting_initial"); err != nil {
+		slog.Error("flow.FeedbackTrackerTool.ScheduleFeedbackCollection: failed to set feedback state", "participantID", participantID, "error", err)
+		return fmt.Errorf("failed to set feedback state: %w", err)
+	}
+
+	// Schedule initial feedback timeout
+	timerID, err := ftt.timer.ScheduleAfter(initialTimeout, func() {
+		ftt.handleInitialFeedbackTimeout(ctx, participantID)
+	})
+	if err != nil {
+		slog.Error("flow.FeedbackTrackerTool.ScheduleFeedbackCollection: failed to schedule initial timeout", "participantID", participantID, "timeout", initialTimeout, "error", err)
+		return fmt.Errorf("failed to schedule initial feedback timeout: %w", err)
+	}
+
+	// Store timer ID for potential cancellation
+	if err := ftt.stateManager.SetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyFeedbackTimerID, timerID); err != nil {
+		slog.Error("flow.FeedbackTrackerTool.ScheduleFeedbackCollection: failed to store timer ID", "participantID", participantID, "timerID", timerID, "error", err)
+		// Don't return error as timer is already scheduled, just log warning
+	}
+
+	slog.Info("flow.FeedbackTrackerTool.ScheduleFeedbackCollection: feedback collection scheduled", "participantID", participantID, "timerID", timerID, "timeout", initialTimeout)
+	return nil
+}
+
+// handleInitialFeedbackTimeout handles the case when user doesn't respond to initial feedback request
+func (ftt *FeedbackTrackerTool) handleInitialFeedbackTimeout(ctx context.Context, participantID string) {
+	slog.Debug("flow.FeedbackTrackerTool.handleInitialFeedbackTimeout: handling initial feedback timeout", "participantID", participantID)
+
+	// Check if feedback was already received
+	feedbackState, err := ftt.stateManager.GetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyFeedbackState)
+	if err == nil && feedbackState != "waiting_initial" {
+		slog.Debug("flow.FeedbackTrackerTool.handleInitialFeedbackTimeout: feedback already received, skipping timeout", "participantID", participantID, "currentState", feedbackState)
+		return
+	}
+
+	// Send initial feedback request
+	feedbackMessage := "Hi! 🌱 How did that habit suggestion work for you? I'd love to hear your thoughts - did you give it a try? Any feedback helps me make better suggestions for you!"
+
+	phoneNumber, err := ftt.getParticipantPhoneNumber(ctx, participantID)
+	if err != nil {
+		slog.Error("flow.FeedbackTrackerTool.handleInitialFeedbackTimeout: failed to get phone number", "participantID", participantID, "error", err)
+		return
+	}
+
+	if err := ftt.msgService.SendMessage(ctx, phoneNumber, feedbackMessage); err != nil {
+		slog.Error("flow.FeedbackTrackerTool.handleInitialFeedbackTimeout: failed to send feedback request", "participantID", participantID, "phoneNumber", phoneNumber, "error", err)
+		return
+	}
+
+	slog.Info("flow.FeedbackTrackerTool.handleInitialFeedbackTimeout: initial feedback request sent", "participantID", participantID, "phoneNumber", phoneNumber)
+
+	// Schedule follow-up if no response
+	ftt.scheduleFollowupFeedback(ctx, participantID)
+}
+
+// scheduleFollowupFeedback schedules a follow-up feedback session after the delay period
+func (ftt *FeedbackTrackerTool) scheduleFollowupFeedback(ctx context.Context, participantID string) {
+	slog.Debug("flow.FeedbackTrackerTool.scheduleFollowupFeedback: scheduling follow-up feedback", "participantID", participantID, "followupDelay", ftt.feedbackFollowupDelay)
+
+	// Parse follow-up delay duration
+	followupDelay, err := time.ParseDuration(ftt.feedbackFollowupDelay)
+	if err != nil {
+		slog.Error("flow.FeedbackTrackerTool.scheduleFollowupFeedback: invalid follow-up delay format", "delay", ftt.feedbackFollowupDelay, "error", err)
+		return
+	}
+
+	// Set state to indicate we're waiting for follow-up feedback
+	if err := ftt.stateManager.SetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyFeedbackState, "waiting_followup"); err != nil {
+		slog.Error("flow.FeedbackTrackerTool.scheduleFollowupFeedback: failed to set follow-up feedback state", "participantID", participantID, "error", err)
+		return
+	}
+
+	// Schedule follow-up feedback
+	timerID, err := ftt.timer.ScheduleAfter(followupDelay, func() {
+		ftt.handleFollowupFeedbackTimeout(ctx, participantID)
+	})
+	if err != nil {
+		slog.Error("flow.FeedbackTrackerTool.scheduleFollowupFeedback: failed to schedule follow-up", "participantID", participantID, "delay", followupDelay, "error", err)
+		return
+	}
+
+	// Store follow-up timer ID
+	if err := ftt.stateManager.SetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyFeedbackFollowupTimerID, timerID); err != nil {
+		slog.Error("flow.FeedbackTrackerTool.scheduleFollowupFeedback: failed to store follow-up timer ID", "participantID", participantID, "timerID", timerID, "error", err)
+	}
+
+	slog.Info("flow.FeedbackTrackerTool.scheduleFollowupFeedback: follow-up feedback scheduled", "participantID", participantID, "timerID", timerID, "delay", followupDelay)
+}
+
+// handleFollowupFeedbackTimeout handles the follow-up feedback session
+func (ftt *FeedbackTrackerTool) handleFollowupFeedbackTimeout(ctx context.Context, participantID string) {
+	slog.Debug("flow.FeedbackTrackerTool.handleFollowupFeedbackTimeout: handling follow-up feedback timeout", "participantID", participantID)
+
+	// Check if feedback was already received
+	feedbackState, err := ftt.stateManager.GetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyFeedbackState)
+	if err == nil && feedbackState == "completed" {
+		slog.Debug("flow.FeedbackTrackerTool.handleFollowupFeedbackTimeout: feedback already received, skipping follow-up", "participantID", participantID)
+		return
+	}
+
+	// Send follow-up feedback request
+	followupMessage := "Hey! 👋 Just checking in - I sent you a habit suggestion earlier. Even if you didn't try it, I'd love to know what you think! Your feedback helps me learn what works best for you. 😊"
+
+	phoneNumber, err := ftt.getParticipantPhoneNumber(ctx, participantID)
+	if err != nil {
+		slog.Error("flow.FeedbackTrackerTool.handleFollowupFeedbackTimeout: failed to get phone number", "participantID", participantID, "error", err)
+		return
+	}
+
+	if err := ftt.msgService.SendMessage(ctx, phoneNumber, followupMessage); err != nil {
+		slog.Error("flow.FeedbackTrackerTool.handleFollowupFeedbackTimeout: failed to send follow-up request", "participantID", participantID, "phoneNumber", phoneNumber, "error", err)
+		return
+	}
+
+	// Update state to indicate follow-up was sent
+	if err := ftt.stateManager.SetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyFeedbackState, "followup_sent"); err != nil {
+		slog.Error("flow.FeedbackTrackerTool.handleFollowupFeedbackTimeout: failed to update feedback state", "participantID", participantID, "error", err)
+	}
+
+	slog.Info("flow.FeedbackTrackerTool.handleFollowupFeedbackTimeout: follow-up feedback request sent", "participantID", participantID, "phoneNumber", phoneNumber)
+}
+
+// getParticipantPhoneNumber retrieves the phone number for a participant
+func (ftt *FeedbackTrackerTool) getParticipantPhoneNumber(ctx context.Context, participantID string) (string, error) {
+	// For now, we'll assume the participantID is the phone number
+	// In a more complex system, this would look up the phone number from the participant record
+	if participantID == "" {
+		return "", fmt.Errorf("participantID is empty")
+	}
+	return participantID, nil
+}
+
+// CancelPendingFeedback cancels any pending feedback timers for a participant
+func (ftt *FeedbackTrackerTool) CancelPendingFeedback(ctx context.Context, participantID string) {
+	slog.Debug("flow.FeedbackTrackerTool.CancelPendingFeedback: cancelling pending feedback timers", "participantID", participantID)
+
+	if ftt.timer == nil {
+		return
+	}
+
+	// Cancel initial feedback timer
+	if timerID, err := ftt.stateManager.GetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyFeedbackTimerID); err == nil && timerID != "" {
+		if err := ftt.timer.Cancel(timerID); err != nil {
+			slog.Debug("flow.FeedbackTrackerTool.CancelPendingFeedback: failed to cancel initial timer", "participantID", participantID, "timerID", timerID, "error", err)
+		} else {
+			slog.Debug("flow.FeedbackTrackerTool.CancelPendingFeedback: cancelled initial timer", "participantID", participantID, "timerID", timerID)
+		}
+	}
+
+	// Cancel follow-up feedback timer
+	if timerID, err := ftt.stateManager.GetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyFeedbackFollowupTimerID); err == nil && timerID != "" {
+		if err := ftt.timer.Cancel(timerID); err != nil {
+			slog.Debug("flow.FeedbackTrackerTool.CancelPendingFeedback: failed to cancel follow-up timer", "participantID", participantID, "timerID", timerID, "error", err)
+		} else {
+			slog.Debug("flow.FeedbackTrackerTool.CancelPendingFeedback: cancelled follow-up timer", "participantID", participantID, "timerID", timerID)
+		}
+	}
+
+	// Clear feedback state
+	if err := ftt.stateManager.SetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyFeedbackState, "completed"); err != nil {
+		slog.Debug("flow.FeedbackTrackerTool.CancelPendingFeedback: failed to clear feedback state", "participantID", participantID, "error", err)
+	}
 }

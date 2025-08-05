@@ -146,6 +146,14 @@ type Config struct {
 	// -1: no limit, 0: no history, positive: limit to last N messages
 	// Environment variable: CHAT_HISTORY_LIMIT
 	ChatHistoryLimit int
+
+	// FeedbackInitialTimeout is the timeout for initial feedback response (e.g., 15 minutes)
+	// Environment variable: FEEDBACK_INITIAL_TIMEOUT
+	FeedbackInitialTimeout string
+
+	// FeedbackFollowupDelay is the delay before follow-up feedback session (e.g., "3h" for 3 hours)
+	// Environment variable: FEEDBACK_FOLLOWUP_DELAY
+	FeedbackFollowupDelay string
 }
 
 // Flags holds command line flag values for database and other configuration.
@@ -164,6 +172,8 @@ type Flags struct {
 	promptGeneratorPromptFile *string // Path to prompt generator system prompt file
 	feedbackTrackerPromptFile *string // Path to feedback tracker system prompt file
 	chatHistoryLimit          *int    // Limit for number of history messages sent to bot tools
+	feedbackInitialTimeout    *string // Timeout for initial feedback response
+	feedbackFollowupDelay     *string // Delay before follow-up feedback session
 }
 
 // initializeLogger sets up structured logging with debug level
@@ -206,6 +216,8 @@ func loadEnvironmentConfig() Config {
 		PromptGeneratorPromptFile: getEnvWithDefault("PROMPT_GENERATOR_PROMPT_FILE", "prompts/prompt_generator_system.txt"),
 		FeedbackTrackerPromptFile: getEnvWithDefault("FEEDBACK_TRACKER_PROMPT_FILE", "prompts/feedback_tracker_system.txt"),
 		ChatHistoryLimit:          parseIntEnv("CHAT_HISTORY_LIMIT", -1),
+		FeedbackInitialTimeout:    getEnvWithDefault("FEEDBACK_INITIAL_TIMEOUT", "15m"),
+		FeedbackFollowupDelay:     getEnvWithDefault("FEEDBACK_FOLLOWUP_DELAY", "3h"),
 	}
 
 	// Set default state directory if not specified
@@ -267,6 +279,8 @@ func parseCommandLineFlags(config Config) Flags {
 		promptGeneratorPromptFile: flag.String("prompt-generator-prompt-file", config.PromptGeneratorPromptFile, "path to prompt generator system prompt file (overrides $PROMPT_GENERATOR_PROMPT_FILE)"),
 		feedbackTrackerPromptFile: flag.String("feedback-tracker-prompt-file", config.FeedbackTrackerPromptFile, "path to feedback tracker system prompt file (overrides $FEEDBACK_TRACKER_PROMPT_FILE)"),
 		chatHistoryLimit:          flag.Int("chat-history-limit", config.ChatHistoryLimit, "limit for number of history messages sent to bot tools: -1=no limit, 0=no history, positive=limit to last N messages (overrides $CHAT_HISTORY_LIMIT)"),
+		feedbackInitialTimeout:    flag.String("feedback-initial-timeout", config.FeedbackInitialTimeout, "timeout for initial feedback response, e.g., '15m' (overrides $FEEDBACK_INITIAL_TIMEOUT)"),
+		feedbackFollowupDelay:     flag.String("feedback-followup-delay", config.FeedbackFollowupDelay, "delay before follow-up feedback session, e.g., '3h' (overrides $FEEDBACK_FOLLOWUP_DELAY)"),
 	}
 
 	flag.Parse()
@@ -284,7 +298,9 @@ func parseCommandLineFlags(config Config) Flags {
 		"intakeBotPromptFile", *flags.intakeBotPromptFile,
 		"promptGeneratorPromptFile", *flags.promptGeneratorPromptFile,
 		"feedbackTrackerPromptFile", *flags.feedbackTrackerPromptFile,
-		"chatHistoryLimit", *flags.chatHistoryLimit)
+		"chatHistoryLimit", *flags.chatHistoryLimit,
+		"feedbackInitialTimeout", *flags.feedbackInitialTimeout,
+		"feedbackFollowupDelay", *flags.feedbackFollowupDelay)
 
 	// Update database DSNs if not explicitly set but state directory has changed
 	if *flags.whatsappDBDSN == config.WhatsAppDBDSN && config.WhatsAppDBDSN == "file:"+filepath.Join(config.StateDir, DefaultWhatsAppDBFileName)+"?_foreign_keys=on" && *flags.stateDir != config.StateDir {
@@ -413,6 +429,12 @@ func buildAPIOptions(flags Flags) []api.Option {
 	}
 	// Always pass the chat history limit since it has a meaningful default
 	apiOpts = append(apiOpts, api.WithChatHistoryLimit(*flags.chatHistoryLimit))
+	if *flags.feedbackInitialTimeout != "" {
+		apiOpts = append(apiOpts, api.WithFeedbackInitialTimeout(*flags.feedbackInitialTimeout))
+	}
+	if *flags.feedbackFollowupDelay != "" {
+		apiOpts = append(apiOpts, api.WithFeedbackFollowupDelay(*flags.feedbackFollowupDelay))
+	}
 	return apiOpts
 }
 

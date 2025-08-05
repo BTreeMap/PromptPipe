@@ -95,7 +95,12 @@ func NewConversationFlowWithTools(stateManager StateManager, genaiClient genai.C
 
 // NewConversationFlowWithAllTools creates a new conversation flow with all tools for the 3-bot architecture.
 func NewConversationFlowWithAllTools(stateManager StateManager, genaiClient genai.ClientInterface, systemPromptFile string, msgService MessagingService, intakeBotPromptFile, promptGeneratorPromptFile, feedbackTrackerPromptFile string) *ConversationFlow {
-	slog.Debug("flow.NewConversationFlowWithAllTools: creating flow with all tools", "systemPromptFile", systemPromptFile, "hasGenAI", genaiClient != nil, "hasMessaging", msgService != nil, "intakeBotPromptFile", intakeBotPromptFile, "promptGeneratorPromptFile", promptGeneratorPromptFile, "feedbackTrackerPromptFile", feedbackTrackerPromptFile)
+	return NewConversationFlowWithAllToolsAndTimeouts(stateManager, genaiClient, systemPromptFile, msgService, intakeBotPromptFile, promptGeneratorPromptFile, feedbackTrackerPromptFile, "15m", "3h")
+}
+
+// NewConversationFlowWithAllToolsAndTimeouts creates a new conversation flow with all tools and configurable feedback timeouts for the 3-bot architecture.
+func NewConversationFlowWithAllToolsAndTimeouts(stateManager StateManager, genaiClient genai.ClientInterface, systemPromptFile string, msgService MessagingService, intakeBotPromptFile, promptGeneratorPromptFile, feedbackTrackerPromptFile, feedbackInitialTimeout, feedbackFollowupDelay string) *ConversationFlow {
+	slog.Debug("flow.NewConversationFlowWithAllToolsAndTimeouts: creating flow with all tools and timeouts", "systemPromptFile", systemPromptFile, "hasGenAI", genaiClient != nil, "hasMessaging", msgService != nil, "intakeBotPromptFile", intakeBotPromptFile, "promptGeneratorPromptFile", promptGeneratorPromptFile, "feedbackTrackerPromptFile", feedbackTrackerPromptFile, "feedbackInitialTimeout", feedbackInitialTimeout, "feedbackFollowupDelay", feedbackFollowupDelay)
 
 	// Create timer for scheduler
 	timer := NewSimpleTimer()
@@ -105,7 +110,7 @@ func NewConversationFlowWithAllTools(stateManager StateManager, genaiClient gena
 	interventionTool := NewOneMinuteInterventionTool(stateManager, genaiClient, msgService)
 	intakeBotTool := NewIntakeBotTool(stateManager, genaiClient, msgService, intakeBotPromptFile)
 	promptGeneratorTool := NewPromptGeneratorTool(stateManager, genaiClient, msgService, promptGeneratorPromptFile)
-	feedbackTrackerTool := NewFeedbackTrackerTool(stateManager, genaiClient, feedbackTrackerPromptFile)
+	feedbackTrackerTool := NewFeedbackTrackerToolWithTimeouts(stateManager, genaiClient, feedbackTrackerPromptFile, timer, msgService, feedbackInitialTimeout, feedbackFollowupDelay)
 
 	return &ConversationFlow{
 		stateManager:              stateManager,
@@ -1076,7 +1081,22 @@ func (f *ConversationFlow) executePromptGeneratorTool(ctx context.Context, parti
 	}
 
 	// Execute the prompt generator tool with conversation history
-	return f.promptGeneratorTool.ExecutePromptGeneratorWithHistory(ctx, participantID, args, chatHistory)
+	result, err := f.promptGeneratorTool.ExecutePromptGeneratorWithHistory(ctx, participantID, args, chatHistory)
+	if err != nil {
+		return result, err
+	}
+
+	// After successful prompt generation, schedule automatic feedback collection
+	if f.feedbackTrackerTool != nil {
+		if scheduleErr := f.feedbackTrackerTool.ScheduleFeedbackCollection(ctx, participantID); scheduleErr != nil {
+			slog.Warn("flow.executePromptGeneratorTool: failed to schedule feedback collection", "participantID", participantID, "error", scheduleErr)
+			// Don't fail the prompt generation, just log the warning
+		} else {
+			slog.Info("flow.executePromptGeneratorTool: feedback collection scheduled", "participantID", participantID)
+		}
+	}
+
+	return result, err
 }
 
 // executeFeedbackTrackerTool executes a feedback tracker tool call.
@@ -1105,7 +1125,18 @@ func (f *ConversationFlow) executeFeedbackTrackerTool(ctx context.Context, parti
 	}
 
 	// Execute the feedback tracker tool with conversation history
-	return f.feedbackTrackerTool.ExecuteFeedbackTrackerWithHistory(ctx, participantID, args, chatHistory)
+	result, err := f.feedbackTrackerTool.ExecuteFeedbackTrackerWithHistory(ctx, participantID, args, chatHistory)
+	if err != nil {
+		return result, err
+	}
+
+	// Cancel any pending feedback timers since feedback was received
+	if f.feedbackTrackerTool != nil {
+		f.feedbackTrackerTool.CancelPendingFeedback(ctx, participantID)
+		slog.Debug("flow.executeFeedbackTrackerTool: cancelled pending feedback timers", "participantID", participantID)
+	}
+
+	return result, err
 }
 
 // executeProfileSaveTool executes a profile save tool call.
