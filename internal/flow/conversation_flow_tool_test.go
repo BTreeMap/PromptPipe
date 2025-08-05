@@ -52,6 +52,7 @@ type MockGenAIClientWithTools struct {
 	shouldCallTools bool
 	toolCallID      string
 	toolCallArgs    string
+	expectError     bool // New field to indicate if we should return error responses
 }
 
 func (m *MockGenAIClientWithTools) GeneratePrompt(system, user string) (string, error) {
@@ -63,6 +64,14 @@ func (m *MockGenAIClientWithTools) GeneratePromptWithContext(ctx context.Context
 }
 
 func (m *MockGenAIClientWithTools) GenerateWithMessages(ctx context.Context, messages []openai.ChatCompletionMessageParamUnion) (string, error) {
+	// Check if this is a call after tool execution by looking at the number of messages
+	if len(messages) > 3 { // More than system + user + assistant message suggests tool results
+		if m.expectError {
+			return "❌ I encountered an issue while trying to help you. Please try again with different parameters.", nil
+		}
+		return "✅ Great! I've successfully completed your request.", nil
+	}
+	// This is a regular call without tool results
 	return "Basic response without tools", nil
 }
 
@@ -235,6 +244,7 @@ func TestConversationFlow_ToolExecutionError(t *testing.T) {
 		shouldCallTools: true,
 		toolCallID:      "call_invalid",
 		toolCallArgs:    `{"invalid": "json"}`, // Invalid JSON that will fail parsing
+		expectError:     true,                  // This test expects error responses
 	}
 
 	// Create conversation flow with scheduler tool
@@ -314,6 +324,10 @@ func (m *MockGenAIClientWithUnknownTool) GeneratePromptWithContext(ctx context.C
 }
 
 func (m *MockGenAIClientWithUnknownTool) GenerateWithMessages(ctx context.Context, messages []openai.ChatCompletionMessageParamUnion) (string, error) {
+	// Check if this is a call after tool execution (post-error response)
+	if len(messages) > 3 { // More than system + user + assistant message suggests tool results
+		return "❌ Sorry, I encountered an issue with the unknown_tool. Let me help you with something else.", nil
+	}
 	return "Basic response without tools", nil
 }
 

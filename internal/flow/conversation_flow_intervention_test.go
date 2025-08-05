@@ -109,8 +109,13 @@ func TestConversationFlow_WithInterventionTool(t *testing.T) {
 		t.Fatalf("ProcessResponse with intervention tool failed: %v", err)
 	}
 
-	if response != "" {
-		t.Error("Expected empty response after intervention tool execution (intervention message is sent directly, not through conversation flow)")
+	if response == "" {
+		t.Error("Expected non-empty response after intervention tool execution (LLM now generates final response based on tool results)")
+	}
+
+	// Verify that the response contains intervention-related content
+	if len(response) == 0 {
+		t.Error("Expected intervention-related response from LLM after tool execution")
 	}
 
 	// Verify that intervention data was stored
@@ -221,8 +226,8 @@ func TestConversationFlow_InterventionToolIntegration(t *testing.T) {
 		t.Fatalf("ProcessResponse with both tools failed: %v", err)
 	}
 
-	if response != "" {
-		t.Error("Expected empty response (this test uses MockGenAIInterventionClient which only calls intervention tool)")
+	if response == "" {
+		t.Error("Expected non-empty response (this test uses MockGenAIInterventionClient which generates final response)")
 	}
 
 	// Verify that intervention was triggered

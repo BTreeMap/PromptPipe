@@ -437,7 +437,7 @@ func (f *ConversationFlow) processWithTools(ctx context.Context, participantID s
 
 // handleToolCalls processes tool calls from the AI and executes them.
 func (f *ConversationFlow) handleToolCalls(ctx context.Context, participantID string, toolResponse *genai.ToolCallResponse, history *ConversationHistory, messages []openai.ChatCompletionMessageParamUnion, tools []openai.ChatCompletionToolParam) (string, error) {
-	// Add assistant message with tool calls to history
+	// Add assistant message with tool calls to conversation history
 	assistantMsg := ConversationMessage{
 		Role:      "assistant", // May be empty if only tool calls
 		Content:   toolResponse.Content,
@@ -445,9 +445,14 @@ func (f *ConversationFlow) handleToolCalls(ctx context.Context, participantID st
 	}
 	history.Messages = append(history.Messages, assistantMsg)
 
-	// Two separate arrays for clear separation of concerns
-	var userMessages []string   // Messages to send to the user
-	var historyRecords []string // Records to add to conversation history
+	// Add assistant message with tool calls to OpenAI conversation context
+	// For tool calls, we need to add the assistant message (even if empty content)
+	// The OpenAI API expects this structure: assistant message -> tool result messages
+	messages = append(messages, openai.AssistantMessage(toolResponse.Content))
+
+	// Collect tool call results for adding to OpenAI conversation
+	var userMessages []string
+	var historyRecords []string
 
 	// Execute each tool call
 	for i, toolCall := range toolResponse.ToolCalls {
@@ -575,14 +580,19 @@ func (f *ConversationFlow) handleToolCalls(ctx context.Context, participantID st
 		}
 	}
 
-	// Build final user response
-	finalUserResponse := ""
-	if len(userMessages) == 1 {
-		finalUserResponse = userMessages[0]
-	} else if len(userMessages) > 1 {
-		finalUserResponse = strings.Join(userMessages, "\n\n")
+	// Now add all tool call results to the OpenAI conversation context
+	for i, toolCall := range toolResponse.ToolCalls {
+		// Find corresponding result
+		var resultContent string
+		if i < len(userMessages) && userMessages[i] != "" {
+			resultContent = userMessages[i]
+		} else {
+			resultContent = "Tool executed successfully"
+		}
+
+		// Add tool result message to conversation
+		messages = append(messages, openai.ToolMessage(toolCall.ID, resultContent))
 	}
-	// If empty, no message is sent to user
 
 	// Add history records to conversation history
 	for _, record := range historyRecords {
@@ -594,19 +604,49 @@ func (f *ConversationFlow) handleToolCalls(ctx context.Context, participantID st
 		history.Messages = append(history.Messages, historyMsg)
 	}
 
+	// Now call LLM again with the updated conversation that includes tool results
+	// The LLM will see the tool calls and their results and generate a proper user-facing response
+	slog.Info("flow.calling LLM again after tool execution",
+		"participantID", participantID,
+		"toolCount", len(toolResponse.ToolCalls),
+		"messageCount", len(messages))
+
+	finalResponse, err := f.genaiClient.GenerateWithMessages(ctx, messages)
+	if err != nil {
+		slog.Error("flow.failed to generate final response after tool execution", "error", err, "participantID", participantID)
+
+		// Fallback: if LLM call fails, return the collected tool results directly
+		if len(userMessages) == 1 {
+			finalResponse = userMessages[0]
+		} else if len(userMessages) > 1 {
+			finalResponse = strings.Join(userMessages, "\n\n")
+		} else {
+			finalResponse = "I've completed the requested actions."
+		}
+	}
+
+	// Add the LLM's final response to conversation history
+	finalAssistantMsg := ConversationMessage{
+		Role:      "assistant",
+		Content:   finalResponse,
+		Timestamp: time.Now(),
+	}
+	history.Messages = append(history.Messages, finalAssistantMsg)
+
 	// Save updated history
-	err := f.saveConversationHistory(ctx, participantID, history)
+	err = f.saveConversationHistory(ctx, participantID, history)
 	if err != nil {
 		slog.Error("flow.failed to save conversation history after tool execution", "error", err, "participantID", participantID)
 		// Don't fail the request if we can't save history, but log the error
 	}
 
-	slog.Info("flow.completed tool execution",
+	slog.Info("flow.completed tool execution with LLM-generated response",
 		"participantID", participantID,
 		"toolCount", len(toolResponse.ToolCalls),
-		"userResponseLength", len(finalUserResponse),
+		"finalResponseLength", len(finalResponse),
 		"historyRecordCount", len(historyRecords))
-	return finalUserResponse, nil
+
+	return finalResponse, nil
 }
 
 // transitionToState safely transitions to a new state with logging
