@@ -355,6 +355,13 @@ func (f *ConversationFlow) processWithTools(ctx context.Context, participantID s
 		slog.Debug("flow.added intake bot tool",
 			"participantID", participantID,
 			"toolName", "conduct_intake")
+
+		// Also add the profile save tool when intake bot is available
+		profileSaveToolDef := f.intakeBotTool.GetProfileSaveToolDefinition()
+		tools = append(tools, profileSaveToolDef)
+		slog.Debug("flow.added profile save tool",
+			"participantID", participantID,
+			"toolName", "save_user_profile")
 	} else {
 		slog.Debug("flow.intake bot tool not available", "participantID", participantID)
 	}
@@ -514,6 +521,17 @@ func (f *ConversationFlow) handleToolCalls(ctx context.Context, participantID st
 				// Intake bot success: send response to user and record in history
 				userMessages = append(userMessages, result)
 				historyRecords = append(historyRecords, result)
+			}
+
+		case "save_user_profile":
+			result, err := f.executeProfileSaveTool(ctx, participantID, toolCall)
+			if err != nil {
+				slog.Error("flow.profile save tool execution failed", "error", err, "participantID", participantID, "toolCallID", toolCall.ID)
+				// Profile save failures should be logged but not shown to user since it's internal
+				historyRecords = append(historyRecords, fmt.Sprintf("[PROFILE_SAVE_FAILED: %s]", err.Error()))
+			} else {
+				// Profile save success: record in history but don't send message to user (internal operation)
+				historyRecords = append(historyRecords, fmt.Sprintf("[PROFILE_SAVED: %s]", result))
 			}
 
 		case "generate_habit_prompt":
@@ -1048,6 +1066,27 @@ func (f *ConversationFlow) executeFeedbackTrackerTool(ctx context.Context, parti
 
 	// Execute the feedback tracker tool with conversation history
 	return f.feedbackTrackerTool.ExecuteFeedbackTrackerWithHistory(ctx, participantID, args, chatHistory)
+}
+
+// executeProfileSaveTool executes a profile save tool call.
+func (f *ConversationFlow) executeProfileSaveTool(ctx context.Context, participantID string, toolCall genai.ToolCall) (string, error) {
+	slog.Debug("flow.executeProfileSaveTool",
+		"participantID", participantID,
+		"toolCallID", toolCall.ID,
+		"rawArguments", string(toolCall.Function.Arguments))
+
+	// Parse the tool call arguments
+	var args map[string]interface{}
+	if err := json.Unmarshal(toolCall.Function.Arguments, &args); err != nil {
+		slog.Error("flow.failed to parse profile save parameters",
+			"error", err,
+			"participantID", participantID,
+			"rawArguments", string(toolCall.Function.Arguments))
+		return "", fmt.Errorf("failed to unmarshal profile save parameters: %w", err)
+	}
+
+	// Execute the profile save tool
+	return f.intakeBotTool.ExecuteProfileSave(ctx, participantID, args)
 }
 
 // SetChatHistoryLimit sets the limit for number of history messages sent to bot tools.
