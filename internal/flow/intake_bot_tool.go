@@ -210,11 +210,6 @@ func (ibt *IntakeBotTool) ExecuteIntakeBotWithHistory(ctx context.Context, parti
 	return response, nil
 }
 
-// processIntakeStage handles the logic for each stage of the intake conversation (legacy method - calls history version with empty history)
-func (ibt *IntakeBotTool) processIntakeStage(ctx context.Context, participantID string, stage IntakeState, userResponse, nextQuestion string, profile *UserProfile) (string, IntakeState, error) {
-	return ibt.processIntakeStageWithHistory(ctx, participantID, stage, userResponse, nextQuestion, profile, []openai.ChatCompletionMessageParamUnion{})
-}
-
 // processIntakeStageWithHistory handles the logic for each stage with conversation history
 func (ibt *IntakeBotTool) processIntakeStageWithHistory(ctx context.Context, participantID string, stage IntakeState, userResponse, nextQuestion string, profile *UserProfile, chatHistory []openai.ChatCompletionMessageParamUnion) (string, IntakeState, error) {
 	switch stage {
@@ -637,30 +632,6 @@ func (ibt *IntakeBotTool) LoadSystemPrompt() error {
 	ibt.systemPrompt = strings.TrimSpace(string(content))
 	slog.Info("flow.IntakeBotTool.LoadSystemPrompt: system prompt loaded successfully", "file", ibt.systemPromptFile, "length", len(ibt.systemPrompt))
 	return nil
-}
-
-// buildIntakeMessages creates OpenAI messages for the intake conversation
-func (ibt *IntakeBotTool) buildIntakeMessages(ctx context.Context, participantID string, stage IntakeState, userResponse string) ([]openai.ChatCompletionMessageParamUnion, error) {
-	messages := []openai.ChatCompletionMessageParamUnion{}
-
-	// Add system prompt
-	if ibt.systemPrompt != "" {
-		messages = append(messages, openai.SystemMessage(ibt.systemPrompt))
-	}
-
-	// Add stage-specific context
-	stageContext := ibt.getStageContext(stage, userResponse)
-	if stageContext != "" {
-		messages = append(messages, openai.SystemMessage(stageContext))
-	}
-
-	// Get conversation history from the parent conversation flow if available
-	// For now, we'll add the current user response if provided
-	if userResponse != "" {
-		messages = append(messages, openai.UserMessage(userResponse))
-	}
-
-	return messages, nil
 }
 
 // buildIntakeMessagesWithHistory creates OpenAI messages with conversation history for the intake bot

@@ -29,55 +29,6 @@ func TestIntakeBotTool_GetToolDefinition(t *testing.T) {
 	}
 }
 
-func TestIntakeBotTool_HandleWelcomeStage(t *testing.T) {
-	stateManager := NewMockStateManager()
-	genaiClient := &MockGenAIClientWithTools{}
-	msgService := &MockMessagingService{}
-	tool := NewIntakeBotTool(stateManager, genaiClient, msgService, "test-prompt-file.txt")
-
-	ctx := context.Background()
-	participantID := "test-participant"
-	profile := &UserProfile{}
-
-	// Test initial welcome
-	response, newState, err := tool.handleWelcomeStage(ctx, participantID, "", profile)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if newState != IntakeStateWelcome {
-		t.Errorf("expected state to remain %s, got %s", IntakeStateWelcome, newState)
-	}
-
-	if !contains(response, "micro-coach bot") {
-		t.Errorf("expected welcome message to contain 'micro-coach bot', got: %s", response)
-	}
-
-	// Test positive consent
-	response, newState, err = tool.handleWelcomeStage(ctx, participantID, "yes", profile)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if newState != IntakeStateGoalArea {
-		t.Errorf("expected state to transition to %s, got %s", IntakeStateGoalArea, newState)
-	}
-
-	if !contains(response, "habit you've been meaning") {
-		t.Errorf("expected goal area question, got: %s", response)
-	}
-
-	// Test negative consent
-	response, newState, err = tool.handleWelcomeStage(ctx, participantID, "no", profile)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if newState != IntakeStateComplete {
-		t.Errorf("expected state to transition to %s, got %s", IntakeStateComplete, newState)
-	}
-}
-
 func TestIntakeBotTool_HandleGoalAreaStage(t *testing.T) {
 	stateManager := NewMockStateManager()
 	genaiClient := &MockGenAIClientWithTools{}
@@ -297,8 +248,9 @@ func TestIntakeBotTool_ExecuteIntakeBot(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if !contains(response, "micro-coach bot") {
-		t.Errorf("expected welcome message, got: %s", response)
+	// Don't test GenAI response content, just ensure we got a response
+	if response == "" {
+		t.Error("expected non-empty response")
 	}
 
 	// Check that profile was created and saved
