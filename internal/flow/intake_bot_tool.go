@@ -141,6 +141,14 @@ func (ibt *IntakeBotTool) ExecuteIntakeBotWithHistory(ctx context.Context, parti
 	}
 
 	// Save updated profile if it was modified
+	slog.Debug("flow.ExecuteIntakeBotWithHistory: saving profile after stage processing",
+		"participantID", participantID,
+		"stage", conversationStage,
+		"targetBehavior", profile.TargetBehavior,
+		"motivationalFrame", profile.MotivationalFrame,
+		"preferredTime", profile.PreferredTime,
+		"promptAnchor", profile.PromptAnchor)
+
 	if err := ibt.saveUserProfile(ctx, participantID, profile); err != nil {
 		slog.Error("flow.ExecuteIntakeBotWithHistory: failed to save user profile", "error", err, "participantID", participantID)
 		return "", fmt.Errorf("failed to save user profile: %w", err)
@@ -250,6 +258,16 @@ func (ibt *IntakeBotTool) handleGoalAreaStageWithHistory(ctx context.Context, pa
 	// Extract and store target behavior from user response
 	if userResponse != "" {
 		ibt.extractAndStoreTargetBehavior(userResponse, profile)
+
+		// Save profile immediately after setting target behavior
+		slog.Debug("flow.handleGoalAreaStageWithHistory: saving profile after setting target behavior",
+			"participantID", participantID,
+			"targetBehavior", profile.TargetBehavior)
+		if err := ibt.saveUserProfile(ctx, participantID, profile); err != nil {
+			slog.Error("flow.handleGoalAreaStageWithHistory: failed to save profile after setting target behavior",
+				"error", err, "participantID", participantID)
+			// Continue despite save failure
+		}
 	}
 
 	// Determine next state
@@ -279,7 +297,24 @@ func (ibt *IntakeBotTool) handleMotivationStageWithHistory(ctx context.Context, 
 
 	// Store motivational frame if provided
 	if userResponse != "" {
+		slog.Debug("flow.handleMotivationStageWithHistory: setting motivational frame",
+			"participantID", participantID,
+			"userResponse", userResponse,
+			"profileBefore", profile.MotivationalFrame)
 		profile.MotivationalFrame = userResponse
+		slog.Debug("flow.handleMotivationStageWithHistory: motivational frame set",
+			"participantID", participantID,
+			"profileAfter", profile.MotivationalFrame)
+
+		// Save profile immediately after setting motivational frame
+		slog.Debug("flow.handleMotivationStageWithHistory: saving profile after setting motivational frame",
+			"participantID", participantID,
+			"motivationalFrame", profile.MotivationalFrame)
+		if err := ibt.saveUserProfile(ctx, participantID, profile); err != nil {
+			slog.Error("flow.handleMotivationStageWithHistory: failed to save profile after setting motivational frame",
+				"error", err, "participantID", participantID)
+			// Continue despite save failure
+		}
 	}
 
 	// Determine next state
@@ -310,6 +345,16 @@ func (ibt *IntakeBotTool) handlePreferredTimeStageWithHistory(ctx context.Contex
 	// Store the preferred time
 	if userResponse != "" {
 		profile.PreferredTime = userResponse
+
+		// Save profile immediately after setting preferred time
+		slog.Debug("flow.handlePreferredTimeStageWithHistory: saving profile after setting preferred time",
+			"participantID", participantID,
+			"preferredTime", profile.PreferredTime)
+		if err := ibt.saveUserProfile(ctx, participantID, profile); err != nil {
+			slog.Error("flow.handlePreferredTimeStageWithHistory: failed to save profile after setting preferred time",
+				"error", err, "participantID", participantID)
+			// Continue despite save failure
+		}
 	}
 
 	// Determine next state
@@ -340,6 +385,16 @@ func (ibt *IntakeBotTool) handlePromptAnchorStageWithHistory(ctx context.Context
 	// Store the prompt anchor
 	if userResponse != "" {
 		profile.PromptAnchor = userResponse
+
+		// Save profile immediately after setting prompt anchor
+		slog.Debug("flow.handlePromptAnchorStageWithHistory: saving profile after setting prompt anchor",
+			"participantID", participantID,
+			"promptAnchor", profile.PromptAnchor)
+		if err := ibt.saveUserProfile(ctx, participantID, profile); err != nil {
+			slog.Error("flow.handlePromptAnchorStageWithHistory: failed to save profile after setting prompt anchor",
+				"error", err, "participantID", participantID)
+			// Continue despite save failure
+		}
 	}
 
 	// Determine next state
@@ -372,6 +427,16 @@ func (ibt *IntakeBotTool) handleAdditionalInfoStageWithHistory(ctx context.Conte
 		responseLC := strings.ToLower(strings.TrimSpace(userResponse))
 		if !strings.Contains(responseLC, "no") && !strings.Contains(responseLC, "nothing") && responseLC != "" {
 			profile.AdditionalInfo = userResponse
+
+			// Save profile immediately after setting additional info
+			slog.Debug("flow.handleAdditionalInfoStageWithHistory: saving profile after setting additional info",
+				"participantID", participantID,
+				"additionalInfo", profile.AdditionalInfo)
+			if err := ibt.saveUserProfile(ctx, participantID, profile); err != nil {
+				slog.Error("flow.handleAdditionalInfoStageWithHistory: failed to save profile after setting additional info",
+					"error", err, "participantID", participantID)
+				// Continue despite save failure
+			}
 		}
 	}
 
@@ -430,18 +495,45 @@ func (ibt *IntakeBotTool) getOrCreateUserProfile(ctx context.Context, participan
 		return nil, fmt.Errorf("failed to parse user profile: %w", err)
 	}
 
+	slog.Debug("flow.getOrCreateUserProfile: loaded existing profile",
+		"participantID", participantID,
+		"targetBehavior", profile.TargetBehavior,
+		"motivationalFrame", profile.MotivationalFrame,
+		"preferredTime", profile.PreferredTime,
+		"promptAnchor", profile.PromptAnchor,
+		"createdAt", profile.CreatedAt,
+		"updatedAt", profile.UpdatedAt)
+
 	return &profile, nil
 }
 
 // saveUserProfile saves the user profile to state storage
 func (ibt *IntakeBotTool) saveUserProfile(ctx context.Context, participantID string, profile *UserProfile) error {
+	slog.Debug("flow.saveUserProfile: saving profile",
+		"participantID", participantID,
+		"targetBehavior", profile.TargetBehavior,
+		"motivationalFrame", profile.MotivationalFrame,
+		"preferredTime", profile.PreferredTime,
+		"promptAnchor", profile.PromptAnchor,
+		"additionalInfo", profile.AdditionalInfo)
+
 	profile.UpdatedAt = time.Now()
 	profileJSON, err := json.Marshal(profile)
 	if err != nil {
+		slog.Error("flow.saveUserProfile: failed to marshal profile", "error", err, "participantID", participantID)
 		return fmt.Errorf("failed to marshal user profile: %w", err)
 	}
 
-	return ibt.stateManager.SetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyUserProfile, string(profileJSON))
+	slog.Debug("flow.saveUserProfile: marshaled profile", "participantID", participantID, "profileJSON", string(profileJSON))
+
+	err = ibt.stateManager.SetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyUserProfile, string(profileJSON))
+	if err != nil {
+		slog.Error("flow.saveUserProfile: failed to save to state manager", "error", err, "participantID", participantID)
+		return err
+	}
+
+	slog.Debug("flow.saveUserProfile: profile saved successfully", "participantID", participantID)
+	return nil
 }
 
 // getIntakeState retrieves the current intake state

@@ -298,7 +298,7 @@ func (pgt *PromptGeneratorTool) validateProfile(profile *UserProfile) error {
 		slog.Debug("flow.validateProfile: missing preferred time")
 		return fmt.Errorf("preferred time is required")
 	}
-	
+
 	slog.Debug("flow.validateProfile: profile validation passed")
 	return nil
 }
@@ -325,7 +325,7 @@ func (pgt *PromptGeneratorTool) getUserProfile(ctx context.Context, participantI
 		return nil, fmt.Errorf("failed to parse user profile: %w", err)
 	}
 
-	slog.Debug("flow.getUserProfile: parsed profile", 
+	slog.Debug("flow.getUserProfile: parsed profile",
 		"participantID", participantID,
 		"targetBehavior", profile.TargetBehavior,
 		"motivationalFrame", profile.MotivationalFrame,
