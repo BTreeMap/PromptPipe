@@ -79,66 +79,6 @@ func (ibt *IntakeBotTool) GetToolDefinition() openai.ChatCompletionToolParam {
 	}
 }
 
-// ExecuteIntakeBot executes the intake bot tool call.
-func (ibt *IntakeBotTool) ExecuteIntakeBot(ctx context.Context, participantID string, args map[string]interface{}) (string, error) {
-	slog.Debug("flow.ExecuteIntakeBot: processing intake", "participantID", participantID, "args", args)
-
-	// Validate required dependencies
-	if ibt.stateManager == nil {
-		slog.Error("flow.ExecuteIntakeBot: state manager not initialized")
-		return "", fmt.Errorf("state manager not initialized")
-	}
-
-	// Extract arguments
-	conversationStage, _ := args["conversation_stage"].(string)
-	userResponse, _ := args["user_response"].(string)
-	nextQuestion, _ := args["next_question"].(string)
-
-	// Validate required arguments
-	if conversationStage == "" {
-		slog.Warn("flow.ExecuteIntakeBot: missing conversation_stage", "participantID", participantID)
-		return "", fmt.Errorf("conversation_stage is required")
-	}
-
-	// Get or create user profile
-	profile, err := ibt.getOrCreateUserProfile(ctx, participantID)
-	if err != nil {
-		slog.Error("flow.ExecuteIntakeBot: failed to get user profile", "error", err, "participantID", participantID)
-		return "", fmt.Errorf("failed to get user profile: %w", err)
-	}
-
-	// Get current intake state
-	currentIntakeState, err := ibt.getIntakeState(ctx, participantID)
-	if err != nil {
-		slog.Debug("flow.ExecuteIntakeBot: no intake state found, starting fresh", "participantID", participantID)
-		currentIntakeState = IntakeStateWelcome
-	}
-
-	// Process the intake conversation
-	response, newState, err := ibt.processIntakeStageWithHistory(ctx, participantID, stringToIntakeState(conversationStage), userResponse, nextQuestion, profile, []openai.ChatCompletionMessageParamUnion{})
-	if err != nil {
-		slog.Error("flow.ExecuteIntakeBot: failed to process intake stage", "error", err, "participantID", participantID, "stage", conversationStage)
-		return "", fmt.Errorf("failed to process intake stage: %w", err)
-	}
-
-	// Update intake state
-	if newState != currentIntakeState {
-		if err := ibt.setIntakeState(ctx, participantID, newState); err != nil {
-			slog.Warn("flow.ExecuteIntakeBot: failed to update intake state", "error", err, "participantID", participantID)
-			// Continue despite state update failure
-		}
-	}
-
-	// Save updated profile if it was modified
-	if err := ibt.saveUserProfile(ctx, participantID, profile); err != nil {
-		slog.Error("flow.ExecuteIntakeBot: failed to save user profile", "error", err, "participantID", participantID)
-		return "", fmt.Errorf("failed to save user profile: %w", err)
-	}
-
-	slog.Info("flow.ExecuteIntakeBot: intake stage processed", "participantID", participantID, "stage", conversationStage, "newState", newState)
-	return response, nil
-}
-
 // ExecuteIntakeBotWithHistory executes the intake bot tool with conversation history context.
 func (ibt *IntakeBotTool) ExecuteIntakeBotWithHistory(ctx context.Context, participantID string, args map[string]interface{}, chatHistory []openai.ChatCompletionMessageParamUnion) (string, error) {
 	slog.Debug("flow.ExecuteIntakeBotWithHistory: processing intake with chat history", "participantID", participantID, "args", args, "historyLength", len(chatHistory))
@@ -321,18 +261,6 @@ func (ibt *IntakeBotTool) handleGoalAreaStageWithHistory(ctx context.Context, pa
 	return response, nextState, nil
 }
 
-// handleMotivationStage handles personal motivation identification
-func (ibt *IntakeBotTool) handleMotivationStage(ctx context.Context, participantID string, userResponse string, profile *UserProfile) (string, IntakeState, error) {
-	if userResponse == "" {
-		return "Why does this matter to you now? What would doing this help you feel or achieve?", IntakeStateMotivation, nil
-	}
-
-	// Store the motivational frame
-	profile.MotivationalFrame = userResponse
-
-	return "That's a great reason! When during the day would you like to get a 1-minute nudge from me? You can share:\n• A time block like \"8-9am\" or \"evening\"\n• An exact time like \"9:00am\"\n• \"Randomly during the day\"", IntakeStatePreferredTime, nil
-}
-
 // handleMotivationStageWithHistory handles personal motivation identification, considering conversation history
 func (ibt *IntakeBotTool) handleMotivationStageWithHistory(ctx context.Context, participantID string, userResponse string, profile *UserProfile, chatHistory []openai.ChatCompletionMessageParamUnion) (string, IntakeState, error) {
 	// Build messages with conversation history
@@ -361,18 +289,6 @@ func (ibt *IntakeBotTool) handleMotivationStageWithHistory(ctx context.Context, 
 	}
 
 	return response, nextState, nil
-}
-
-// handlePreferredTimeStage handles preferred timing identification
-func (ibt *IntakeBotTool) handlePreferredTimeStage(ctx context.Context, participantID string, userResponse string, profile *UserProfile) (string, IntakeState, error) {
-	if userResponse == "" {
-		return "When during the day would you like to get a 1-minute nudge from me?", IntakeStatePreferredTime, nil
-	}
-
-	// Store the preferred time
-	profile.PreferredTime = userResponse
-
-	return "Got it! When do you think this habit would naturally fit into your day? For example:\n• After coffee\n• Before meetings\n• When you feel overwhelmed\n• During work breaks\n• Or anything else that would work for you", IntakeStatePromptAnchor, nil
 }
 
 // handlePreferredTimeStageWithHistory handles preferred timing identification, considering conversation history
@@ -405,18 +321,6 @@ func (ibt *IntakeBotTool) handlePreferredTimeStageWithHistory(ctx context.Contex
 	return response, nextState, nil
 }
 
-// handlePromptAnchorStage handles habit anchor identification
-func (ibt *IntakeBotTool) handlePromptAnchorStage(ctx context.Context, participantID string, userResponse string, profile *UserProfile) (string, IntakeState, error) {
-	if userResponse == "" {
-		return "When do you think this habit would naturally fit into your day?", IntakeStatePromptAnchor, nil
-	}
-
-	// Store the prompt anchor
-	profile.PromptAnchor = userResponse
-
-	return "Excellent! Is there anything else you'd like me to know that would help personalize your habit suggestion even more?", IntakeStateAdditionalInfo, nil
-}
-
 // handlePromptAnchorStageWithHistory handles habit anchor identification, considering conversation history
 func (ibt *IntakeBotTool) handlePromptAnchorStageWithHistory(ctx context.Context, participantID string, userResponse string, profile *UserProfile, chatHistory []openai.ChatCompletionMessageParamUnion) (string, IntakeState, error) {
 	// Build messages with conversation history
@@ -445,21 +349,6 @@ func (ibt *IntakeBotTool) handlePromptAnchorStageWithHistory(ctx context.Context
 	}
 
 	return response, nextState, nil
-}
-
-// handleAdditionalInfoStage handles additional personalization information
-func (ibt *IntakeBotTool) handleAdditionalInfoStage(ctx context.Context, participantID string, userResponse string, profile *UserProfile) (string, IntakeState, error) {
-	if userResponse == "" {
-		return "Is there anything else you'd like me to know that would help personalize your habit suggestion even more?", IntakeStateAdditionalInfo, nil
-	}
-
-	// Store additional info if provided and not a simple "no"
-	response := strings.ToLower(strings.TrimSpace(userResponse))
-	if !strings.Contains(response, "no") && !strings.Contains(response, "nothing") && response != "" {
-		profile.AdditionalInfo = userResponse
-	}
-
-	return "Great! Thank you for sharing all of that. Would you like to try a 1-minute version of this habit right now? I can send it to you.", IntakeStateComplete, nil
 }
 
 // handleAdditionalInfoStageWithHistory handles additional personalization information, considering conversation history
@@ -493,22 +382,6 @@ func (ibt *IntakeBotTool) handleAdditionalInfoStageWithHistory(ctx context.Conte
 	}
 
 	return response, nextState, nil
-}
-
-// handleCompleteStage handles the completion and potential immediate habit generation
-func (ibt *IntakeBotTool) handleCompleteStage(ctx context.Context, participantID string, userResponse string, profile *UserProfile) (string, IntakeState, error) {
-	if userResponse == "" {
-		return "Would you like to try a 1-minute version of this habit right now?", IntakeStateComplete, nil
-	}
-
-	response := strings.ToLower(strings.TrimSpace(userResponse))
-	if strings.Contains(response, "yes") || strings.Contains(response, "sure") || strings.Contains(response, "okay") {
-		// User wants to try the habit now - this would trigger the prompt generator
-		return "Perfect! Let me create a personalized 1-minute habit for you right away...", IntakeStateComplete, nil
-	} else {
-		// User doesn't want to try now
-		return "No worries — I'll remind you at your preferred time. You've already taken a great first step by building your personalized profile! 🌱", IntakeStateComplete, nil
-	}
 }
 
 // handleCompleteStageWithHistory handles the completion and potential immediate habit generation, considering conversation history
