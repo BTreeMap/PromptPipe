@@ -443,17 +443,7 @@ func (f *ConversationFlow) processWithTools(ctx context.Context, participantID s
 
 // handleToolCalls processes tool calls from the AI and executes them.
 func (f *ConversationFlow) handleToolCalls(ctx context.Context, participantID string, toolResponse *genai.ToolCallResponse, history *ConversationHistory, messages []openai.ChatCompletionMessageParamUnion, tools []openai.ChatCompletionToolParam) (string, error) {
-	// Add assistant message with tool calls to conversation history
-	assistantMsg := ConversationMessage{
-		Role:      "assistant", // May be empty if only tool calls
-		Content:   toolResponse.Content,
-		Timestamp: time.Now(),
-	}
-	history.Messages = append(history.Messages, assistantMsg)
-
-	// Add assistant message with tool calls to OpenAI conversation context
-	// The OpenAI API expects that when tool calls are made, the assistant message must include the tool_calls array
-	// Create the tool calls in OpenAI format
+	// Create the tool calls in OpenAI format first
 	var toolCalls []openai.ChatCompletionMessageToolCallParam
 	for _, toolCall := range toolResponse.ToolCalls {
 		toolCalls = append(toolCalls, openai.ChatCompletionMessageToolCallParam{
@@ -466,14 +456,27 @@ func (f *ConversationFlow) handleToolCalls(ctx context.Context, participantID st
 		})
 	}
 
-	// Create assistant message with both content and tool calls
+	// Create assistant message with both content and tool calls for OpenAI API
 	assistantMessageWithToolCalls := openai.ChatCompletionAssistantMessageParam{
 		Content: openai.ChatCompletionAssistantMessageParamContentUnion{
 			OfString: param.NewOpt(toolResponse.Content),
 		},
 		ToolCalls: toolCalls,
 	}
+
+	// Add this assistant message with tool calls to the OpenAI conversation context
+	// This is CRITICAL - OpenAI needs to see the assistant message with tool_calls
+	// before the tool result messages that reference those tool_call_ids
 	messages = append(messages, openai.ChatCompletionMessageParamUnion{OfAssistant: &assistantMessageWithToolCalls})
+
+	// Also add assistant message with tool calls to our internal conversation history
+	// Note: We store a simplified version in history since we don't need the full OpenAI format there
+	assistantMsg := ConversationMessage{
+		Role:      "assistant",
+		Content:   toolResponse.Content,
+		Timestamp: time.Now(),
+	}
+	history.Messages = append(history.Messages, assistantMsg)
 
 	// Collect tool call results - use arrays sized to match tool calls to ensure proper alignment
 	toolResults := make([]string, len(toolResponse.ToolCalls))
@@ -648,7 +651,7 @@ func (f *ConversationFlow) handleToolCalls(ctx context.Context, participantID st
 				nonEmptyResults = append(nonEmptyResults, result)
 			}
 		}
-		
+
 		if len(nonEmptyResults) == 1 {
 			finalResponse = nonEmptyResults[0]
 		} else if len(nonEmptyResults) > 1 {
