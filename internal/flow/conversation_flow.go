@@ -13,6 +13,7 @@ import (
 	"github.com/BTreeMap/PromptPipe/internal/genai"
 	"github.com/BTreeMap/PromptPipe/internal/models"
 	"github.com/openai/openai-go"
+	"github.com/openai/openai-go/packages/param"
 )
 
 // Context key for storing phone number in context
@@ -451,12 +452,31 @@ func (f *ConversationFlow) handleToolCalls(ctx context.Context, participantID st
 	history.Messages = append(history.Messages, assistantMsg)
 
 	// Add assistant message with tool calls to OpenAI conversation context
-	// For tool calls, we need to add the assistant message (even if empty content)
-	// The OpenAI API expects this structure: assistant message -> tool result messages
-	messages = append(messages, openai.AssistantMessage(toolResponse.Content))
+	// The OpenAI API expects that when tool calls are made, the assistant message must include the tool_calls array
+	// Create the tool calls in OpenAI format
+	var toolCalls []openai.ChatCompletionMessageToolCallParam
+	for _, toolCall := range toolResponse.ToolCalls {
+		toolCalls = append(toolCalls, openai.ChatCompletionMessageToolCallParam{
+			ID:   toolCall.ID,
+			Type: "function",
+			Function: openai.ChatCompletionMessageToolCallFunctionParam{
+				Name:      toolCall.Function.Name,
+				Arguments: string(toolCall.Function.Arguments),
+			},
+		})
+	}
 
-	// Collect tool call results for adding to OpenAI conversation
-	var userMessages []string
+	// Create assistant message with both content and tool calls
+	assistantMessageWithToolCalls := openai.ChatCompletionAssistantMessageParam{
+		Content: openai.ChatCompletionAssistantMessageParamContentUnion{
+			OfString: param.NewOpt(toolResponse.Content),
+		},
+		ToolCalls: toolCalls,
+	}
+	messages = append(messages, openai.ChatCompletionMessageParamUnion{OfAssistant: &assistantMessageWithToolCalls})
+
+	// Collect tool call results - use arrays sized to match tool calls to ensure proper alignment
+	toolResults := make([]string, len(toolResponse.ToolCalls))
 	var historyRecords []string
 
 	// Execute each tool call
@@ -482,16 +502,16 @@ func (f *ConversationFlow) handleToolCalls(ctx context.Context, participantID st
 			if err != nil {
 				slog.Error("flow.scheduler tool execution failed", "error", err, "participantID", participantID, "toolCallID", toolCall.ID)
 				errorMsg := fmt.Sprintf("❌ Sorry, I couldn't set up your scheduling: %s", err.Error())
-				userMessages = append(userMessages, errorMsg)
+				toolResults[i] = errorMsg
 				historyRecords = append(historyRecords, errorMsg)
 			} else if !result.Success {
 				slog.Warn("flow.scheduler tool returned error", "error", result.Error, "participantID", participantID, "toolCallID", toolCall.ID)
 				errorMsg := fmt.Sprintf("❌ %s", result.Message)
-				userMessages = append(userMessages, errorMsg)
+				toolResults[i] = errorMsg
 				historyRecords = append(historyRecords, errorMsg)
 			} else {
 				// Scheduler success: send message to user and record in history
-				userMessages = append(userMessages, result.Message)
+				toolResults[i] = result.Message
 				historyRecords = append(historyRecords, result.Message)
 			}
 
@@ -500,12 +520,12 @@ func (f *ConversationFlow) handleToolCalls(ctx context.Context, participantID st
 			if err != nil {
 				slog.Error("flow.intervention tool execution failed", "error", err, "participantID", participantID, "toolCallID", toolCall.ID)
 				errorMsg := fmt.Sprintf("❌ Sorry, I couldn't start your intervention: %s", err.Error())
-				userMessages = append(userMessages, errorMsg)
+				toolResults[i] = errorMsg
 				historyRecords = append(historyRecords, errorMsg)
 			} else if !result.Success {
 				slog.Warn("flow.intervention tool returned error", "error", result.Error, "participantID", participantID, "toolCallID", toolCall.ID)
 				errorMsg := fmt.Sprintf("❌ %s", result.Message)
-				userMessages = append(userMessages, errorMsg)
+				toolResults[i] = errorMsg
 				historyRecords = append(historyRecords, errorMsg)
 			} else {
 				// Intervention success: record in history but don't send message to user
@@ -515,7 +535,8 @@ func (f *ConversationFlow) handleToolCalls(ctx context.Context, participantID st
 					"toolCallID", toolCall.ID,
 					"successMessage", result.Message)
 
-				// No user message (intervention was sent directly)
+				// Tool executed successfully - use generic success message for LLM
+				toolResults[i] = "Intervention initiated successfully"
 				// Record in history so AI knows intervention was sent
 				historyRecords = append(historyRecords, fmt.Sprintf("[INTERVENTION_SENT: %s]", result.Message))
 			}
@@ -525,11 +546,11 @@ func (f *ConversationFlow) handleToolCalls(ctx context.Context, participantID st
 			if err != nil {
 				slog.Error("flow.intake bot tool execution failed", "error", err, "participantID", participantID, "toolCallID", toolCall.ID)
 				errorMsg := fmt.Sprintf("❌ Sorry, I couldn't conduct the intake: %s", err.Error())
-				userMessages = append(userMessages, errorMsg)
+				toolResults[i] = errorMsg
 				historyRecords = append(historyRecords, errorMsg)
 			} else {
 				// Intake bot success: send response to user and record in history
-				userMessages = append(userMessages, result)
+				toolResults[i] = result
 				historyRecords = append(historyRecords, result)
 			}
 
@@ -538,9 +559,11 @@ func (f *ConversationFlow) handleToolCalls(ctx context.Context, participantID st
 			if err != nil {
 				slog.Error("flow.profile save tool execution failed", "error", err, "participantID", participantID, "toolCallID", toolCall.ID)
 				// Profile save failures should be logged but not shown to user since it's internal
+				toolResults[i] = "Profile save failed"
 				historyRecords = append(historyRecords, fmt.Sprintf("[PROFILE_SAVE_FAILED: %s]", err.Error()))
 			} else {
 				// Profile save success: record in history but don't send message to user (internal operation)
+				toolResults[i] = "Profile saved successfully"
 				historyRecords = append(historyRecords, fmt.Sprintf("[PROFILE_SAVED: %s]", result))
 			}
 
@@ -551,16 +574,16 @@ func (f *ConversationFlow) handleToolCalls(ctx context.Context, participantID st
 				// Check if this is a profile incomplete error and suggest intake
 				if strings.Contains(err.Error(), "profile incomplete") {
 					errorMsg := "I need to learn more about your goals first to create personalized habits. Let me start our intake process to gather some quick information."
-					userMessages = append(userMessages, errorMsg)
+					toolResults[i] = errorMsg
 					historyRecords = append(historyRecords, fmt.Sprintf("PROFILE_INCOMPLETE: %s - USE conduct_intake TOOL NEXT", err.Error()))
 				} else {
 					errorMsg := fmt.Sprintf("❌ Sorry, I couldn't generate your habit prompt: %s", err.Error())
-					userMessages = append(userMessages, errorMsg)
+					toolResults[i] = errorMsg
 					historyRecords = append(historyRecords, errorMsg)
 				}
 			} else {
 				// Prompt generator success: send prompt to user and record in history
-				userMessages = append(userMessages, result)
+				toolResults[i] = result
 				historyRecords = append(historyRecords, result)
 			}
 
@@ -569,29 +592,27 @@ func (f *ConversationFlow) handleToolCalls(ctx context.Context, participantID st
 			if err != nil {
 				slog.Error("flow.feedback tracker tool execution failed", "error", err, "participantID", participantID, "toolCallID", toolCall.ID)
 				errorMsg := fmt.Sprintf("❌ Sorry, I couldn't track your feedback: %s", err.Error())
-				userMessages = append(userMessages, errorMsg)
+				toolResults[i] = errorMsg
 				historyRecords = append(historyRecords, errorMsg)
 			} else {
 				// Feedback tracker success: send summary to user and record in history
-				userMessages = append(userMessages, result)
+				toolResults[i] = result
 				historyRecords = append(historyRecords, result)
 			}
 
 		default:
 			slog.Warn("flow.unknown tool call", "toolName", toolCall.Function.Name, "participantID", participantID)
 			errorMsg := fmt.Sprintf("❌ Sorry, I don't know how to use the tool '%s'", toolCall.Function.Name)
-			userMessages = append(userMessages, errorMsg)
+			toolResults[i] = errorMsg
 			historyRecords = append(historyRecords, errorMsg)
 		}
 	}
 
 	// Now add all tool call results to the OpenAI conversation context
 	for i, toolCall := range toolResponse.ToolCalls {
-		// Find corresponding result
-		var resultContent string
-		if i < len(userMessages) && userMessages[i] != "" {
-			resultContent = userMessages[i]
-		} else {
+		// Use the corresponding result from our toolResults array
+		resultContent := toolResults[i]
+		if resultContent == "" {
 			resultContent = "Tool executed successfully"
 		}
 
@@ -621,10 +642,17 @@ func (f *ConversationFlow) handleToolCalls(ctx context.Context, participantID st
 		slog.Error("flow.failed to generate final response after tool execution", "error", err, "participantID", participantID)
 
 		// Fallback: if LLM call fails, return the collected tool results directly
-		if len(userMessages) == 1 {
-			finalResponse = userMessages[0]
-		} else if len(userMessages) > 1 {
-			finalResponse = strings.Join(userMessages, "\n\n")
+		var nonEmptyResults []string
+		for _, result := range toolResults {
+			if result != "" {
+				nonEmptyResults = append(nonEmptyResults, result)
+			}
+		}
+		
+		if len(nonEmptyResults) == 1 {
+			finalResponse = nonEmptyResults[0]
+		} else if len(nonEmptyResults) > 1 {
+			finalResponse = strings.Join(nonEmptyResults, "\n\n")
 		} else {
 			finalResponse = "I've completed the requested actions."
 		}
