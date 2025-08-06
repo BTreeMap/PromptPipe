@@ -67,10 +67,14 @@ func (ibt *IntakeBotTool) GetProfileSaveToolDefinition() openai.ChatCompletionTo
 			Parameters: shared.FunctionParameters{
 				"type": "object",
 				"properties": map[string]interface{}{
-					"target_behavior": map[string]interface{}{
+					"habit_domain": map[string]interface{}{
 						"type":        "string",
 						"description": "The specific habit or behavior the user wants to build (e.g., 'healthy eating', 'physical activity', 'better sleep')",
 					},
+					"prompt_anchor": map[string]interface{}{
+						"type":        "string",
+						"description": "Natural trigger or anchor for the habit (e.g., 'after coffee', 'before meetings', 'during breaks')",
+					}, // mandatory field
 					"motivational_frame": map[string]interface{}{
 						"type":        "string",
 						"description": "Why this habit matters to the user personally - their deeper motivation",
@@ -78,11 +82,7 @@ func (ibt *IntakeBotTool) GetProfileSaveToolDefinition() openai.ChatCompletionTo
 					"preferred_time": map[string]interface{}{
 						"type":        "string",
 						"description": "When the user prefers to receive habit prompts (e.g., '9am', 'morning', 'randomly')",
-					},
-					"prompt_anchor": map[string]interface{}{
-						"type":        "string",
-						"description": "Natural trigger or anchor for the habit (e.g., 'after coffee', 'before meetings', 'during breaks')",
-					},
+					}, // mandatory	field
 					"additional_info": map[string]interface{}{
 						"type":        "string",
 						"description": "Any additional personalization information the user has shared",
