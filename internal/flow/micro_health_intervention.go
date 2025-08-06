@@ -192,7 +192,7 @@ type MicroHealthInterventionGenerator struct {
 
 // NewMicroHealthInterventionGenerator creates a new generator with dependencies.
 func NewMicroHealthInterventionGenerator(stateManager StateManager, timer models.Timer) *MicroHealthInterventionGenerator {
-	slog.Debug("Creating MicroHealthInterventionGenerator with dependencies")
+	slog.Debug("MicroHealthInterventionGenerator.NewMicroHealthInterventionGenerator: creating generator with dependencies")
 	return &MicroHealthInterventionGenerator{
 		stateManager: stateManager,
 		timer:        timer,
@@ -201,14 +201,14 @@ func NewMicroHealthInterventionGenerator(stateManager StateManager, timer models
 
 // SetDependencies injects dependencies into the generator.
 func (g *MicroHealthInterventionGenerator) SetDependencies(deps Dependencies) {
-	slog.Debug("MicroHealthInterventionGenerator SetDependencies called")
+	slog.Debug("MicroHealthInterventionGenerator.SetDependencies: injecting dependencies")
 	g.stateManager = deps.StateManager
 	g.timer = deps.Timer
 }
 
 // Generate selects the next message based on the current state in p.State.
 func (g *MicroHealthInterventionGenerator) Generate(ctx context.Context, p models.Prompt) (string, error) {
-	slog.Debug("MicroHealthIntervention Generate invoked", "state", p.State, "to", p.To)
+	slog.Debug("MicroHealthInterventionGenerator.Generate: generating message", "state", p.State, "to", p.To)
 
 	// For simple message generation, dependencies are not required
 	// Dependencies are only needed for stateful operations like state transitions and timers

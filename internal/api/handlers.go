@@ -20,13 +20,13 @@ func (s *Server) sendHandler(w http.ResponseWriter, r *http.Request) {
 	slog.Debug("Server.sendHandler: processing send request", "method", r.Method, "path", r.URL.Path)
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", http.MethodPost)
-		slog.Warn("sendHandler method not allowed", "method", r.Method)
+		slog.Warn("Server.sendHandler: method not allowed", "method", r.Method)
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
 	var p models.Prompt
 	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
-		slog.Warn("Failed to decode JSON in sendHandler", "error", err)
+		slog.Warn("Server.sendHandler: failed to decode JSON", "error", err)
 		writeJSONResponse(w, http.StatusBadRequest, models.Error("Invalid JSON format"))
 		return
 	}
@@ -40,7 +40,7 @@ func (s *Server) sendHandler(w http.ResponseWriter, r *http.Request) {
 	// Validate and canonicalize recipient using the messaging service
 	canonicalTo, err := s.msgService.ValidateAndCanonicalizeRecipient(p.To)
 	if err != nil {
-		slog.Warn("sendHandler recipient validation failed", "error", err, "original_to", p.To)
+		slog.Warn("Server.sendHandler: recipient validation failed", "error", err, "original_to", p.To)
 		writeJSONResponse(w, http.StatusBadRequest, models.Error(err.Error()))
 		return
 	}
@@ -49,14 +49,14 @@ func (s *Server) sendHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Validate prompt using the models validation
 	if err := p.Validate(); err != nil {
-		slog.Warn("sendHandler validation failed", "error", err, "prompt", p)
+		slog.Warn("Server.sendHandler: validation failed", "error", err, "prompt", p)
 		writeJSONResponse(w, http.StatusBadRequest, models.Error(err.Error()))
 		return
 	}
 	// Generate message body via pluggable flow
 	msg, err := flow.Generate(context.Background(), p)
 	if err != nil {
-		slog.Error("Flow generation error in sendHandler", "error", err)
+		slog.Error("Server.sendHandler: failed to generate message content", "error", err)
 		// Flow generation errors are generally internal server errors, not client errors
 		writeJSONResponse(w, http.StatusInternalServerError, models.Error("Failed to generate message content"))
 		return
@@ -64,14 +64,14 @@ func (s *Server) sendHandler(w http.ResponseWriter, r *http.Request) {
 
 	err = s.msgService.SendMessage(context.Background(), p.To, msg)
 	if err != nil {
-		slog.Error("Error sending message in sendHandler", "error", err, "to", p.To)
+		slog.Error("Server.sendHandler: failed to send message", "error", err, "to", p.To)
 		writeJSONResponse(w, http.StatusInternalServerError, models.Error("Failed to send message"))
 		return
 	}
 
 	// Auto-register response handler for prompts that expect responses
 	if s.respHandler.AutoRegisterResponseHandler(p) {
-		slog.Debug("Response handler registered for prompt", "type", p.Type, "to", p.To)
+		slog.Debug("Server.sendHandler: response handler registered for prompt", "type", p.Type, "to", p.To)
 	}
 
 	slog.Info("Server.sendHandler: message sent successfully", "to", p.To)

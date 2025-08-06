@@ -40,7 +40,7 @@ func NewPostgresStore(opts ...Option) (*PostgresStore, error) {
 	for _, opt := range opts {
 		opt(&cfg)
 	}
-	slog.Debug("NewPostgresStore invoked", "DSN_set", cfg.DSN != "")
+	slog.Debug("PostgresStore.NewPostgresStore: creating Postgres store", "DSN_set", cfg.DSN != "")
 	// Determine DSN (required)
 	dsn := cfg.DSN
 	if dsn == "" {

@@ -55,9 +55,9 @@ func NewWhatsAppService(client whatsapp.WhatsAppSender) *WhatsAppService {
 	// If the client is a full Client (not just an interface), store it for event handling
 	if waClient, ok := client.(*whatsapp.Client); ok {
 		service.waClient = waClient
-		slog.Debug("WhatsAppService created with full client for event handling")
+		slog.Debug("WhatsAppService.NewWhatsAppService: created with full client for event handling")
 	} else {
-		slog.Debug("WhatsAppService created with interface client (likely mock)")
+		slog.Debug("WhatsAppService.NewWhatsAppService: created with interface client", "note", "likely mock")
 	}
 
 	return service
@@ -92,7 +92,7 @@ func (s *WhatsAppService) ValidateAndCanonicalizeRecipient(recipient string) (st
 
 // Start begins background processing (e.g., event polling).
 func (s *WhatsAppService) Start(ctx context.Context) error {
-	slog.Debug("WhatsAppService Start invoked")
+	slog.Debug("WhatsAppService.Start: starting service")
 
 	if s.waClient != nil {
 		slog.Debug("WhatsAppService starting event handler")

@@ -140,7 +140,7 @@ type InMemoryStore struct {
 
 // NewInMemoryStore creates a new in-memory store.
 func NewInMemoryStore() *InMemoryStore {
-	slog.Debug("Creating new in-memory store")
+	slog.Debug("InMemoryStore.NewInMemoryStore: creating new in-memory store")
 	return &InMemoryStore{
 		receipts:                 make([]models.Receipt, 0),
 		responses:                make([]models.Response, 0),

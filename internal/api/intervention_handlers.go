@@ -16,7 +16,7 @@ import (
 
 // enrollParticipantHandler handles POST /intervention/participants
 func (s *Server) enrollParticipantHandler(w http.ResponseWriter, r *http.Request) {
-	slog.Debug("enrollParticipantHandler invoked", "method", r.Method, "path", r.URL.Path)
+	slog.Debug("Server.enrollParticipantHandler: processing enrollment request", "method", r.Method, "path", r.URL.Path)
 
 	var req models.InterventionEnrollmentRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {

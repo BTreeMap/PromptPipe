@@ -59,7 +59,7 @@ type ConversationFlow struct {
 
 // NewConversationFlow creates a new conversation flow with dependencies.
 func NewConversationFlow(stateManager StateManager, genaiClient genai.ClientInterface, systemPromptFile string) *ConversationFlow {
-	slog.Debug("flow.NewConversationFlow: creating flow with dependencies", "systemPromptFile", systemPromptFile)
+	slog.Debug("ConversationFlow.NewConversationFlow: creating flow with dependencies", "systemPromptFile", systemPromptFile)
 	return &ConversationFlow{
 		stateManager:     stateManager,
 		genaiClient:      genaiClient,
@@ -70,7 +70,7 @@ func NewConversationFlow(stateManager StateManager, genaiClient genai.ClientInte
 
 // NewConversationFlowWithScheduler creates a new conversation flow with scheduler tool support.
 func NewConversationFlowWithScheduler(stateManager StateManager, genaiClient genai.ClientInterface, systemPromptFile string, schedulerTool *SchedulerTool) *ConversationFlow {
-	slog.Debug("flow.NewConversationFlowWithScheduler: creating flow with scheduler tool", "systemPromptFile", systemPromptFile, "hasGenAI", genaiClient != nil, "hasSchedulerTool", schedulerTool != nil)
+	slog.Debug("ConversationFlow.NewConversationFlowWithScheduler: creating flow with scheduler tool", "systemPromptFile", systemPromptFile, "hasGenAI", genaiClient != nil, "hasSchedulerTool", schedulerTool != nil)
 	return &ConversationFlow{
 		stateManager:     stateManager,
 		genaiClient:      genaiClient,
@@ -82,7 +82,7 @@ func NewConversationFlowWithScheduler(stateManager StateManager, genaiClient gen
 
 // NewConversationFlowWithTools creates a new conversation flow with both scheduler and intervention tools.
 func NewConversationFlowWithTools(stateManager StateManager, genaiClient genai.ClientInterface, systemPromptFile string, schedulerTool *SchedulerTool, interventionTool *OneMinuteInterventionTool) *ConversationFlow {
-	slog.Debug("flow.NewConversationFlowWithTools: creating flow with both tools", "systemPromptFile", systemPromptFile, "hasGenAI", genaiClient != nil, "hasSchedulerTool", schedulerTool != nil, "hasInterventionTool", interventionTool != nil)
+	slog.Debug("ConversationFlow.NewConversationFlowWithTools: creating flow with both tools", "systemPromptFile", systemPromptFile, "hasGenAI", genaiClient != nil, "hasSchedulerTool", schedulerTool != nil, "hasInterventionTool", interventionTool != nil)
 	return &ConversationFlow{
 		stateManager:              stateManager,
 		genaiClient:               genaiClient,
@@ -100,7 +100,7 @@ func NewConversationFlowWithAllTools(stateManager StateManager, genaiClient gena
 
 // NewConversationFlowWithAllToolsAndTimeouts creates a new conversation flow with all tools and configurable feedback timeouts for the 3-bot architecture.
 func NewConversationFlowWithAllToolsAndTimeouts(stateManager StateManager, genaiClient genai.ClientInterface, systemPromptFile string, msgService MessagingService, intakeBotPromptFile, promptGeneratorPromptFile, feedbackTrackerPromptFile, feedbackInitialTimeout, feedbackFollowupDelay string) *ConversationFlow {
-	slog.Debug("flow.NewConversationFlowWithAllToolsAndTimeouts: creating flow with all tools and timeouts", "systemPromptFile", systemPromptFile, "hasGenAI", genaiClient != nil, "hasMessaging", msgService != nil, "intakeBotPromptFile", intakeBotPromptFile, "promptGeneratorPromptFile", promptGeneratorPromptFile, "feedbackTrackerPromptFile", feedbackTrackerPromptFile, "feedbackInitialTimeout", feedbackInitialTimeout, "feedbackFollowupDelay", feedbackFollowupDelay)
+	slog.Debug("ConversationFlow.NewConversationFlowWithAllToolsAndTimeouts: creating flow with all tools and timeouts", "systemPromptFile", systemPromptFile, "hasGenAI", genaiClient != nil, "hasMessaging", msgService != nil, "intakeBotPromptFile", intakeBotPromptFile, "promptGeneratorPromptFile", promptGeneratorPromptFile, "feedbackTrackerPromptFile", feedbackTrackerPromptFile, "feedbackInitialTimeout", feedbackInitialTimeout, "feedbackFollowupDelay", feedbackFollowupDelay)
 
 	// Create timer for scheduler
 	timer := NewSimpleTimer()
@@ -127,35 +127,35 @@ func NewConversationFlowWithAllToolsAndTimeouts(stateManager StateManager, genai
 
 // SetDependencies injects dependencies into the flow.
 func (f *ConversationFlow) SetDependencies(deps Dependencies) {
-	slog.Debug("flow.SetDependencies: injecting dependencies")
+	slog.Debug("ConversationFlow.SetDependencies: injecting dependencies")
 	f.stateManager = deps.StateManager
 	// Note: genaiClient needs to be set separately as it's not part of standard Dependencies
 }
 
 // LoadSystemPrompt loads the system prompt from the configured file.
 func (f *ConversationFlow) LoadSystemPrompt() error {
-	slog.Debug("flow.LoadSystemPrompt: loading system prompt from file", "file", f.systemPromptFile)
+	slog.Debug("ConversationFlow.LoadSystemPrompt: loading system prompt from file", "file", f.systemPromptFile)
 
 	if f.systemPromptFile == "" {
-		slog.Error("flow.LoadSystemPrompt: system prompt file not configured")
+		slog.Error("ConversationFlow.LoadSystemPrompt: system prompt file not configured")
 		return fmt.Errorf("system prompt file not configured")
 	}
 
 	// Check if file exists
 	if _, err := os.Stat(f.systemPromptFile); os.IsNotExist(err) {
-		slog.Debug("flow.LoadSystemPrompt: system prompt file does not exist", "file", f.systemPromptFile)
+		slog.Debug("ConversationFlow.LoadSystemPrompt: system prompt file does not exist", "file", f.systemPromptFile)
 		return fmt.Errorf("system prompt file does not exist: %s", f.systemPromptFile)
 	}
 
 	// Read system prompt from file
 	content, err := os.ReadFile(f.systemPromptFile)
 	if err != nil {
-		slog.Error("flow.LoadSystemPrompt: failed to read system prompt file", "file", f.systemPromptFile, "error", err)
+		slog.Error("ConversationFlow.LoadSystemPrompt: failed to read system prompt file", "file", f.systemPromptFile, "error", err)
 		return fmt.Errorf("failed to read system prompt file: %w", err)
 	}
 
 	f.systemPrompt = strings.TrimSpace(string(content))
-	slog.Info("flow.LoadSystemPrompt: system prompt loaded successfully", "file", f.systemPromptFile, "length", len(f.systemPrompt))
+	slog.Info("ConversationFlow.LoadSystemPrompt: system prompt loaded successfully", "file", f.systemPromptFile, "length", len(f.systemPrompt))
 	return nil
 }
 
@@ -275,7 +275,7 @@ func (f *ConversationFlow) processConversationMessage(ctx context.Context, parti
 	// Get conversation history
 	history, err := f.getConversationHistory(ctx, participantID)
 	if err != nil {
-		slog.Error("flow.failed to get conversation history", "error", err, "participantID", participantID)
+		slog.Error("ConversationFlow.processConversationMessage: failed to get conversation history", "error", err, "participantID", participantID)
 		return "", fmt.Errorf("failed to get conversation history: %w", err)
 	}
 
@@ -290,7 +290,7 @@ func (f *ConversationFlow) processConversationMessage(ctx context.Context, parti
 	// Build OpenAI messages using native multi-message format
 	messages, err := f.buildOpenAIMessages(ctx, participantID, history)
 	if err != nil {
-		slog.Error("flow.failed to build OpenAI messages", "error", err, "participantID", participantID)
+		slog.Error("ConversationFlow.processConversationMessage: failed to build OpenAI messages", "error", err, "participantID", participantID)
 		return "", fmt.Errorf("failed to build OpenAI messages: %w", err)
 	}
 
@@ -303,7 +303,7 @@ func (f *ConversationFlow) processConversationMessage(ctx context.Context, parti
 	// Fallback to standard generation without tools
 	response, err := f.genaiClient.GenerateWithMessages(ctx, messages)
 	if err != nil {
-		slog.Error("flow.GenAI generation failed", "error", err, "participantID", participantID)
+		slog.Error("ConversationFlow.processConversationMessage: GenAI generation failed", "error", err, "participantID", participantID)
 		return "", fmt.Errorf("failed to generate response: %w", err)
 	}
 
@@ -318,7 +318,7 @@ func (f *ConversationFlow) processConversationMessage(ctx context.Context, parti
 	// Save updated history
 	err = f.saveConversationHistory(ctx, participantID, history)
 	if err != nil {
-		slog.Error("flow.failed to save conversation history", "error", err, "participantID", participantID)
+		slog.Error("ConversationFlow.processConversationMessage: failed to save conversation history", "error", err, "participantID", participantID)
 		// Don't fail the request if we can't save history, but log the error
 	}
 
@@ -432,11 +432,11 @@ func (f *ConversationFlow) processWithTools(ctx context.Context, participantID s
 	// Save updated history
 	err = f.saveConversationHistory(ctx, participantID, history)
 	if err != nil {
-		slog.Error("flow.failed to save conversation history", "error", err, "participantID", participantID)
+		slog.Error("ConversationFlow.processWithTools: failed to save conversation history", "error", err, "participantID", participantID)
 		// Don't fail the request if we can't save history, but log the error
 	}
 
-	slog.Info("flow.generated tool-enabled response", "participantID", participantID, "responseLength", len(toolResponse.Content))
+	slog.Info("ConversationFlow.processWithTools: generated tool-enabled response", "participantID", participantID, "responseLength", len(toolResponse.Content))
 	return toolResponse.Content, nil
 }
 
@@ -641,11 +641,11 @@ func (f *ConversationFlow) handleToolCalls(ctx context.Context, participantID st
 	// Save updated history
 	err = f.saveConversationHistory(ctx, participantID, history)
 	if err != nil {
-		slog.Error("flow.failed to save conversation history after tool execution", "error", err, "participantID", participantID)
+		slog.Error("ConversationFlow.continueAfterToolExecution: failed to save conversation history after tool execution", "error", err, "participantID", participantID)
 		// Don't fail the request if we can't save history, but log the error
 	}
 
-	slog.Info("flow.completed tool execution with LLM-generated response",
+	slog.Info("ConversationFlow.continueAfterToolExecution: completed tool execution with LLM-generated response",
 		"participantID", participantID,
 		"toolCount", len(toolResponse.ToolCalls),
 		"finalResponseLength", len(finalResponse),

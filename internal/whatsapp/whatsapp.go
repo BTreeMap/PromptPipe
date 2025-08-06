@@ -78,7 +78,7 @@ func NewClient(opts ...Option) (*Client, error) {
 	for _, opt := range opts {
 		opt(&cfg)
 	}
-	slog.Debug("WhatsApp NewClient options set", "DBDSN_set", cfg.DBDSN != "", "QRPath_set", cfg.QRPath != "", "NumericCode", cfg.NumericCode)
+	slog.Debug("Client.NewClient: setting options", "DBDSN_set", cfg.DBDSN != "", "QRPath_set", cfg.QRPath != "", "NumericCode", cfg.NumericCode)
 
 	// Determine database DSN
 	dbDSN := cfg.DBDSN

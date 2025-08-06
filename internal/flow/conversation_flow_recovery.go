@@ -26,7 +26,7 @@ func (r *ConversationFlowRecovery) GetFlowType() models.FlowType {
 
 // RecoverState performs recovery for all conversation participants
 func (r *ConversationFlowRecovery) RecoverState(ctx context.Context, registry *recovery.RecoveryRegistry) error {
-	slog.Info("Starting conversation flow recovery")
+	slog.Info("ConversationFlowRecovery.RecoverState: starting conversation flow recovery")
 
 	store := registry.GetStore()
 	participants, err := store.ListConversationParticipants()

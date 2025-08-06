@@ -27,7 +27,7 @@ type IntakeBotTool struct {
 
 // NewIntakeBotTool creates a new intake bot tool instance.
 func NewIntakeBotTool(stateManager StateManager, genaiClient genai.ClientInterface, msgService MessagingService, systemPromptFile string) *IntakeBotTool {
-	slog.Debug("flow.NewIntakeBotTool: creating intake bot tool", "hasStateManager", stateManager != nil, "hasGenAI", genaiClient != nil, "hasMessaging", msgService != nil, "systemPromptFile", systemPromptFile)
+	slog.Debug("IntakeBotTool.NewIntakeBotTool: creating intake bot tool", "hasStateManager", stateManager != nil, "hasGenAI", genaiClient != nil, "hasMessaging", msgService != nil, "systemPromptFile", systemPromptFile)
 	return &IntakeBotTool{
 		stateManager:     stateManager,
 		genaiClient:      genaiClient,

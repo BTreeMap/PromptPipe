@@ -136,7 +136,7 @@ func (rm *RecoveryManager) RegisterHandlerRecovery(fn func(ResponseHandlerRecove
 
 // RecoverAll performs recovery of all registered components
 func (rm *RecoveryManager) RecoverAll(ctx context.Context) error {
-	slog.Info("Starting application recovery", "components", len(rm.recoverables))
+	slog.Info("RecoveryManager.RecoverAll: starting application recovery", "components", len(rm.recoverables))
 
 	recoveredCount := 0
 	errorCount := 0

@@ -26,7 +26,7 @@ type PromptGeneratorTool struct {
 
 // NewPromptGeneratorTool creates a new prompt generator tool instance.
 func NewPromptGeneratorTool(stateManager StateManager, genaiClient genai.ClientInterface, msgService MessagingService, systemPromptFile string) *PromptGeneratorTool {
-	slog.Debug("flow.NewPromptGeneratorTool: creating prompt generator tool", "hasStateManager", stateManager != nil, "hasGenAI", genaiClient != nil, "hasMessaging", msgService != nil, "systemPromptFile", systemPromptFile)
+	slog.Debug("PromptGeneratorTool.NewPromptGeneratorTool: creating prompt generator tool", "hasStateManager", stateManager != nil, "hasGenAI", genaiClient != nil, "hasMessaging", msgService != nil, "systemPromptFile", systemPromptFile)
 	return &PromptGeneratorTool{
 		stateManager:     stateManager,
 		genaiClient:      genaiClient,

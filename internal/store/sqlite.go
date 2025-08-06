@@ -45,7 +45,7 @@ func NewSQLiteStore(opts ...Option) (*SQLiteStore, error) {
 	for _, opt := range opts {
 		opt(&cfg)
 	}
-	slog.Debug("NewSQLiteStore invoked", "DSN_set", cfg.DSN != "")
+	slog.Debug("SQLiteStore.NewSQLiteStore: creating SQLite store", "DSN_set", cfg.DSN != "")
 
 	// Determine DSN (required)
 	dsn := cfg.DSN

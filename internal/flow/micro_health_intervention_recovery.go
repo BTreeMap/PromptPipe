@@ -30,7 +30,7 @@ func (r *MicroHealthInterventionRecovery) GetFlowType() models.FlowType {
 
 // RecoverState performs recovery for all micro health intervention participants
 func (r *MicroHealthInterventionRecovery) RecoverState(ctx context.Context, registry *recovery.RecoveryRegistry) error {
-	slog.Info("Starting micro health intervention recovery")
+	slog.Info("MicroHealthInterventionRecovery.RecoverState: starting micro health intervention recovery")
 
 	store := registry.GetStore()
 	participants, err := store.ListInterventionParticipants()

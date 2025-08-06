@@ -29,7 +29,7 @@ func writeJSONResponse(w http.ResponseWriter, statusCode int, response interface
 	// Marshal the response to JSON first to catch encoding errors before writing headers
 	jsonData, err := json.Marshal(response)
 	if err != nil {
-		slog.Error("Failed to marshal JSON response", "error", err)
+		slog.Error("Server.writeJSONResponse: failed to marshal JSON response", "error", err)
 		// Use pre-marshaled fallback response - if this fails, we have bigger problems
 		jsonData = fallbackErrorResponse
 		statusCode = http.StatusInternalServerError
@@ -39,6 +39,6 @@ func writeJSONResponse(w http.ResponseWriter, statusCode int, response interface
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 	if _, writeErr := w.Write(jsonData); writeErr != nil {
-		slog.Error("Failed to write JSON response", "error", writeErr)
+		slog.Error("Server.writeJSONResponse: failed to write JSON response", "error", writeErr)
 	}
 }

@@ -57,7 +57,7 @@ func (oit *OneMinuteInterventionTool) GetToolDefinition() openai.ChatCompletionT
 
 // ExecuteOneMinuteIntervention executes the intervention tool call.
 func (oit *OneMinuteInterventionTool) ExecuteOneMinuteIntervention(ctx context.Context, participantID string, params models.OneMinuteInterventionToolParams) (*models.ToolResult, error) {
-	slog.Info("Executing intervention tool", "participantID", participantID, "interventionFocus", params.InterventionFocus)
+	slog.Info("OneMinuteInterventionTool.ExecuteOneMinuteIntervention: executing intervention tool", "participantID", participantID, "interventionFocus", params.InterventionFocus)
 
 	// Get phone number from context
 	phoneNumber, ok := GetPhoneNumberFromContext(ctx)

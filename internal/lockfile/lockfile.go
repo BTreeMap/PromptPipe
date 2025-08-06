@@ -30,7 +30,7 @@ type Lock struct {
 func AcquireLock(stateDir string) (*Lock, error) {
 	lockPath := filepath.Join(stateDir, LockFileName)
 
-	slog.Debug("Attempting to acquire lock", "lock_path", lockPath, "state_dir", stateDir)
+	slog.Debug("LockManager.AcquireLock: attempting to acquire lock", "lock_path", lockPath, "state_dir", stateDir)
 
 	// Ensure the state directory exists
 	if err := os.MkdirAll(stateDir, 0755); err != nil {

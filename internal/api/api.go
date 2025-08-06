@@ -110,7 +110,7 @@ func WithDefaultCron(cron string) Option {
 	// Parse cron string (format: "minute hour day month weekday")
 	schedule, err := parseCronToSchedule(cron)
 	if err != nil {
-		slog.Warn("Failed to parse cron string, using nil schedule", "cron", cron, "error", err)
+		slog.Warn("Server.WithDefaultCron: failed to parse cron string", "cron", cron, "error", err)
 		schedule = nil
 	}
 	return func(o *Opts) {

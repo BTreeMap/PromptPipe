@@ -57,7 +57,7 @@ func (rh *ResponseHandler) RegisterHook(recipient string, action ResponseAction)
 	// Validate and canonicalize recipient
 	canonicalRecipient, err := rh.msgService.ValidateAndCanonicalizeRecipient(recipient)
 	if err != nil {
-		slog.Error("ResponseHandler RegisterHook validation failed", "error", err, "recipient", recipient)
+		slog.Error("ResponseHandler.RegisterHook: validation failed", "error", err, "recipient", recipient)
 		return fmt.Errorf("invalid recipient: %w", err)
 	}
 
@@ -65,7 +65,7 @@ func (rh *ResponseHandler) RegisterHook(recipient string, action ResponseAction)
 	defer rh.mu.Unlock()
 	rh.hooks[canonicalRecipient] = action
 
-	slog.Debug("ResponseHandler hook registered", "recipient", canonicalRecipient)
+	slog.Debug("ResponseHandler.RegisterHook: hook registered", "recipient", canonicalRecipient)
 	return nil
 }
 

@@ -48,7 +48,7 @@ type FeedbackTrackerTool struct {
 
 // NewFeedbackTrackerTool creates a new feedback tracker tool instance.
 func NewFeedbackTrackerTool(stateManager StateManager, genaiClient genai.ClientInterface, systemPromptFile string) *FeedbackTrackerTool {
-	slog.Debug("flow.NewFeedbackTrackerTool: creating feedback tracker tool", "hasStateManager", stateManager != nil, "hasGenAI", genaiClient != nil, "systemPromptFile", systemPromptFile)
+	slog.Debug("FeedbackTrackerTool.NewFeedbackTrackerTool: creating feedback tracker tool", "hasStateManager", stateManager != nil, "hasGenAI", genaiClient != nil, "systemPromptFile", systemPromptFile)
 	return &FeedbackTrackerTool{
 		stateManager:     stateManager,
 		genaiClient:      genaiClient,

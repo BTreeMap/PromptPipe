@@ -11,7 +11,7 @@ import (
 // TimerRecoveryHandler provides the callback function for timer recovery infrastructure
 func TimerRecoveryHandler(timer models.Timer) func(TimerRecoveryInfo) (string, error) {
 	return func(info TimerRecoveryInfo) (string, error) {
-		slog.Info("Recovering timer",
+		slog.Info("RecoveryManager.TimerRecoveryHandler: recovering timer",
 			"participantID", info.ParticipantID,
 			"flowType", info.FlowType,
 			"state", info.StateType,
@@ -19,7 +19,7 @@ func TimerRecoveryHandler(timer models.Timer) func(TimerRecoveryInfo) (string, e
 
 		// Create a simple timeout callback that logs the timeout event
 		timeoutCallback := func() {
-			slog.Warn("Timer timeout triggered during recovery",
+			slog.Warn("RecoveryManager.TimerRecoveryHandler: timer timeout triggered during recovery",
 				"participantID", info.ParticipantID,
 				"flowType", info.FlowType,
 				"state", info.StateType)

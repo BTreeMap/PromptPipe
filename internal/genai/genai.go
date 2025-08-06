@@ -157,7 +157,7 @@ func NewClient(opts ...Option) (*Client, error) {
 		stateDir:    cfg.StateDir,
 	}
 
-	slog.Debug("GenAI.NewClient: client created successfully", "model", cfg.Model, "temperature", cfg.Temperature, "maxTokens", cfg.MaxTokens, "debugMode", cfg.DebugMode)
+	slog.Debug("Client.NewClient: client created successfully", "model", cfg.Model, "temperature", cfg.Temperature, "maxTokens", cfg.MaxTokens, "debugMode", cfg.DebugMode)
 	return client, nil
 }
 
