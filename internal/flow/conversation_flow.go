@@ -620,7 +620,7 @@ func (f *ConversationFlow) handleToolCalls(ctx context.Context, participantID st
 		}
 
 		// Add tool result message to conversation
-		messages = append(messages, openai.ToolMessage(toolCall.ID, resultContent))
+		messages = append(messages, openai.ToolMessage(resultContent, toolCall.ID))
 	}
 
 	// Add history records to conversation history
