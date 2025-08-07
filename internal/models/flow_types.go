@@ -18,56 +18,15 @@ type ResponseValue string
 
 // Flow type constants.
 const (
-	FlowTypeMicroHealthIntervention FlowType = "micro_health_intervention"
 	FlowTypeConversation            FlowType = "conversation"
-)
-
-// State constants for micro health intervention flow.
-const (
-	StateOrientation                  StateType = "ORIENTATION"
-	StateCommitmentPrompt             StateType = "COMMITMENT_PROMPT"
-	StateFeelingPrompt                StateType = "FEELING_PROMPT"
-	StateRandomAssignment             StateType = "RANDOM_ASSIGNMENT"
-	StateSendInterventionImmediate    StateType = "SEND_INTERVENTION_IMMEDIATE"
-	StateSendInterventionReflective   StateType = "SEND_INTERVENTION_REFLECTIVE"
-	StateReinforcementFollowup        StateType = "REINFORCEMENT_FOLLOWUP"
-	StateDidYouGetAChance             StateType = "DID_YOU_GET_A_CHANCE"
-	StateContextQuestion              StateType = "CONTEXT_QUESTION"
-	StateMoodQuestion                 StateType = "MOOD_QUESTION"
-	StateBarrierCheckAfterContextMood StateType = "BARRIER_CHECK_AFTER_CONTEXT_MOOD"
-	StateBarrierReasonNoChance        StateType = "BARRIER_REASON_NO_CHANCE"
-	StateIgnoredPath                  StateType = "IGNORED_PATH"
-	StateEndOfDay                     StateType = "END_OF_DAY"
-	StateHabitReminder                StateType = "HABIT_REMINDER"
-	StateFollowUp                     StateType = "FOLLOW_UP"
-	StateComplete                     StateType = "COMPLETE"
 )
 
 // State constants for conversation flow.
 const (
 	StateConversationActive StateType = "CONVERSATION_ACTIVE"
-)
-
-// Data key constants for state data storage.
-const (
-	DataKeyFlowAssignment        DataKey = "flowAssignment"
-	DataKeyFeelingResponse       DataKey = "feelingResponse"
-	DataKeyCompletionResponse    DataKey = "completionResponse"
-	DataKeyGotChanceResponse     DataKey = "gotChanceResponse"
-	DataKeyContextResponse       DataKey = "contextResponse"
-	DataKeyMoodResponse          DataKey = "moodResponse"
-	DataKeyBarrierResponse       DataKey = "barrierResponse"
-	DataKeyBarrierReasonResponse DataKey = "barrierReasonResponse"
-
-	// Timer ID storage keys for managing timeouts
-	DataKeyCommitmentTimerID       DataKey = "commitmentTimerID"
-	DataKeyFeelingTimerID          DataKey = "feelingTimerID"
-	DataKeyCompletionTimerID       DataKey = "completionTimerID"
-	DataKeyDidYouGetAChanceTimerID DataKey = "didYouGetAChanceTimerID"
-	DataKeyContextTimerID          DataKey = "contextTimerID"
-	DataKeyMoodTimerID             DataKey = "moodTimerID"
-	DataKeyBarrierCheckTimerID     DataKey = "barrierCheckTimerID"
-	DataKeyBarrierReasonTimerID    DataKey = "barrierReasonTimerID"
+	StateCoordinator        StateType = "COORDINATOR"        // Default state - handles initial routing and fallback
+	StateIntake             StateType = "INTAKE"             // State for intake bot conversations
+	StateFeedback           StateType = "FEEDBACK"           // State for feedback tracker conversations
 )
 
 // Data key constants for conversation flow.
@@ -81,18 +40,6 @@ const (
 	DataKeyFeedbackTimerID         DataKey = "feedbackTimerID"         // For tracking initial feedback timer
 	DataKeyFeedbackFollowupTimerID DataKey = "feedbackFollowupTimerID" // For tracking follow-up feedback timer
 	DataKeyScheduleRegistry        DataKey = "scheduleRegistry"        // For storing active schedules metadata
-)
-
-// Flow assignment values.
-const (
-	FlowAssignmentImmediate  FlowAssignment = "IMMEDIATE"
-	FlowAssignmentReflective FlowAssignment = "REFLECTIVE"
-)
-
-// Response values for completion tracking.
-const (
-	ResponseDone    ResponseValue = "done"
-	ResponseNo      ResponseValue = "no"
-	ResponseNoReply ResponseValue = "no_reply"
-	ResponseReady   ResponseValue = "ready"
+	DataKeyConversationState       DataKey = "conversationState"       // For tracking current conversation state (COORDINATOR, INTAKE, FEEDBACK)
+	DataKeyStateTransitionTimerID  DataKey = "stateTransitionTimerID"  // For delayed state transitions
 )
