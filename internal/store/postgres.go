@@ -259,6 +259,7 @@ func (s *PostgresStore) DeleteFlowState(participantID, flowType string) error {
 	slog.Debug("PostgresStore DeleteFlowState succeeded", "participantID", participantID, "flowType", flowType)
 	return nil
 }
+
 // Conversation participant management methods - PostgreSQL implementation
 
 // SaveConversationParticipant stores or updates a conversation participant.

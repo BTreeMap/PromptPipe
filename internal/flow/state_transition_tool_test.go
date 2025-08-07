@@ -2,6 +2,7 @@ package flow
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/BTreeMap/PromptPipe/internal/models"
@@ -116,7 +117,7 @@ func TestStateTransitionTool_ExecuteStateTransition_InvalidState(t *testing.T) {
 		t.Error("expected error for invalid state")
 	}
 
-	if !contains(err.Error(), "invalid target_state") {
+	if !strings.Contains(err.Error(), "invalid target_state") {
 		t.Errorf("expected invalid target_state error, got: %v", err)
 	}
 }
@@ -138,7 +139,7 @@ func TestStateTransitionTool_ExecuteStateTransition_MissingTargetState(t *testin
 		t.Error("expected error for missing target_state")
 	}
 
-	if !contains(err.Error(), "target_state is required") {
+	if !strings.Contains(err.Error(), "target_state is required") {
 		t.Errorf("expected target_state required error, got: %v", err)
 	}
 }

@@ -273,6 +273,7 @@ func (s *SQLiteStore) DeleteFlowState(participantID, flowType string) error {
 	slog.Debug("SQLiteStore DeleteFlowState succeeded", "participantID", participantID, "flowType", flowType)
 	return nil
 }
+
 // Conversation participant management methods - SQLite implementation
 
 // SaveConversationParticipant stores or updates a conversation participant.

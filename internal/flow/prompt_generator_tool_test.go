@@ -3,6 +3,7 @@ package flow
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -69,7 +70,7 @@ func TestPromptGeneratorTool_ExecutePromptGenerator(t *testing.T) {
 	}
 
 	// The response should contain the follow-up question
-	if !contains(response, "Let me know when you've tried it") {
+	if !strings.Contains(response, "Let me know when you've tried it") {
 		t.Errorf("expected response to contain follow-up question, got: %s", response)
 	}
 
@@ -110,7 +111,7 @@ func TestPromptGeneratorTool_ExecutePromptGenerator_IncompleteProfile(t *testing
 		t.Error("expected error for incomplete profile")
 	}
 
-	if !contains(err.Error(), "profile incomplete") {
+	if !strings.Contains(err.Error(), "profile incomplete") {
 		t.Errorf("expected profile incomplete error, got: %v", err)
 	}
 }
@@ -135,7 +136,7 @@ func TestPromptGeneratorTool_ExecutePromptGenerator_NoProfile(t *testing.T) {
 		t.Error("expected error for missing profile")
 	}
 
-	if !contains(err.Error(), "profile not found") {
+	if !strings.Contains(err.Error(), "profile not found") {
 		t.Errorf("expected profile not found error, got: %v", err)
 	}
 }
@@ -216,7 +217,7 @@ func TestPromptGeneratorTool_ValidateProfile(t *testing.T) {
 			if err == nil {
 				t.Errorf("expected error for %s", tc.name)
 			}
-			if !contains(err.Error(), tc.wantErr) {
+			if !strings.Contains(err.Error(), tc.wantErr) {
 				t.Errorf("expected error containing %q, got: %v", tc.wantErr, err)
 			}
 		})
@@ -251,40 +252,40 @@ Use the user's profile and feedback to create targeted suggestions that feel rel
 	systemPrompt := tool.buildPromptGeneratorSystemPrompt(profile, "immediate", "user seems stressed today")
 
 	// Check that core requirements are included
-	if !contains(systemPrompt, "micro-coach bot") {
+	if !strings.Contains(systemPrompt, "micro-coach bot") {
 		t.Error("expected system prompt to identify as micro-coach bot")
 	}
 
-	if !contains(systemPrompt, "MAP framework") {
+	if !strings.Contains(systemPrompt, "MAP framework") {
 		t.Error("expected system prompt to mention MAP framework")
 	}
 
-	if !contains(systemPrompt, "30 words") {
+	if !strings.Contains(systemPrompt, "30 words") {
 		t.Error("expected system prompt to mention word limit")
 	}
 
 	// Check that delivery mode context is included
-	if !contains(systemPrompt, "immediate") {
+	if !strings.Contains(systemPrompt, "immediate") {
 		t.Error("expected system prompt to include delivery mode context")
 	}
 
 	// Check that personalization notes are included
-	if !contains(systemPrompt, "user seems stressed today") {
+	if !strings.Contains(systemPrompt, "user seems stressed today") {
 		t.Error("expected system prompt to include personalization notes")
 	}
 
 	// Check that success tracking is included
-	if !contains(systemPrompt, "3 habit prompts") {
+	if !strings.Contains(systemPrompt, "3 habit prompts") {
 		t.Error("expected system prompt to include success count")
 	}
 
 	// Check that barrier context is included
-	if !contains(systemPrompt, "lack of time") {
+	if !strings.Contains(systemPrompt, "lack of time") {
 		t.Error("expected system prompt to include barrier context")
 	}
 
 	// Check that modification context is included
-	if !contains(systemPrompt, "prefer evening time") {
+	if !strings.Contains(systemPrompt, "prefer evening time") {
 		t.Error("expected system prompt to include modification context")
 	}
 }

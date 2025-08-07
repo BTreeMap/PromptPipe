@@ -18,15 +18,15 @@ type ResponseValue string
 
 // Flow type constants.
 const (
-	FlowTypeConversation            FlowType = "conversation"
+	FlowTypeConversation FlowType = "conversation"
 )
 
 // State constants for conversation flow.
 const (
 	StateConversationActive StateType = "CONVERSATION_ACTIVE"
-	StateCoordinator        StateType = "COORDINATOR"        // Default state - handles initial routing and fallback
-	StateIntake             StateType = "INTAKE"             // State for intake bot conversations
-	StateFeedback           StateType = "FEEDBACK"           // State for feedback tracker conversations
+	StateCoordinator        StateType = "COORDINATOR" // Default state - handles initial routing and fallback
+	StateIntake             StateType = "INTAKE"      // State for intake bot conversations
+	StateFeedback           StateType = "FEEDBACK"    // State for feedback tracker conversations
 )
 
 // Data key constants for conversation flow.

@@ -20,7 +20,7 @@ type StateTransitionTool struct {
 
 // NewStateTransitionTool creates a new state transition tool instance.
 func NewStateTransitionTool(stateManager StateManager, timer models.Timer) *StateTransitionTool {
-	slog.Debug("StateTransitionTool.NewStateTransitionTool: creating state transition tool", 
+	slog.Debug("StateTransitionTool.NewStateTransitionTool: creating state transition tool",
 		"hasStateManager", stateManager != nil, "hasTimer", timer != nil)
 	return &StateTransitionTool{
 		stateManager: stateManager,
@@ -61,7 +61,7 @@ func (stt *StateTransitionTool) GetToolDefinition() openai.ChatCompletionToolPar
 
 // ExecuteStateTransition executes a state transition, either immediately or after a delay.
 func (stt *StateTransitionTool) ExecuteStateTransition(ctx context.Context, participantID string, args map[string]interface{}) (string, error) {
-	slog.Debug("StateTransitionTool.ExecuteStateTransition: executing state transition", 
+	slog.Debug("StateTransitionTool.ExecuteStateTransition: executing state transition",
 		"participantID", participantID, "args", args)
 
 	// Validate dependencies
@@ -90,7 +90,7 @@ func (stt *StateTransitionTool) ExecuteStateTransition(ctx context.Context, part
 		targetState = models.StateFeedback
 	default:
 		err := fmt.Errorf("invalid target_state: %s", targetStateStr)
-		slog.Error("StateTransitionTool.ExecuteStateTransition: invalid target_state value", 
+		slog.Error("StateTransitionTool.ExecuteStateTransition: invalid target_state value",
 			"error", err, "targetState", targetStateStr)
 		return "", err
 	}
@@ -115,22 +115,22 @@ func (stt *StateTransitionTool) ExecuteStateTransition(ctx context.Context, part
 
 // executeImmediateTransition performs an immediate state transition.
 func (stt *StateTransitionTool) executeImmediateTransition(ctx context.Context, participantID string, targetState models.StateType, reason string) (string, error) {
-	slog.Debug("StateTransitionTool.executeImmediateTransition: performing immediate transition", 
+	slog.Debug("StateTransitionTool.executeImmediateTransition: performing immediate transition",
 		"participantID", participantID, "targetState", targetState, "reason", reason)
 
 	// Get current state
 	currentState, err := stt.getCurrentConversationState(ctx, participantID)
 	if err != nil {
-		slog.Error("StateTransitionTool.executeImmediateTransition: failed to get current state", 
+		slog.Error("StateTransitionTool.executeImmediateTransition: failed to get current state",
 			"error", err, "participantID", participantID)
 		return "", fmt.Errorf("failed to get current state: %w", err)
 	}
 
 	// Update the conversation state
-	err = stt.stateManager.SetStateData(ctx, participantID, models.FlowTypeConversation, 
+	err = stt.stateManager.SetStateData(ctx, participantID, models.FlowTypeConversation,
 		models.DataKeyConversationState, string(targetState))
 	if err != nil {
-		slog.Error("StateTransitionTool.executeImmediateTransition: failed to set conversation state", 
+		slog.Error("StateTransitionTool.executeImmediateTransition: failed to set conversation state",
 			"error", err, "participantID", participantID, "targetState", targetState)
 		return "", fmt.Errorf("failed to set conversation state: %w", err)
 	}
@@ -148,7 +148,7 @@ func (stt *StateTransitionTool) executeImmediateTransition(ctx context.Context, 
 
 // scheduleDelayedTransition schedules a state transition to occur after a delay.
 func (stt *StateTransitionTool) scheduleDelayedTransition(ctx context.Context, participantID string, targetState models.StateType, delayMinutes float64, reason string) (string, error) {
-	slog.Debug("StateTransitionTool.scheduleDelayedTransition: scheduling delayed transition", 
+	slog.Debug("StateTransitionTool.scheduleDelayedTransition: scheduling delayed transition",
 		"participantID", participantID, "targetState", targetState, "delayMinutes", delayMinutes, "reason", reason)
 
 	// Validate timer dependency for delayed transitions
@@ -161,14 +161,14 @@ func (stt *StateTransitionTool) scheduleDelayedTransition(ctx context.Context, p
 	// Cancel any existing state transition timer
 	if existingTimerID, err := stt.stateManager.GetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyStateTransitionTimerID); err == nil && existingTimerID != "" {
 		stt.timer.Cancel(existingTimerID)
-		slog.Debug("StateTransitionTool.scheduleDelayedTransition: cancelled existing timer", 
+		slog.Debug("StateTransitionTool.scheduleDelayedTransition: cancelled existing timer",
 			"participantID", participantID, "existingTimerID", existingTimerID)
 	}
 
 	// Schedule the delayed transition
 	duration := time.Duration(delayMinutes) * time.Minute
 	timerID, err := stt.timer.ScheduleAfter(duration, func() {
-		slog.Info("StateTransitionTool.scheduleDelayedTransition: executing delayed transition", 
+		slog.Info("StateTransitionTool.scheduleDelayedTransition: executing delayed transition",
 			"participantID", participantID, "targetState", targetState, "reason", reason)
 
 		// Create new context for the delayed execution
@@ -177,25 +177,25 @@ func (stt *StateTransitionTool) scheduleDelayedTransition(ctx context.Context, p
 		// Execute the transition
 		_, err := stt.executeImmediateTransition(delayedCtx, participantID, targetState, reason)
 		if err != nil {
-			slog.Error("StateTransitionTool.scheduleDelayedTransition: delayed transition failed", 
+			slog.Error("StateTransitionTool.scheduleDelayedTransition: delayed transition failed",
 				"error", err, "participantID", participantID, "targetState", targetState)
 		}
 
 		// Clear the timer ID from state
-		stt.stateManager.SetStateData(delayedCtx, participantID, models.FlowTypeConversation, 
+		stt.stateManager.SetStateData(delayedCtx, participantID, models.FlowTypeConversation,
 			models.DataKeyStateTransitionTimerID, "")
 	})
 	if err != nil {
-		slog.Error("StateTransitionTool.scheduleDelayedTransition: failed to schedule timer", 
+		slog.Error("StateTransitionTool.scheduleDelayedTransition: failed to schedule timer",
 			"error", err, "participantID", participantID, "targetState", targetState)
 		return "", fmt.Errorf("failed to schedule delayed transition: %w", err)
 	}
 
 	// Store the timer ID
-	err = stt.stateManager.SetStateData(ctx, participantID, models.FlowTypeConversation, 
+	err = stt.stateManager.SetStateData(ctx, participantID, models.FlowTypeConversation,
 		models.DataKeyStateTransitionTimerID, timerID)
 	if err != nil {
-		slog.Error("StateTransitionTool.scheduleDelayedTransition: failed to store timer ID", 
+		slog.Error("StateTransitionTool.scheduleDelayedTransition: failed to store timer ID",
 			"error", err, "participantID", participantID, "timerID", timerID)
 		stt.timer.Cancel(timerID)
 		return "", fmt.Errorf("failed to store timer ID: %w", err)
@@ -214,7 +214,7 @@ func (stt *StateTransitionTool) scheduleDelayedTransition(ctx context.Context, p
 
 // getCurrentConversationState retrieves the current conversation state for a participant.
 func (stt *StateTransitionTool) getCurrentConversationState(ctx context.Context, participantID string) (models.StateType, error) {
-	stateStr, err := stt.stateManager.GetStateData(ctx, participantID, models.FlowTypeConversation, 
+	stateStr, err := stt.stateManager.GetStateData(ctx, participantID, models.FlowTypeConversation,
 		models.DataKeyConversationState)
 	if err != nil {
 		return "", err
@@ -230,14 +230,14 @@ func (stt *StateTransitionTool) getCurrentConversationState(ctx context.Context,
 
 // CancelPendingTransition cancels any pending delayed state transition for a participant.
 func (stt *StateTransitionTool) CancelPendingTransition(ctx context.Context, participantID string) error {
-	slog.Debug("StateTransitionTool.CancelPendingTransition: cancelling pending transition", 
+	slog.Debug("StateTransitionTool.CancelPendingTransition: cancelling pending transition",
 		"participantID", participantID)
 
 	if stt.timer == nil {
 		return nil // No timer available, nothing to cancel
 	}
 
-	timerID, err := stt.stateManager.GetStateData(ctx, participantID, models.FlowTypeConversation, 
+	timerID, err := stt.stateManager.GetStateData(ctx, participantID, models.FlowTypeConversation,
 		models.DataKeyStateTransitionTimerID)
 	if err != nil || timerID == "" {
 		return nil // No pending timer
@@ -247,15 +247,15 @@ func (stt *StateTransitionTool) CancelPendingTransition(ctx context.Context, par
 	stt.timer.Cancel(timerID)
 
 	// Clear the timer ID
-	err = stt.stateManager.SetStateData(ctx, participantID, models.FlowTypeConversation, 
+	err = stt.stateManager.SetStateData(ctx, participantID, models.FlowTypeConversation,
 		models.DataKeyStateTransitionTimerID, "")
 	if err != nil {
-		slog.Error("StateTransitionTool.CancelPendingTransition: failed to clear timer ID", 
+		slog.Error("StateTransitionTool.CancelPendingTransition: failed to clear timer ID",
 			"error", err, "participantID", participantID)
 		return err
 	}
 
-	slog.Info("StateTransitionTool.CancelPendingTransition: cancelled pending transition", 
+	slog.Info("StateTransitionTool.CancelPendingTransition: cancelled pending transition",
 		"participantID", participantID, "timerID", timerID)
 	return nil
 }

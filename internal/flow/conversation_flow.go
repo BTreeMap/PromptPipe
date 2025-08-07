@@ -46,16 +46,16 @@ type ConversationHistory struct {
 
 // ConversationFlow implements a stateful conversation flow that maintains history and uses GenAI.
 type ConversationFlow struct {
-	stateManager              StateManager
-	genaiClient               genai.ClientInterface
-	systemPrompt              string
-	systemPromptFile          string
-	chatHistoryLimit          int                        // Limit for number of history messages sent to bot tools (-1: no limit, 0: no history, positive: limit to last N messages)
-	schedulerTool             *SchedulerTool             // Tool for scheduling daily prompts
-	intakeBotTool             *IntakeBotTool             // Tool for conducting intake conversations
-	promptGeneratorTool       *PromptGeneratorTool       // Tool for generating personalized habit prompts
-	feedbackTrackerTool       *FeedbackTrackerTool       // Tool for tracking user feedback and updating profiles
-	stateTransitionTool       *StateTransitionTool       // Tool for managing conversation state transitions
+	stateManager        StateManager
+	genaiClient         genai.ClientInterface
+	systemPrompt        string
+	systemPromptFile    string
+	chatHistoryLimit    int                  // Limit for number of history messages sent to bot tools (-1: no limit, 0: no history, positive: limit to last N messages)
+	schedulerTool       *SchedulerTool       // Tool for scheduling daily prompts
+	intakeBotTool       *IntakeBotTool       // Tool for conducting intake conversations
+	promptGeneratorTool *PromptGeneratorTool // Tool for generating personalized habit prompts
+	feedbackTrackerTool *FeedbackTrackerTool // Tool for tracking user feedback and updating profiles
+	stateTransitionTool *StateTransitionTool // Tool for managing conversation state transitions
 }
 
 // NewConversationFlow creates a new conversation flow with dependencies.
@@ -101,15 +101,15 @@ func NewConversationFlowWithAllToolsAndTimeouts(stateManager StateManager, genai
 	stateTransitionTool := NewStateTransitionTool(stateManager, timer)
 
 	return &ConversationFlow{
-		stateManager:              stateManager,
-		genaiClient:               genaiClient,
-		systemPromptFile:          systemPromptFile,
-		chatHistoryLimit:          -1, // Default: no limit
-		schedulerTool:             schedulerTool,
-		intakeBotTool:             intakeBotTool,
-		promptGeneratorTool:       promptGeneratorTool,
-		feedbackTrackerTool:       feedbackTrackerTool,
-		stateTransitionTool:       stateTransitionTool,
+		stateManager:        stateManager,
+		genaiClient:         genaiClient,
+		systemPromptFile:    systemPromptFile,
+		chatHistoryLimit:    -1, // Default: no limit
+		schedulerTool:       schedulerTool,
+		intakeBotTool:       intakeBotTool,
+		promptGeneratorTool: promptGeneratorTool,
+		feedbackTrackerTool: feedbackTrackerTool,
+		stateTransitionTool: stateTransitionTool,
 	}
 }
 
@@ -282,7 +282,7 @@ func (f *ConversationFlow) processConversationMessage(ctx context.Context, parti
 		return "", fmt.Errorf("failed to get conversation state: %w", err)
 	}
 
-	slog.Debug("ConversationFlow.processConversationMessage: routing based on state", 
+	slog.Debug("ConversationFlow.processConversationMessage: routing based on state",
 		"participantID", participantID, "conversationState", conversationState)
 
 	// Route to appropriate state handler
@@ -296,13 +296,13 @@ func (f *ConversationFlow) processConversationMessage(ctx context.Context, parti
 		response, err = f.processFeedbackState(ctx, participantID, userMessage, history)
 	default:
 		// Unknown state - fallback to coordinator
-		slog.Warn("ConversationFlow.processConversationMessage: unknown conversation state, falling back to coordinator", 
+		slog.Warn("ConversationFlow.processConversationMessage: unknown conversation state, falling back to coordinator",
 			"conversationState", conversationState, "participantID", participantID)
 		response, err = f.processCoordinatorState(ctx, participantID, userMessage, history)
 	}
 
 	if err != nil {
-		slog.Error("ConversationFlow.processConversationMessage: state handler failed", 
+		slog.Error("ConversationFlow.processConversationMessage: state handler failed",
 			"error", err, "conversationState", conversationState, "participantID", participantID)
 		return "", fmt.Errorf("state handler failed: %w", err)
 	}
@@ -1014,7 +1014,7 @@ func (f *ConversationFlow) getCurrentConversationState(ctx context.Context, part
 		return models.StateCoordinator, nil // Default to coordinator if no state manager
 	}
 
-	stateStr, err := f.stateManager.GetStateData(ctx, participantID, models.FlowTypeConversation, 
+	stateStr, err := f.stateManager.GetStateData(ctx, participantID, models.FlowTypeConversation,
 		models.DataKeyConversationState)
 	if err != nil {
 		return "", err
@@ -1031,7 +1031,7 @@ func (f *ConversationFlow) getCurrentConversationState(ctx context.Context, part
 // processCoordinatorState handles messages when in the coordinator state.
 // The coordinator decides which tools to use and can transition to other states.
 func (f *ConversationFlow) processCoordinatorState(ctx context.Context, participantID, userMessage string, history *ConversationHistory) (string, error) {
-	slog.Debug("ConversationFlow.processCoordinatorState: processing coordinator message", 
+	slog.Debug("ConversationFlow.processCoordinatorState: processing coordinator message",
 		"participantID", participantID)
 
 	// Build OpenAI messages using coordinator system prompt
@@ -1072,7 +1072,7 @@ func (f *ConversationFlow) processCoordinatorState(ctx context.Context, particip
 // processIntakeState handles messages when in the intake state.
 // The intake module directly processes the conversation without using tools.
 func (f *ConversationFlow) processIntakeState(ctx context.Context, participantID, userMessage string, history *ConversationHistory) (string, error) {
-	slog.Debug("ConversationFlow.processIntakeState: processing intake message", 
+	slog.Debug("ConversationFlow.processIntakeState: processing intake message",
 		"participantID", participantID)
 
 	if f.intakeBotTool == nil {
@@ -1102,7 +1102,7 @@ func (f *ConversationFlow) processIntakeState(ctx context.Context, participantID
 // processFeedbackState handles messages when in the feedback state.
 // The feedback tracker module directly processes the conversation without using tools.
 func (f *ConversationFlow) processFeedbackState(ctx context.Context, participantID, userMessage string, history *ConversationHistory) (string, error) {
-	slog.Debug("ConversationFlow.processFeedbackState: processing feedback message", 
+	slog.Debug("ConversationFlow.processFeedbackState: processing feedback message",
 		"participantID", participantID)
 
 	if f.feedbackTrackerTool == nil {

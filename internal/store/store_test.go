@@ -253,7 +253,7 @@ func TestInMemoryStore_HookPersistence(t *testing.T) {
 	// Test saving a hook
 	hook := models.RegisteredHook{
 		PhoneNumber: "+1234567890",
-		HookType:    models.HookTypeIntervention,
+		HookType:    models.HookTypeConversation,
 		Parameters: map[string]string{
 			"participant_id": "test-participant",
 			"phone_number":   "+1234567890",
@@ -337,7 +337,7 @@ func TestInMemoryStore_HookPersistence_MultipleHooks(t *testing.T) {
 	// Create multiple hooks
 	hook1 := models.RegisteredHook{
 		PhoneNumber: "+1111111111",
-		HookType:    models.HookTypeIntervention,
+		HookType:    models.HookTypeConversation,
 		Parameters: map[string]string{
 			"participant_id": "participant-1",
 			"phone_number":   "+1111111111",
@@ -419,7 +419,7 @@ func TestInMemoryStore_HookPersistence_UpdateHook(t *testing.T) {
 	// Save initial hook
 	hook := models.RegisteredHook{
 		PhoneNumber: "+1234567890",
-		HookType:    models.HookTypeIntervention,
+		HookType:    models.HookTypeConversation,
 		Parameters: map[string]string{
 			"participant_id": "test-participant",
 			"phone_number":   "+1234567890",
@@ -524,7 +524,7 @@ func TestSQLiteStore_HookPersistence(t *testing.T) {
 	// Test saving a hook
 	hook := models.RegisteredHook{
 		PhoneNumber: "+1234567890",
-		HookType:    models.HookTypeIntervention,
+		HookType:    models.HookTypeConversation,
 		Parameters: map[string]string{
 			"participant_id": "test-participant",
 			"phone_number":   "+1234567890",
@@ -611,7 +611,7 @@ func TestPostgresStore_HookPersistence(t *testing.T) {
 	// Test saving a hook
 	hook := models.RegisteredHook{
 		PhoneNumber: "+1234567890",
-		HookType:    models.HookTypeIntervention,
+		HookType:    models.HookTypeConversation,
 		Parameters: map[string]string{
 			"participant_id": "test-participant",
 			"phone_number":   "+1234567890",

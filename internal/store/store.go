@@ -237,7 +237,6 @@ func (s *InMemoryStore) DeleteFlowState(participantID, flowType string) error {
 	return nil
 }
 
-
 // SaveConversationParticipant stores or updates a conversation participant.
 func (s *InMemoryStore) SaveConversationParticipant(participant models.ConversationParticipant) error {
 	s.mu.Lock()
