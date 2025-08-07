@@ -237,7 +237,7 @@ func (st *SchedulerTool) buildRandomScheduleInfo(startTime, endTime, timezone st
 // This method is called by the recurring timer at the start time and schedules
 // a one-time timer at a random time within the specified interval.
 func (st *SchedulerTool) executeRandomScheduledPrompt(ctx context.Context, prompt models.Prompt, randomInfo *RandomScheduleInfo) {
-	slog.Debug("Executing random scheduled prompt logic", "to", prompt.To, "startTime", randomInfo.StartTime.Format("15:04"), "endTime", randomInfo.EndTime.Format("15:04"))
+	slog.Debug("SchedulerTool.executeScheduledPrompt: executing random scheduled prompt", "to", prompt.To, "startTime", randomInfo.StartTime.Format("15:04"), "endTime", randomInfo.EndTime.Format("15:04"))
 
 	// Calculate random delay from start time to end time
 	startMinutes := randomInfo.StartTime.Hour()*60 + randomInfo.StartTime.Minute()
@@ -251,7 +251,7 @@ func (st *SchedulerTool) executeRandomScheduledPrompt(ctx context.Context, promp
 	// Generate random minutes within the interval
 	intervalMinutes := endMinutes - startMinutes
 	if intervalMinutes <= 0 {
-		slog.Error("Invalid time interval for random scheduling", "startMinutes", startMinutes, "endMinutes", endMinutes)
+		slog.Error("SchedulerTool.executeScheduledPrompt: invalid time interval for random scheduling", "startMinutes", startMinutes, "endMinutes", endMinutes)
 		// Fallback to immediate execution
 		st.executeScheduledPrompt(ctx, prompt)
 		return
@@ -261,7 +261,7 @@ func (st *SchedulerTool) executeRandomScheduledPrompt(ctx context.Context, promp
 	randomDelayMinutes := rand.Intn(intervalMinutes)
 	randomDelay := time.Duration(randomDelayMinutes) * time.Minute
 
-	slog.Info("Scheduling random prompt",
+	slog.Info("SchedulerTool.executeScheduledPrompt: scheduling random prompt",
 		"to", prompt.To,
 		"intervalMinutes", intervalMinutes,
 		"randomDelayMinutes", randomDelayMinutes,
@@ -273,7 +273,7 @@ func (st *SchedulerTool) executeRandomScheduledPrompt(ctx context.Context, promp
 	})
 
 	if err != nil {
-		slog.Error("Failed to schedule random one-time timer", "error", err, "to", prompt.To)
+		slog.Error("SchedulerTool.executeScheduledPrompt: failed to schedule random timer", "error", err, "to", prompt.To)
 		// Fallback to immediate execution
 		st.executeScheduledPrompt(ctx, prompt)
 	}
@@ -281,7 +281,7 @@ func (st *SchedulerTool) executeRandomScheduledPrompt(ctx context.Context, promp
 
 // executeScheduledPrompt executes a scheduled prompt by generating content and sending it.
 func (st *SchedulerTool) executeScheduledPrompt(ctx context.Context, prompt models.Prompt) {
-	slog.Debug("Executing scheduled prompt", "to", prompt.To, "type", prompt.Type)
+	slog.Debug("SchedulerTool.executeScheduledPrompt: executing scheduled prompt", "to", prompt.To, "type", prompt.Type)
 
 	var message string
 	var err error
