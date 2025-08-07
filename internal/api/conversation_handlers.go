@@ -12,6 +12,7 @@ import (
 
 	"github.com/BTreeMap/PromptPipe/internal/flow"
 	"github.com/BTreeMap/PromptPipe/internal/models"
+	"github.com/BTreeMap/PromptPipe/internal/util"
 )
 
 // enrollConversationParticipantHandler handles POST /conversation/participants
@@ -54,12 +55,7 @@ func (s *Server) enrollConversationParticipantHandler(w http.ResponseWriter, r *
 	}
 
 	// Generate participant ID
-	participantID, err := generateParticipantID()
-	if err != nil {
-		slog.Error("enrollConversationParticipantHandler ID generation failed", "error", err)
-		writeJSONResponse(w, http.StatusInternalServerError, models.Error("Failed to generate participant ID"))
-		return
-	}
+	participantID := util.GenerateParticipantID()
 
 	// Create participant
 	now := time.Now()
