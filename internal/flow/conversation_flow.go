@@ -52,13 +52,12 @@ type ConversationFlow struct {
 	systemPromptFile    string
 	chatHistoryLimit    int                  // Limit for number of history messages sent to bot tools (-1: no limit, 0: no history, positive: limit to last N messages)
 	schedulerTool       *SchedulerTool       // Tool for scheduling daily prompts
-	intakeBotTool       *IntakeBotTool       // Tool for conducting intake conversations
+	intakeModule        *IntakeModule        // Module for conducting intake conversations
 	promptGeneratorTool *PromptGeneratorTool // Tool for generating personalized habit prompts
-	feedbackTrackerTool *FeedbackTrackerTool // Tool for tracking user feedback and updating profiles
+	feedbackModule      *FeedbackModule      // Module for tracking user feedback and updating profiles
 	stateTransitionTool *StateTransitionTool // Tool for managing conversation state transitions
-}
-
-// NewConversationFlow creates a new conversation flow with dependencies.
+	profileSaveTool     *ProfileSaveTool     // Tool for saving user profiles (shared across modules)
+} // NewConversationFlow creates a new conversation flow with dependencies.
 func NewConversationFlow(stateManager StateManager, genaiClient genai.ClientInterface, systemPromptFile string) *ConversationFlow {
 	slog.Debug("ConversationFlow.NewConversationFlow: creating flow with dependencies", "systemPromptFile", systemPromptFile)
 	return &ConversationFlow{
@@ -93,12 +92,15 @@ func NewConversationFlowWithAllToolsAndTimeouts(stateManager StateManager, genai
 	// Create timer for scheduler
 	timer := NewSimpleTimer()
 
-	// Create all tools with their respective system prompt files
+	// Create shared tools
 	schedulerTool := NewSchedulerToolWithGenAI(timer, msgService, genaiClient)
-	intakeBotTool := NewIntakeBotTool(stateManager, genaiClient, msgService, intakeBotPromptFile)
-	promptGeneratorTool := NewPromptGeneratorTool(stateManager, genaiClient, msgService, promptGeneratorPromptFile)
-	feedbackTrackerTool := NewFeedbackTrackerToolWithTimeouts(stateManager, genaiClient, feedbackTrackerPromptFile, timer, msgService, feedbackInitialTimeout, feedbackFollowupDelay)
 	stateTransitionTool := NewStateTransitionTool(stateManager, timer)
+	profileSaveTool := NewProfileSaveTool(stateManager)
+	promptGeneratorTool := NewPromptGeneratorTool(stateManager, genaiClient, msgService, promptGeneratorPromptFile)
+
+	// Create modules with shared tools
+	intakeModule := NewIntakeModule(stateManager, genaiClient, msgService, intakeBotPromptFile, stateTransitionTool, profileSaveTool, schedulerTool)
+	feedbackModule := NewFeedbackModuleWithTimeouts(stateManager, genaiClient, feedbackTrackerPromptFile, timer, msgService, feedbackInitialTimeout, feedbackFollowupDelay, stateTransitionTool, profileSaveTool, schedulerTool)
 
 	return &ConversationFlow{
 		stateManager:        stateManager,
@@ -106,10 +108,11 @@ func NewConversationFlowWithAllToolsAndTimeouts(stateManager StateManager, genai
 		systemPromptFile:    systemPromptFile,
 		chatHistoryLimit:    -1, // Default: no limit
 		schedulerTool:       schedulerTool,
-		intakeBotTool:       intakeBotTool,
+		intakeModule:        intakeModule,
 		promptGeneratorTool: promptGeneratorTool,
-		feedbackTrackerTool: feedbackTrackerTool,
+		feedbackModule:      feedbackModule,
 		stateTransitionTool: stateTransitionTool,
+		profileSaveTool:     profileSaveTool,
 	}
 }
 
@@ -147,15 +150,15 @@ func (f *ConversationFlow) LoadSystemPrompt() error {
 	return nil
 }
 
-// LoadToolSystemPrompts loads system prompts for all tools.
+// LoadToolSystemPrompts loads system prompts for all modules.
 func (f *ConversationFlow) LoadToolSystemPrompts() error {
-	slog.Debug("flow.LoadToolSystemPrompts: loading tool system prompts")
+	slog.Debug("flow.LoadToolSystemPrompts: loading module system prompts")
 
-	// Load intake bot system prompt
-	if f.intakeBotTool != nil {
-		if err := f.intakeBotTool.LoadSystemPrompt(); err != nil {
-			slog.Warn("flow.LoadToolSystemPrompts: failed to load intake bot system prompt", "error", err)
-			// Continue even if intake bot prompt fails to load
+	// Load intake module system prompt
+	if f.intakeModule != nil {
+		if err := f.intakeModule.LoadSystemPrompt(); err != nil {
+			slog.Warn("flow.LoadToolSystemPrompts: failed to load intake module system prompt", "error", err)
+			// Continue even if intake module prompt fails to load
 		}
 	}
 
@@ -167,15 +170,15 @@ func (f *ConversationFlow) LoadToolSystemPrompts() error {
 		}
 	}
 
-	// Load feedback tracker system prompt
-	if f.feedbackTrackerTool != nil {
-		if err := f.feedbackTrackerTool.LoadSystemPrompt(); err != nil {
-			slog.Warn("flow.LoadToolSystemPrompts: failed to load feedback tracker system prompt", "error", err)
-			// Continue even if feedback tracker prompt fails to load
+	// Load feedback module system prompt
+	if f.feedbackModule != nil {
+		if err := f.feedbackModule.LoadSystemPrompt(); err != nil {
+			slog.Warn("flow.LoadToolSystemPrompts: failed to load feedback module system prompt", "error", err)
+			// Continue even if feedback module prompt fails to load
 		}
 	}
 
-	slog.Info("flow.LoadToolSystemPrompts: tool system prompts loaded")
+	slog.Info("flow.LoadToolSystemPrompts: module system prompts loaded")
 	return nil
 }
 
@@ -511,6 +514,19 @@ func (f *ConversationFlow) handleToolCalls(ctx context.Context, participantID st
 				// State transition success: record in history but use generic message for LLM
 				toolResults[i] = "State transition completed"
 				historyRecords = append(historyRecords, fmt.Sprintf("[STATE_TRANSITION: %s]", result))
+			}
+
+		case "save_user_profile":
+			result, err := f.executeProfileSaveTool(ctx, participantID, toolCall)
+			if err != nil {
+				slog.Error("flow.profile save tool execution failed", "error", err, "participantID", participantID, "toolCallID", toolCall.ID)
+				errorMsg := fmt.Sprintf("❌ Sorry, I couldn't save your profile: %s", err.Error())
+				toolResults[i] = errorMsg
+				historyRecords = append(historyRecords, errorMsg)
+			} else {
+				// Profile save success: record in history
+				toolResults[i] = result
+				historyRecords = append(historyRecords, result)
 			}
 
 		default:
@@ -947,8 +963,8 @@ func (f *ConversationFlow) executePromptGeneratorTool(ctx context.Context, parti
 	}
 
 	// After successful prompt generation, schedule automatic feedback collection
-	if f.feedbackTrackerTool != nil {
-		if scheduleErr := f.feedbackTrackerTool.ScheduleFeedbackCollection(ctx, participantID); scheduleErr != nil {
+	if f.feedbackModule != nil {
+		if scheduleErr := f.feedbackModule.ScheduleFeedbackCollection(ctx, participantID); scheduleErr != nil {
 			slog.Warn("flow.executePromptGeneratorTool: failed to schedule feedback collection", "participantID", participantID, "error", scheduleErr)
 			// Don't fail the prompt generation, just log the warning
 		} else {
@@ -977,7 +993,7 @@ func (f *ConversationFlow) executeProfileSaveTool(ctx context.Context, participa
 	}
 
 	// Execute the profile save tool
-	return f.intakeBotTool.ExecuteProfileSave(ctx, participantID, args)
+	return f.profileSaveTool.ExecuteProfileSave(ctx, participantID, args)
 }
 
 // executeStateTransitionTool executes a state transition tool call.
@@ -1051,6 +1067,13 @@ func (f *ConversationFlow) processCoordinatorState(ctx context.Context, particip
 		slog.Debug("ConversationFlow.processCoordinatorState: added state transition tool", "participantID", participantID)
 	}
 
+	// Add profile save tool - coordinator can save profiles
+	if f.profileSaveTool != nil {
+		toolDef := f.profileSaveTool.GetToolDefinition()
+		tools = append(tools, toolDef)
+		slog.Debug("ConversationFlow.processCoordinatorState: added profile save tool", "participantID", participantID)
+	}
+
 	// Add prompt generator tool - coordinator can still generate prompts
 	if f.promptGeneratorTool != nil {
 		toolDef := f.promptGeneratorTool.GetToolDefinition()
@@ -1075,8 +1098,8 @@ func (f *ConversationFlow) processIntakeState(ctx context.Context, participantID
 	slog.Debug("ConversationFlow.processIntakeState: processing intake message",
 		"participantID", participantID)
 
-	if f.intakeBotTool == nil {
-		return "", fmt.Errorf("intake bot not available")
+	if f.intakeModule == nil {
+		return "", fmt.Errorf("intake module not available")
 	}
 
 	// Get previous chat history for context
@@ -1086,11 +1109,11 @@ func (f *ConversationFlow) processIntakeState(ctx context.Context, participantID
 		chatHistory = []openai.ChatCompletionMessageParamUnion{}
 	}
 
-	// Execute the intake bot directly with conversation history
+	// Execute the intake module directly with conversation history
 	args := map[string]interface{}{
 		"user_response": userMessage,
 	}
-	response, err := f.intakeBotTool.ExecuteIntakeBotWithHistory(ctx, participantID, args, chatHistory)
+	response, err := f.intakeModule.ExecuteIntakeBotWithHistory(ctx, participantID, args, chatHistory)
 	if err != nil {
 		slog.Error("ConversationFlow.processIntakeState: intake execution failed", "error", err, "participantID", participantID)
 		return "", fmt.Errorf("intake processing failed: %w", err)
@@ -1105,8 +1128,8 @@ func (f *ConversationFlow) processFeedbackState(ctx context.Context, participant
 	slog.Debug("ConversationFlow.processFeedbackState: processing feedback message",
 		"participantID", participantID)
 
-	if f.feedbackTrackerTool == nil {
-		return "", fmt.Errorf("feedback tracker not available")
+	if f.feedbackModule == nil {
+		return "", fmt.Errorf("feedback module not available")
 	}
 
 	// Get previous chat history for context
@@ -1121,15 +1144,15 @@ func (f *ConversationFlow) processFeedbackState(ctx context.Context, participant
 		"user_response":     userMessage,
 		"completion_status": "attempted", // Default, the feedback tracker will analyze the actual response
 	}
-	response, err := f.feedbackTrackerTool.ExecuteFeedbackTrackerWithHistory(ctx, participantID, args, chatHistory)
+	response, err := f.feedbackModule.ExecuteFeedbackTrackerWithHistory(ctx, participantID, args, chatHistory)
 	if err != nil {
 		slog.Error("ConversationFlow.processFeedbackState: feedback execution failed", "error", err, "participantID", participantID)
 		return "", fmt.Errorf("feedback processing failed: %w", err)
 	}
 
 	// Cancel any pending feedback timers since feedback was received
-	if f.feedbackTrackerTool != nil {
-		f.feedbackTrackerTool.CancelPendingFeedback(ctx, participantID)
+	if f.feedbackModule != nil {
+		f.feedbackModule.CancelPendingFeedback(ctx, participantID)
 		slog.Debug("ConversationFlow.processFeedbackState: cancelled pending feedback timers", "participantID", participantID)
 	}
 
