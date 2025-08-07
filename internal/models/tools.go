@@ -14,8 +14,6 @@ type ToolType string
 const (
 	// ToolTypeScheduler allows the LLM to schedule daily prompts for users.
 	ToolTypeScheduler ToolType = "scheduler"
-	// ToolTypeOneMinuteIntervention allows the LLM to initiate one-minute health interventions.
-	ToolTypeOneMinuteIntervention ToolType = "one_minute_intervention"
 )
 
 // SchedulerAction defines the action to be performed by the scheduler tool.
@@ -185,16 +183,4 @@ type ScheduleInfo struct {
 	HabitDescription string        `json:"habit_description,omitempty"` // Description of the habit
 	CreatedAt        time.Time     `json:"created_at"`                  // When the schedule was created
 	TimerID          string        `json:"timer_id,omitempty"`          // Associated timer ID
-}
-
-// OneMinuteInterventionToolParams defines the parameters for the intervention tool call.
-type OneMinuteInterventionToolParams struct {
-	InterventionFocus    string `json:"intervention_focus,omitempty"`    // Focus or type of intervention (flexible)
-	PersonalizationNotes string `json:"personalization_notes,omitempty"` // Notes for personalizing the intervention
-}
-
-// Validate ensures the intervention tool parameters are valid.
-func (omt *OneMinuteInterventionToolParams) Validate() error {
-	// All parameters are optional and flexible
-	return nil
 }

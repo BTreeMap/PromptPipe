@@ -27,16 +27,6 @@ type Store interface {
 	SaveFlowState(state models.FlowState) error
 	GetFlowState(participantID, flowType string) (*models.FlowState, error)
 	DeleteFlowState(participantID, flowType string) error
-	// Intervention participant management
-	SaveInterventionParticipant(participant models.InterventionParticipant) error
-	GetInterventionParticipant(id string) (*models.InterventionParticipant, error)
-	GetInterventionParticipantByPhone(phoneNumber string) (*models.InterventionParticipant, error)
-	ListInterventionParticipants() ([]models.InterventionParticipant, error)
-	DeleteInterventionParticipant(id string) error
-	// Intervention response management
-	SaveInterventionResponse(response models.InterventionResponse) error
-	GetInterventionResponses(participantID string) ([]models.InterventionResponse, error)
-	ListAllInterventionResponses() ([]models.InterventionResponse, error)
 	// Conversation participant management
 	SaveConversationParticipant(participant models.ConversationParticipant) error
 	GetConversationParticipant(id string) (*models.ConversationParticipant, error)
@@ -131,9 +121,7 @@ type InMemoryStore struct {
 	receipts                 []models.Receipt
 	responses                []models.Response
 	flowStates               map[string]models.FlowState               // key: participantID_flowType
-	interventionParticipants map[string]models.InterventionParticipant // key: participant ID
 	conversationParticipants map[string]models.ConversationParticipant // key: participant ID
-	interventionResponses    []models.InterventionResponse             // chronological list
 	registeredHooks          map[string]models.RegisteredHook          // key: phone number
 	mu                       sync.RWMutex
 }
@@ -145,9 +133,7 @@ func NewInMemoryStore() *InMemoryStore {
 		receipts:                 make([]models.Receipt, 0),
 		responses:                make([]models.Response, 0),
 		flowStates:               make(map[string]models.FlowState),
-		interventionParticipants: make(map[string]models.InterventionParticipant),
 		conversationParticipants: make(map[string]models.ConversationParticipant),
-		interventionResponses:    make([]models.InterventionResponse, 0),
 		registeredHooks:          make(map[string]models.RegisteredHook),
 	}
 }
@@ -251,103 +237,6 @@ func (s *InMemoryStore) DeleteFlowState(participantID, flowType string) error {
 	return nil
 }
 
-// Intervention participant management methods - InMemory implementation
-
-// SaveInterventionParticipant stores or updates an intervention participant.
-func (s *InMemoryStore) SaveInterventionParticipant(participant models.InterventionParticipant) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.interventionParticipants[participant.ID] = participant
-	slog.Debug("InMemoryStore SaveInterventionParticipant succeeded", "id", participant.ID, "phone", participant.PhoneNumber)
-	return nil
-}
-
-// GetInterventionParticipant retrieves an intervention participant by ID.
-func (s *InMemoryStore) GetInterventionParticipant(id string) (*models.InterventionParticipant, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	if participant, exists := s.interventionParticipants[id]; exists {
-		slog.Debug("InMemoryStore GetInterventionParticipant found", "id", id)
-		// Return a copy to prevent external modifications
-		participantCopy := participant
-		return &participantCopy, nil
-	}
-	slog.Debug("InMemoryStore GetInterventionParticipant not found", "id", id)
-	return nil, nil
-}
-
-// GetInterventionParticipantByPhone retrieves an intervention participant by phone number.
-func (s *InMemoryStore) GetInterventionParticipantByPhone(phoneNumber string) (*models.InterventionParticipant, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	for _, participant := range s.interventionParticipants {
-		if participant.PhoneNumber == phoneNumber {
-			slog.Debug("InMemoryStore GetInterventionParticipantByPhone found", "phone", phoneNumber, "id", participant.ID)
-			// Return a copy to prevent external modifications
-			participantCopy := participant
-			return &participantCopy, nil
-		}
-	}
-	slog.Debug("InMemoryStore GetInterventionParticipantByPhone not found", "phone", phoneNumber)
-	return nil, nil
-}
-
-// ListInterventionParticipants retrieves all intervention participants.
-func (s *InMemoryStore) ListInterventionParticipants() ([]models.InterventionParticipant, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	result := make([]models.InterventionParticipant, 0, len(s.interventionParticipants))
-	for _, participant := range s.interventionParticipants {
-		result = append(result, participant)
-	}
-	slog.Debug("InMemoryStore ListInterventionParticipants succeeded", "count", len(result))
-	return result, nil
-}
-
-// DeleteInterventionParticipant removes an intervention participant.
-func (s *InMemoryStore) DeleteInterventionParticipant(id string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	delete(s.interventionParticipants, id)
-	slog.Debug("InMemoryStore DeleteInterventionParticipant succeeded", "id", id)
-	return nil
-}
-
-// SaveInterventionResponse stores an intervention response.
-func (s *InMemoryStore) SaveInterventionResponse(response models.InterventionResponse) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.interventionResponses = append(s.interventionResponses, response)
-	slog.Debug("InMemoryStore SaveInterventionResponse succeeded", "participantID", response.ParticipantID, "state", response.State)
-	return nil
-}
-
-// GetInterventionResponses retrieves all responses for a participant.
-func (s *InMemoryStore) GetInterventionResponses(participantID string) ([]models.InterventionResponse, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	result := make([]models.InterventionResponse, 0)
-	for _, response := range s.interventionResponses {
-		if response.ParticipantID == participantID {
-			result = append(result, response)
-		}
-	}
-	slog.Debug("InMemoryStore GetInterventionResponses succeeded", "participantID", participantID, "count", len(result))
-	return result, nil
-}
-
-// ListAllInterventionResponses retrieves all intervention responses.
-func (s *InMemoryStore) ListAllInterventionResponses() ([]models.InterventionResponse, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	// Return a copy to prevent external modifications
-	result := make([]models.InterventionResponse, len(s.interventionResponses))
-	copy(result, s.interventionResponses)
-	slog.Debug("InMemoryStore ListAllInterventionResponses succeeded", "count", len(result))
-	return result, nil
-}
-
-// Conversation participant management methods - InMemory implementation
 
 // SaveConversationParticipant stores or updates a conversation participant.
 func (s *InMemoryStore) SaveConversationParticipant(participant models.ConversationParticipant) error {
