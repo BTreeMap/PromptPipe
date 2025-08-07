@@ -412,10 +412,8 @@ func (s *Server) initializeRecovery() error {
 	stateManager := flow.NewStoreBasedStateManager(s.st)
 
 	// Register flow recoveries
-	interventionRecovery := flow.NewMicroHealthInterventionRecovery(stateManager)
 	conversationRecovery := flow.NewConversationFlowRecovery()
 
-	recoveryManager.RegisterRecoverable(interventionRecovery)
 	recoveryManager.RegisterRecoverable(conversationRecovery)
 
 	// Register infrastructure recovery callbacks
@@ -427,13 +425,6 @@ func (s *Server) initializeRecovery() error {
 			"phone", info.PhoneNumber, "flowType", info.FlowType)
 
 		switch info.FlowType {
-		case models.FlowTypeMicroHealthIntervention:
-			// Create intervention hook
-			hook := messaging.CreateInterventionHook(info.ParticipantID, info.PhoneNumber, stateManager, s.msgService, s.timer)
-			if err := s.respHandler.RegisterHook(info.PhoneNumber, hook); err != nil {
-				return fmt.Errorf("failed to register intervention hook: %w", err)
-			}
-
 		case models.FlowTypeConversation:
 			// Create conversation hook
 			hook := messaging.CreateStaticHook(s.msgService)
@@ -500,9 +491,6 @@ func startHTTPServer(addr string, server *Server) *http.Server {
 
 	// Timer management endpoints (global scope)
 	http.HandleFunc("/timers", server.timersHandler)
-
-	// Intervention management endpoints with proper routing
-	http.HandleFunc("/intervention/", server.interventionRouter)
 
 	// Conversation management endpoints with proper routing
 	http.HandleFunc("/conversation/", server.conversationRouter)
@@ -665,106 +653,6 @@ func parseInt(s string, min, max int) (int, error) {
 		return 0, fmt.Errorf("value %d out of range [%d,%d]", val, min, max)
 	}
 	return val, nil
-}
-
-// interventionRouter handles all intervention-related endpoints with proper RESTful routing
-func (s *Server) interventionRouter(w http.ResponseWriter, r *http.Request) {
-	path := strings.TrimPrefix(r.URL.Path, "/intervention")
-
-	// Remove leading slash if present
-	path = strings.TrimPrefix(path, "/")
-
-	slog.Debug("Intervention router", "method", r.Method, "path", path, "fullPath", r.URL.Path)
-
-	// Split path into segments
-	segments := strings.Split(path, "/")
-	if len(segments) == 0 || segments[0] == "" {
-		http.Error(w, "Invalid intervention endpoint", http.StatusNotFound)
-		return
-	}
-
-	switch segments[0] {
-	case "participants":
-		s.handleParticipantRoutes(w, r, segments[1:])
-	case "weekly-summary":
-		s.triggerWeeklySummaryHandler(w, r)
-	case "stats":
-		s.interventionStatsHandler(w, r)
-	default:
-		http.Error(w, "Unknown intervention endpoint", http.StatusNotFound)
-	}
-}
-
-// handleParticipantRoutes handles all participant-related routes
-func (s *Server) handleParticipantRoutes(w http.ResponseWriter, r *http.Request, segments []string) {
-	if len(segments) == 0 || segments[0] == "" {
-		// /intervention/participants
-		switch r.Method {
-		case http.MethodGet:
-			s.listParticipantsHandler(w, r)
-		case http.MethodPost:
-			s.enrollParticipantHandler(w, r)
-		default:
-			w.Header().Set("Allow", "GET, POST")
-			writeJSONResponse(w, http.StatusMethodNotAllowed, models.Error("Method not allowed"))
-		}
-		return
-	}
-
-	// Extract participant ID and add to request context for handlers to use
-	participantID := segments[0]
-	ctx := context.WithValue(r.Context(), ContextKeyParticipantID, participantID)
-	r = r.WithContext(ctx)
-
-	if len(segments) == 1 {
-		// /intervention/participants/{id}
-		switch r.Method {
-		case http.MethodGet:
-			s.getParticipantHandler(w, r)
-		case http.MethodPut:
-			s.updateParticipantHandler(w, r)
-		case http.MethodDelete:
-			s.deleteParticipantHandler(w, r)
-		default:
-			w.Header().Set("Allow", "GET, PUT, DELETE")
-			writeJSONResponse(w, http.StatusMethodNotAllowed, models.Error("Method not allowed"))
-		}
-		return
-	}
-
-	// Handle sub-routes for specific participant
-	switch segments[1] {
-	case "responses":
-		if r.Method == http.MethodPost {
-			s.processResponseHandler(w, r)
-		} else {
-			w.Header().Set("Allow", "POST")
-			writeJSONResponse(w, http.StatusMethodNotAllowed, models.Error("Method not allowed"))
-		}
-	case "advance":
-		if r.Method == http.MethodPost {
-			s.advanceStateHandler(w, r)
-		} else {
-			w.Header().Set("Allow", "POST")
-			writeJSONResponse(w, http.StatusMethodNotAllowed, models.Error("Method not allowed"))
-		}
-	case "reset":
-		if r.Method == http.MethodPost {
-			s.resetParticipantHandler(w, r)
-		} else {
-			w.Header().Set("Allow", "POST")
-			writeJSONResponse(w, http.StatusMethodNotAllowed, models.Error("Method not allowed"))
-		}
-	case "history":
-		if r.Method == http.MethodGet {
-			s.getParticipantHistoryHandler(w, r)
-		} else {
-			w.Header().Set("Allow", "GET")
-			writeJSONResponse(w, http.StatusMethodNotAllowed, models.Error("Method not allowed"))
-		}
-	default:
-		writeJSONResponse(w, http.StatusNotFound, models.Error("Unknown participant endpoint"))
-	}
 }
 
 // conversationRouter handles all conversation-related endpoints with proper RESTful routing
