@@ -3,17 +3,13 @@ package flow
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/BTreeMap/PromptPipe/internal/genai"
-	"github.com/BTreeMap/PromptPipe/internal/models"
 	"github.com/openai/openai-go"
-	"github.com/openai/openai-go/shared"
 )
 
 // IntakeModule provides LLM module functionality for conducting intake conversations and building user profiles.
@@ -43,64 +39,6 @@ func NewIntakeModule(stateManager StateManager, genaiClient genai.ClientInterfac
 	}
 }
 
-// GetToolDefinition returns the OpenAI tool definition for conducting intake conversations.
-func (im *IntakeModule) GetToolDefinition() openai.ChatCompletionToolParam {
-	return openai.ChatCompletionToolParam{
-		Type: "function",
-		Function: shared.FunctionDefinitionParam{
-			Name:        "conduct_intake",
-			Description: openai.String("Conduct a structured intake conversation to build a user profile for personalized habit formation. Use this to guide users through identifying their goals, motivation, timing preferences, and natural habit anchors. The conversation is flexible and adaptive."),
-			Parameters: shared.FunctionParameters{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"user_response": map[string]interface{}{
-						"type":        "string",
-						"description": "The user's response to continue the intake conversation",
-					},
-				},
-				"required": []string{},
-			},
-		},
-	}
-}
-
-// GetProfileSaveToolDefinition returns the OpenAI tool definition for saving user profiles.
-func (im *IntakeModule) GetProfileSaveToolDefinition() openai.ChatCompletionToolParam {
-	return openai.ChatCompletionToolParam{
-		Type: "function",
-		Function: shared.FunctionDefinitionParam{
-			Name:        "save_user_profile",
-			Description: openai.String("Save or update the user's profile with information gathered during intake. Use this whenever you have collected meaningful information about the user's habits, goals, motivation, timing preferences, or anchors."),
-			Parameters: shared.FunctionParameters{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"habit_domain": map[string]interface{}{
-						"type":        "string",
-						"description": "The specific habit or behavior the user wants to build (e.g., 'healthy eating', 'physical activity', 'better sleep')",
-					},
-					"prompt_anchor": map[string]interface{}{
-						"type":        "string",
-						"description": "Natural trigger or anchor for the habit (e.g., 'after coffee', 'before meetings', 'during breaks')",
-					}, // mandatory field
-					"motivational_frame": map[string]interface{}{
-						"type":        "string",
-						"description": "Why this habit matters to the user personally - their deeper motivation",
-					},
-					"preferred_time": map[string]interface{}{
-						"type":        "string",
-						"description": "When the user prefers to receive habit prompts (e.g., '9am', 'morning', 'randomly')",
-					}, // mandatory	field
-					"additional_info": map[string]interface{}{
-						"type":        "string",
-						"description": "Any additional personalization information the user has shared",
-					},
-				},
-				"required": []string{},
-			},
-		},
-	}
-}
-
 // ExecuteIntakeBotWithHistory executes the intake bot tool with conversation history context.
 func (im *IntakeModule) ExecuteIntakeBotWithHistory(ctx context.Context, participantID string, args map[string]interface{}, chatHistory []openai.ChatCompletionMessageParamUnion) (string, error) {
 	slog.Debug("flow.ExecuteIntakeBotWithHistory: processing intake with chat history", "participantID", participantID, "args", args, "historyLength", len(chatHistory))
@@ -120,7 +58,7 @@ func (im *IntakeModule) ExecuteIntakeBotWithHistory(ctx context.Context, partici
 	userResponse, _ := args["user_response"].(string)
 
 	// Get current user profile to understand what information we already have
-	profile, err := im.getOrCreateUserProfile(ctx, participantID)
+	profile, err := im.profileSaveTool.getOrCreateUserProfile(ctx, participantID)
 	if err != nil {
 		slog.Error("flow.ExecuteIntakeBotWithHistory: failed to get user profile", "error", err, "participantID", participantID)
 		return "", fmt.Errorf("failed to get user profile: %w", err)
@@ -142,136 +80,6 @@ func (im *IntakeModule) ExecuteIntakeBotWithHistory(ctx context.Context, partici
 
 	slog.Info("flow.ExecuteIntakeBotWithHistory: intake response generated", "participantID", participantID, "responseLength", len(response))
 	return response, nil
-}
-
-// ExecuteProfileSave executes the profile save tool call.
-func (im *IntakeModule) ExecuteProfileSave(ctx context.Context, participantID string, args map[string]interface{}) (string, error) {
-	slog.Debug("flow.ExecuteProfileSave: saving profile", "participantID", participantID, "args", args)
-
-	// Validate required dependencies
-	if im.stateManager == nil {
-		slog.Error("flow.ExecuteProfileSave: state manager not initialized")
-		return "", fmt.Errorf("state manager not initialized")
-	}
-
-	// Get or create user profile
-	profile, err := im.getOrCreateUserProfile(ctx, participantID)
-	if err != nil {
-		slog.Error("flow.ExecuteProfileSave: failed to get user profile", "error", err, "participantID", participantID)
-		return "", fmt.Errorf("failed to get user profile: %w", err)
-	}
-
-	// Update profile fields from arguments
-	var updated bool
-	if habitDomain, ok := args["habit_domain"].(string); ok && habitDomain != "" {
-		profile.HabitDomain = habitDomain
-		updated = true
-		slog.Debug("flow.ExecuteProfileSave: updated habit domain", "participantID", participantID, "habitDomain", habitDomain)
-	}
-
-	if motivationalFrame, ok := args["motivational_frame"].(string); ok && motivationalFrame != "" {
-		profile.MotivationalFrame = motivationalFrame
-		updated = true
-		slog.Debug("flow.ExecuteProfileSave: updated motivational frame", "participantID", participantID, "motivationalFrame", motivationalFrame)
-	}
-
-	if preferredTime, ok := args["preferred_time"].(string); ok && preferredTime != "" {
-		profile.PreferredTime = preferredTime
-		updated = true
-		slog.Debug("flow.ExecuteProfileSave: updated preferred time", "participantID", participantID, "preferredTime", preferredTime)
-	}
-
-	if promptAnchor, ok := args["prompt_anchor"].(string); ok && promptAnchor != "" {
-		profile.PromptAnchor = promptAnchor
-		updated = true
-		slog.Debug("flow.ExecuteProfileSave: updated prompt anchor", "participantID", participantID, "promptAnchor", promptAnchor)
-	}
-
-	if additionalInfo, ok := args["additional_info"].(string); ok && additionalInfo != "" {
-		profile.AdditionalInfo = additionalInfo
-		updated = true
-		slog.Debug("flow.ExecuteProfileSave: updated additional info", "participantID", participantID, "additionalInfo", additionalInfo)
-	}
-
-	// Save profile if anything was updated
-	if updated {
-		if err := im.saveUserProfile(ctx, participantID, profile); err != nil {
-			slog.Error("flow.ExecuteProfileSave: failed to save user profile", "error", err, "participantID", participantID)
-			return "", fmt.Errorf("failed to save user profile: %w", err)
-		}
-		slog.Info("flow.ExecuteProfileSave: profile saved successfully", "participantID", participantID)
-		return "Profile updated successfully", nil
-	}
-
-	return "No profile changes to save", nil
-}
-
-// getOrCreateUserProfile retrieves or creates a new user profile
-func (im *IntakeModule) getOrCreateUserProfile(ctx context.Context, participantID string) (*UserProfile, error) {
-	profileJSON, err := im.stateManager.GetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyUserProfile)
-	if err != nil {
-		slog.Debug("flow.getOrCreateUserProfile: creating new profile", "participantID", participantID)
-		// Create new profile
-		return &UserProfile{
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
-		}, nil
-	}
-
-	// Handle empty string (no profile exists yet)
-	if profileJSON == "" {
-		slog.Debug("flow.getOrCreateUserProfile: empty profile data, creating new one", "participantID", participantID)
-		return &UserProfile{
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
-		}, nil
-	}
-
-	var profile UserProfile
-	if err := json.Unmarshal([]byte(profileJSON), &profile); err != nil {
-		slog.Error("flow.getOrCreateUserProfile: failed to unmarshal profile", "error", err, "participantID", participantID)
-		return nil, fmt.Errorf("failed to parse user profile: %w", err)
-	}
-
-	slog.Debug("flow.getOrCreateUserProfile: loaded existing profile",
-		"participantID", participantID,
-		"habitDomain", profile.HabitDomain,
-		"motivationalFrame", profile.MotivationalFrame,
-		"preferredTime", profile.PreferredTime,
-		"promptAnchor", profile.PromptAnchor,
-		"createdAt", profile.CreatedAt,
-		"updatedAt", profile.UpdatedAt)
-
-	return &profile, nil
-}
-
-// saveUserProfile saves the user profile to state storage
-func (im *IntakeModule) saveUserProfile(ctx context.Context, participantID string, profile *UserProfile) error {
-	slog.Debug("flow.saveUserProfile: saving profile",
-		"participantID", participantID,
-		"habitDomain", profile.HabitDomain,
-		"motivationalFrame", profile.MotivationalFrame,
-		"preferredTime", profile.PreferredTime,
-		"promptAnchor", profile.PromptAnchor,
-		"additionalInfo", profile.AdditionalInfo)
-
-	profile.UpdatedAt = time.Now()
-	profileJSON, err := json.Marshal(profile)
-	if err != nil {
-		slog.Error("flow.saveUserProfile: failed to marshal profile", "error", err, "participantID", participantID)
-		return fmt.Errorf("failed to marshal user profile: %w", err)
-	}
-
-	slog.Debug("flow.saveUserProfile: marshaled profile", "participantID", participantID, "profileJSON", string(profileJSON))
-
-	err = im.stateManager.SetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyUserProfile, string(profileJSON))
-	if err != nil {
-		slog.Error("flow.saveUserProfile: failed to save to state manager", "error", err, "participantID", participantID)
-		return err
-	}
-
-	slog.Debug("flow.saveUserProfile: profile saved successfully", "participantID", participantID)
-	return nil
 }
 
 // LoadSystemPrompt loads the system prompt from the configured file.
