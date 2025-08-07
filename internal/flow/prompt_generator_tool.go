@@ -275,6 +275,7 @@ func (pgt *PromptGeneratorTool) buildPromptGeneratorSystemPrompt(profile *UserPr
 }
 
 // validateProfile checks if the profile has the minimum required information
+// Only prompt_anchor and preferred_time are mandatory. Other fields generate warnings if missing.
 func (pgt *PromptGeneratorTool) validateProfile(profile *UserProfile) error {
 	slog.Debug("flow.validateProfile: checking profile completeness",
 		"habitDomain", profile.HabitDomain,
@@ -282,14 +283,15 @@ func (pgt *PromptGeneratorTool) validateProfile(profile *UserProfile) error {
 		"promptAnchor", profile.PromptAnchor,
 		"preferredTime", profile.PreferredTime)
 
+	// Check optional fields and warn if missing
 	if profile.HabitDomain == "" {
-		slog.Debug("flow.validateProfile: missing habit domain")
-		return fmt.Errorf("habit domain is required")
+		slog.Warn("flow.validateProfile: habit domain is missing - can be gathered through conversation")
 	}
 	if profile.MotivationalFrame == "" {
-		slog.Debug("flow.validateProfile: missing motivational frame")
-		return fmt.Errorf("motivational frame is required")
+		slog.Warn("flow.validateProfile: motivational frame is missing - can be gathered through conversation")
 	}
+
+	// Check mandatory fields and return errors if missing
 	if profile.PromptAnchor == "" {
 		slog.Debug("flow.validateProfile: missing prompt anchor")
 		return fmt.Errorf("prompt anchor is required")

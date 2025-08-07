@@ -159,22 +159,40 @@ func TestPromptGeneratorTool_ValidateProfile(t *testing.T) {
 		t.Errorf("expected complete profile to be valid, got error: %v", err)
 	}
 
-	// Test incomplete profiles
-	testCases := []struct {
+	// Test profiles that should pass validation (only prompt_anchor and preferred_time are mandatory)
+	validTestCases := []struct {
+		name    string
+		profile *UserProfile
+	}{
+		{
+			name:    "missing habit domain but has required fields",
+			profile: &UserProfile{MotivationalFrame: "test", PreferredTime: "test", PromptAnchor: "test"},
+		},
+		{
+			name:    "missing motivational frame but has required fields",
+			profile: &UserProfile{HabitDomain: "test", PreferredTime: "test", PromptAnchor: "test"},
+		},
+		{
+			name:    "missing both optional fields but has required fields",
+			profile: &UserProfile{PreferredTime: "test", PromptAnchor: "test"},
+		},
+	}
+
+	for _, tc := range validTestCases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tool.validateProfile(tc.profile)
+			if err != nil {
+				t.Errorf("expected %s to be valid, got error: %v", tc.name, err)
+			}
+		})
+	}
+
+	// Test profiles that should fail validation (missing mandatory fields)
+	invalidTestCases := []struct {
 		name    string
 		profile *UserProfile
 		wantErr string
 	}{
-		{
-			name:    "missing habit domain",
-			profile: &UserProfile{MotivationalFrame: "test", PreferredTime: "test", PromptAnchor: "test"},
-			wantErr: "habit domain is required",
-		},
-		{
-			name:    "missing motivational frame",
-			profile: &UserProfile{HabitDomain: "test", PreferredTime: "test", PromptAnchor: "test"},
-			wantErr: "motivational frame is required",
-		},
 		{
 			name:    "missing preferred time",
 			profile: &UserProfile{HabitDomain: "test", MotivationalFrame: "test", PromptAnchor: "test"},
@@ -185,9 +203,14 @@ func TestPromptGeneratorTool_ValidateProfile(t *testing.T) {
 			profile: &UserProfile{HabitDomain: "test", MotivationalFrame: "test", PreferredTime: "test"},
 			wantErr: "prompt anchor is required",
 		},
+		{
+			name:    "missing both mandatory fields",
+			profile: &UserProfile{HabitDomain: "test", MotivationalFrame: "test"},
+			wantErr: "prompt anchor is required",
+		},
 	}
 
-	for _, tc := range testCases {
+	for _, tc := range invalidTestCases {
 		t.Run(tc.name, func(t *testing.T) {
 			err := tool.validateProfile(tc.profile)
 			if err == nil {
