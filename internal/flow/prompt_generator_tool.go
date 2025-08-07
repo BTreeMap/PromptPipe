@@ -63,7 +63,7 @@ func (pgt *PromptGeneratorTool) GetToolDefinition() openai.ChatCompletionToolPar
 
 // ExecutePromptGenerator executes the prompt generator tool call.
 func (pgt *PromptGeneratorTool) ExecutePromptGenerator(ctx context.Context, participantID string, args map[string]interface{}) (string, error) {
-	slog.Debug("flow.ExecutePromptGenerator: generating habit prompt", "participantID", participantID, "args", args)
+	slog.Debug("flow.ExecutePromptGenerator: generating habit prompt", "participantID", participantID)
 
 	// Validate required dependencies
 	if pgt.stateManager == nil || pgt.genaiClient == nil {
@@ -191,7 +191,7 @@ func (pgt *PromptGeneratorTool) generatePersonalizedPromptWithHistory(ctx contex
 	// Create the user prompt for habit generation
 	userPrompt := fmt.Sprintf(
 		"Generate a personalized 1-minute habit prompt using this profile:\n"+
-			"Target Behavior: %s\n"+
+			"Habit Domain: %s\n"+
 			"Motivation: %s\n"+
 			"Preferred Time: %s\n"+
 			"Prompt Anchor: %s\n"+
@@ -199,7 +199,7 @@ func (pgt *PromptGeneratorTool) generatePersonalizedPromptWithHistory(ctx contex
 			"Use the MAP framework (Motivation, Ability, Prompt) and format as:\n"+
 			"\"After/Before [prompt_anchor], try [1-minute action] — it helps you [motivational benefit]. Would that feel doable?\"\n\n"+
 			"Keep it under 30 words, skimmable, and actionable.",
-		profile.TargetBehavior,
+		profile.HabitDomain,
 		profile.MotivationalFrame,
 		profile.PreferredTime,
 		profile.PromptAnchor,
@@ -277,14 +277,14 @@ func (pgt *PromptGeneratorTool) buildPromptGeneratorSystemPrompt(profile *UserPr
 // validateProfile checks if the profile has the minimum required information
 func (pgt *PromptGeneratorTool) validateProfile(profile *UserProfile) error {
 	slog.Debug("flow.validateProfile: checking profile completeness",
-		"targetBehavior", profile.TargetBehavior,
+		"habitDomain", profile.HabitDomain,
 		"motivationalFrame", profile.MotivationalFrame,
 		"promptAnchor", profile.PromptAnchor,
 		"preferredTime", profile.PreferredTime)
 
-	if profile.TargetBehavior == "" {
-		slog.Debug("flow.validateProfile: missing target behavior")
-		return fmt.Errorf("target behavior is required")
+	if profile.HabitDomain == "" {
+		slog.Debug("flow.validateProfile: missing habit domain")
+		return fmt.Errorf("habit domain is required")
 	}
 	if profile.MotivationalFrame == "" {
 		slog.Debug("flow.validateProfile: missing motivational frame")
@@ -327,7 +327,7 @@ func (pgt *PromptGeneratorTool) getUserProfile(ctx context.Context, participantI
 
 	slog.Debug("flow.getUserProfile: parsed profile",
 		"participantID", participantID,
-		"targetBehavior", profile.TargetBehavior,
+		"habitDomain", profile.HabitDomain,
 		"motivationalFrame", profile.MotivationalFrame,
 		"promptAnchor", profile.PromptAnchor,
 		"preferredTime", profile.PreferredTime)

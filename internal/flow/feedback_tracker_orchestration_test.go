@@ -149,7 +149,7 @@ func TestConversationFlow_AutomaticFeedbackCollection(t *testing.T) {
 
 	// Set up a user profile for prompt generation
 	profile := &UserProfile{
-		TargetBehavior:    "physical activity",
+		HabitDomain:       "physical activity",
 		MotivationalFrame: "feel more energized",
 		PreferredTime:     "morning",
 		PromptAnchor:      "after coffee",

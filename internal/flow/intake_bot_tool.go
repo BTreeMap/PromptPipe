@@ -156,10 +156,10 @@ func (ibt *IntakeBotTool) ExecuteProfileSave(ctx context.Context, participantID 
 
 	// Update profile fields from arguments
 	var updated bool
-	if targetBehavior, ok := args["target_behavior"].(string); ok && targetBehavior != "" {
-		profile.TargetBehavior = targetBehavior
+	if habitDomain, ok := args["habit_domain"].(string); ok && habitDomain != "" {
+		profile.HabitDomain = habitDomain
 		updated = true
-		slog.Debug("flow.ExecuteProfileSave: updated target behavior", "participantID", participantID, "targetBehavior", targetBehavior)
+		slog.Debug("flow.ExecuteProfileSave: updated habit domain", "participantID", participantID, "habitDomain", habitDomain)
 	}
 
 	if motivationalFrame, ok := args["motivational_frame"].(string); ok && motivationalFrame != "" {
@@ -228,7 +228,7 @@ func (ibt *IntakeBotTool) getOrCreateUserProfile(ctx context.Context, participan
 
 	slog.Debug("flow.getOrCreateUserProfile: loaded existing profile",
 		"participantID", participantID,
-		"targetBehavior", profile.TargetBehavior,
+		"habitDomain", profile.HabitDomain,
 		"motivationalFrame", profile.MotivationalFrame,
 		"preferredTime", profile.PreferredTime,
 		"promptAnchor", profile.PromptAnchor,
@@ -242,7 +242,7 @@ func (ibt *IntakeBotTool) getOrCreateUserProfile(ctx context.Context, participan
 func (ibt *IntakeBotTool) saveUserProfile(ctx context.Context, participantID string, profile *UserProfile) error {
 	slog.Debug("flow.saveUserProfile: saving profile",
 		"participantID", participantID,
-		"targetBehavior", profile.TargetBehavior,
+		"habitDomain", profile.HabitDomain,
 		"motivationalFrame", profile.MotivationalFrame,
 		"preferredTime", profile.PreferredTime,
 		"promptAnchor", profile.PromptAnchor,
@@ -323,10 +323,10 @@ func (ibt *IntakeBotTool) buildIntakeContext(profile *UserProfile) string {
 	var missing []string
 	var present []string
 
-	if profile.TargetBehavior == "" {
-		missing = append(missing, "target behavior/habit")
+	if profile.HabitDomain == "" {
+		missing = append(missing, "habit domain")
 	} else {
-		present = append(present, fmt.Sprintf("target behavior: %s", profile.TargetBehavior))
+		present = append(present, fmt.Sprintf("habit domain: %s", profile.HabitDomain))
 	}
 
 	if profile.MotivationalFrame == "" {

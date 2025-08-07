@@ -18,7 +18,7 @@ import (
 
 // UserProfile represents the structured user profile built by the intake bot
 type UserProfile struct {
-	TargetBehavior    string    `json:"target_behavior"`    // e.g., "healthy eating", "physical activity"
+	HabitDomain       string    `json:"habit_domain"`       // e.g., "healthy eating", "physical activity"
 	MotivationalFrame string    `json:"motivational_frame"` // User's personal motivation
 	PreferredTime     string    `json:"preferred_time"`     // Time window for nudging
 	PromptAnchor      string    `json:"prompt_anchor"`      // When habit fits naturally
@@ -375,13 +375,13 @@ func (ftt *FeedbackTrackerTool) generatePersonalizedFeedback(ctx context.Context
 // buildFeedbackContext creates context for the GenAI about the feedback situation
 func (ftt *FeedbackTrackerTool) buildFeedbackContext(profile *UserProfile, completionStatus, userResponse, barrierReason, suggestedModification string) string {
 	context := fmt.Sprintf(`FEEDBACK TRACKING CONTEXT:
-- User's target behavior: %s
+- User's habit domain: %s
 - Motivational frame: %s
 - Completion status: %s
 - Total prompts sent: %d
 - Success count: %d
 - User response: %s`,
-		profile.TargetBehavior,
+		profile.HabitDomain,
 		profile.MotivationalFrame,
 		completionStatus,
 		profile.TotalPrompts,

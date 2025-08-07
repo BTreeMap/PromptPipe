@@ -41,7 +41,7 @@ func TestPromptGeneratorTool_ExecutePromptGenerator(t *testing.T) {
 
 	// Set up user profile
 	profile := &UserProfile{
-		TargetBehavior:    "physical activity",
+		HabitDomain:       "physical activity",
 		MotivationalFrame: "feel more energized",
 		PreferredTime:     "morning",
 		PromptAnchor:      "after coffee",
@@ -95,7 +95,7 @@ func TestPromptGeneratorTool_ExecutePromptGenerator_IncompleteProfile(t *testing
 
 	// Set up incomplete profile (missing required fields)
 	profile := &UserProfile{
-		TargetBehavior: "physical activity",
+		HabitDomain: "physical activity",
 		// Missing other required fields
 	}
 	profileJSON, _ := json.Marshal(profile)
@@ -148,7 +148,7 @@ func TestPromptGeneratorTool_ValidateProfile(t *testing.T) {
 
 	// Test complete profile
 	completeProfile := &UserProfile{
-		TargetBehavior:    "physical activity",
+		HabitDomain:       "physical activity",
 		MotivationalFrame: "feel more energized",
 		PreferredTime:     "morning",
 		PromptAnchor:      "after coffee",
@@ -166,23 +166,23 @@ func TestPromptGeneratorTool_ValidateProfile(t *testing.T) {
 		wantErr string
 	}{
 		{
-			name:    "missing target behavior",
+			name:    "missing habit domain",
 			profile: &UserProfile{MotivationalFrame: "test", PreferredTime: "test", PromptAnchor: "test"},
-			wantErr: "target behavior is required",
+			wantErr: "habit domain is required",
 		},
 		{
 			name:    "missing motivational frame",
-			profile: &UserProfile{TargetBehavior: "test", PreferredTime: "test", PromptAnchor: "test"},
+			profile: &UserProfile{HabitDomain: "test", PreferredTime: "test", PromptAnchor: "test"},
 			wantErr: "motivational frame is required",
 		},
 		{
 			name:    "missing preferred time",
-			profile: &UserProfile{TargetBehavior: "test", MotivationalFrame: "test", PromptAnchor: "test"},
+			profile: &UserProfile{HabitDomain: "test", MotivationalFrame: "test", PromptAnchor: "test"},
 			wantErr: "preferred time is required",
 		},
 		{
 			name:    "missing prompt anchor",
-			profile: &UserProfile{TargetBehavior: "test", MotivationalFrame: "test", PreferredTime: "test"},
+			profile: &UserProfile{HabitDomain: "test", MotivationalFrame: "test", PreferredTime: "test"},
 			wantErr: "prompt anchor is required",
 		},
 	}

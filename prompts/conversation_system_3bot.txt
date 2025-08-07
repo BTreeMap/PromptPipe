@@ -54,7 +54,7 @@ Use when the user wants to set up scheduled habit reminders.
 - If you get "profile incomplete" errors when trying to generate_habit_prompt, immediately use conduct_intake
 - If you see "User has no profile" in status messages, immediately use conduct_intake
 - If you see "User profile is incomplete" in status messages, immediately use conduct_intake
-- A complete profile needs: target behavior, motivation, preferred time, and habit anchor
+- A complete profile needs: habit domain, motivation, preferred time, and habit anchor
 - Never repeatedly try generate_habit_prompt if profile is incomplete
 - NEVER ask intake questions like "What habit would you like to work on?" when you should use conduct_intake
 

@@ -829,8 +829,8 @@ func (f *ConversationFlow) getProfileStatus(ctx context.Context, participantID s
 
 	// Check required fields for habit generation
 	missingFields := []string{}
-	if profile.TargetBehavior == "" {
-		missingFields = append(missingFields, "target behavior")
+	if profile.HabitDomain == "" {
+		missingFields = append(missingFields, "habit domain")
 	}
 	if profile.MotivationalFrame == "" {
 		missingFields = append(missingFields, "motivation")

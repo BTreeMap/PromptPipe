@@ -16,7 +16,7 @@ Do not skip any of the 3 parts (MAP).
 
 Now generate a 1-minute healthy habit suggestion using the three inputs:
 - When: {{prompt_anchor}}
-- What: {{1-minute version of target_behavior}}
+- What: {{1-minute version of habit_domain}}
 - Why: {{motivational frame from user}}
 
 Output format:

@@ -66,7 +66,7 @@ func TestFeedbackTrackerTool_ExecuteFeedbackTracker_Completed(t *testing.T) {
 
 	// Set up existing profile
 	existingProfile := &UserProfile{
-		TargetBehavior:    "physical activity",
+		HabitDomain:       "physical activity",
 		MotivationalFrame: "feel more energized",
 		PreferredTime:     "morning",
 		PromptAnchor:      "after coffee",
