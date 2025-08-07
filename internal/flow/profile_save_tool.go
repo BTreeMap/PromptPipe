@@ -88,7 +88,10 @@ func (pst *ProfileSaveTool) GetToolDefinition() openai.ChatCompletionToolParam {
 						"description": "Last requested modification or adjustment (for feedback tracking)",
 					},
 				},
-				"required": []string{},
+				"required": []string{
+					"prompt_anchor",
+					"preferred_time",
+				},
 			},
 		},
 	}
