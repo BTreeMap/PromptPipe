@@ -13,6 +13,24 @@ import (
 	"github.com/openai/openai-go/shared"
 )
 
+// UserProfile represents the structured user profile built by the intake bot
+type UserProfile struct {
+	HabitDomain       string    `json:"habit_domain"`       // e.g., "healthy eating", "physical activity"
+	MotivationalFrame string    `json:"motivational_frame"` // User's personal motivation
+	PreferredTime     string    `json:"preferred_time"`     // Time window for nudging
+	PromptAnchor      string    `json:"prompt_anchor"`      // When habit fits naturally
+	AdditionalInfo    string    `json:"additional_info"`    // Any extra personalization info
+	CreatedAt         time.Time `json:"created_at"`         // When profile was created
+	UpdatedAt         time.Time `json:"updated_at"`         // Last profile update
+
+	// Feedback tracking fields
+	LastSuccessfulPrompt string `json:"last_successful_prompt,omitempty"` // Last prompt that worked
+	LastBarrier          string `json:"last_barrier,omitempty"`           // Last reported barrier
+	LastTweak            string `json:"last_tweak,omitempty"`             // Last requested modification
+	SuccessCount         int    `json:"success_count"`                    // Number of successful completions
+	TotalPrompts         int    `json:"total_prompts"`                    // Total prompts sent
+}
+
 // ProfileSaveTool provides functionality for saving and updating user profiles.
 // This tool is shared across all conversation modules (coordinator, intake, feedback).
 type ProfileSaveTool struct {
