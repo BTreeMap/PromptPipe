@@ -82,16 +82,16 @@ func (s *Server) scheduleHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Body != nil {
 		defer r.Body.Close()
 	}
-	slog.Debug("scheduleHandler invoked", "method", r.Method, "path", r.URL.Path)
+	slog.Debug("Server.scheduleHandler: processing schedule request", "method", r.Method, "path", r.URL.Path)
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", http.MethodPost)
-		slog.Warn("scheduleHandler method not allowed", "method", r.Method)
+		slog.Warn("Server.scheduleHandler: method not allowed", "method", r.Method)
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
 	var p models.Prompt
 	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
-		slog.Warn("Failed to decode JSON in scheduleHandler", "error", err)
+		slog.Warn("Server.scheduleHandler: failed to decode JSON", "error", err)
 		writeJSONResponse(w, http.StatusBadRequest, models.Error("Invalid JSON format"))
 		return
 	}
@@ -104,7 +104,7 @@ func (s *Server) scheduleHandler(w http.ResponseWriter, r *http.Request) {
 	// Validate and canonicalize recipient using the messaging service
 	canonicalTo, err := s.msgService.ValidateAndCanonicalizeRecipient(p.To)
 	if err != nil {
-		slog.Warn("scheduleHandler recipient validation failed", "error", err, "original_to", p.To)
+		slog.Warn("Server.scheduleHandler: recipient validation failed", "error", err, "original_to", p.To)
 		writeJSONResponse(w, http.StatusBadRequest, models.Error(err.Error()))
 		return
 	}
@@ -113,31 +113,31 @@ func (s *Server) scheduleHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Validate prompt using the models validation
 	if err := p.Validate(); err != nil {
-		slog.Warn("scheduleHandler validation failed", "error", err, "prompt", p)
+		slog.Warn("Server.scheduleHandler: validation failed", "error", err, "prompt", p)
 		writeJSONResponse(w, http.StatusBadRequest, models.Error(err.Error()))
 		return
 	}
 
 	// Additional validation for GenAI client availability
 	if p.Type == models.PromptTypeGenAI && s.gaClient == nil {
-		slog.Warn("scheduleHandler genai client not configured", "prompt", p)
+		slog.Warn("Server.scheduleHandler: GenAI client not configured", "prompt", p)
 		writeJSONResponse(w, http.StatusBadRequest, models.Error("GenAI client not configured"))
 		return
 	}
 	// Apply default schedule if none provided
 	if p.Schedule == nil {
 		if s.defaultSchedule == nil {
-			slog.Warn("scheduleHandler missing schedule and no default set", "prompt", p)
+			slog.Warn("Server.scheduleHandler: missing schedule and no default configured", "prompt", p)
 			writeJSONResponse(w, http.StatusBadRequest, models.Error("Missing required field: schedule"))
 			return
 		}
 		p.Schedule = s.defaultSchedule
 	}
 	// Capture prompt locally for closure
-	slog.Debug("scheduleHandler scheduling job", "to", p.To, "schedule", p.Schedule.ToCronString())
+	slog.Debug("Server.scheduleHandler: scheduling job", "to", p.To, "schedule", p.Schedule.ToCronString())
 	job := p
 	timerID, addErr := s.timer.ScheduleWithSchedule(p.Schedule, func() {
-		slog.Debug("scheduled job triggered", "to", job.To)
+		slog.Debug("Server.scheduleHandler: scheduled job triggered", "to", job.To)
 		// Create context with timeout for scheduled job operations
 		ctx, cancel := context.WithTimeout(context.Background(), DefaultScheduledJobTimeout)
 		defer cancel()
@@ -145,41 +145,41 @@ func (s *Server) scheduleHandler(w http.ResponseWriter, r *http.Request) {
 		// Generate message body via flow
 		msg, genErr := flow.Generate(ctx, job)
 		if genErr != nil {
-			slog.Error("Flow generation error in scheduled job", "error", genErr)
+			slog.Error("Server.scheduleHandler: failed to generate content in scheduled job", "error", genErr)
 			return
 		}
 		// Send message
 		if sendErr := s.msgService.SendMessage(ctx, job.To, msg); sendErr != nil {
-			slog.Error("Scheduled job send error", "error", sendErr, "to", job.To)
+			slog.Error("Server.scheduleHandler: failed to send scheduled message", "error", sendErr, "to", job.To)
 			return
 		}
 
 		// Auto-register response handler for scheduled prompts that expect responses
 		if s.respHandler.AutoRegisterResponseHandler(job) {
-			slog.Debug("Response handler registered for scheduled prompt", "type", job.Type, "to", job.To)
+			slog.Debug("Server.scheduleHandler: response handler registered for scheduled prompt", "type", job.Type, "to", job.To)
 		}
 
 		// Add receipt
 		recErr := s.st.AddReceipt(models.Receipt{To: job.To, Status: models.MessageStatusSent, Time: time.Now().Unix()})
 		if recErr != nil {
-			slog.Error("Error adding scheduled receipt", "error", recErr)
+			slog.Error("Server.scheduleHandler: failed to add scheduled receipt", "error", recErr)
 		}
 	})
 	if addErr != nil {
-		slog.Error("Error scheduling job", "error", addErr)
+		slog.Error("Server.scheduleHandler: failed to schedule job", "error", addErr)
 		writeJSONResponse(w, http.StatusInternalServerError, models.Error("Failed to schedule job"))
 		return
 	}
 	// Job scheduled successfully
-	slog.Info("Job scheduled successfully", "to", p.To, "schedule", p.Schedule.ToCronString(), "timerID", timerID)
+	slog.Info("Server.scheduleHandler: job scheduled successfully", "to", p.To, "schedule", p.Schedule.ToCronString(), "timerID", timerID)
 	writeJSONResponse(w, http.StatusCreated, models.SuccessWithMessage("Scheduled successfully", timerID))
 }
 
 func (s *Server) receiptsHandler(w http.ResponseWriter, r *http.Request) {
-	slog.Debug("receiptsHandler invoked", "method", r.Method, "path", r.URL.Path)
+	slog.Debug("Server.receiptsHandler: processing receipts request", "method", r.Method, "path", r.URL.Path)
 	if r.Method != http.MethodGet {
 		w.Header().Set("Allow", http.MethodGet)
-		slog.Warn("receiptsHandler method not allowed", "method", r.Method)
+		slog.Warn("Server.receiptsHandler: method not allowed", "method", r.Method)
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}

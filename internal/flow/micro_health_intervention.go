@@ -214,58 +214,58 @@ func (g *MicroHealthInterventionGenerator) Generate(ctx context.Context, p model
 	// Dependencies are only needed for stateful operations like state transitions and timers
 	switch p.State {
 	case "", models.StateOrientation:
-		slog.Debug("MicroHealthIntervention state orientation", "to", p.To)
+		slog.Debug("MicroHealthInterventionGenerator.Generate: processing orientation state", "to", p.To)
 		return MsgOrientation, nil
 	case models.StateCommitmentPrompt:
-		slog.Debug("MicroHealthIntervention state commitment prompt", "to", p.To)
+		slog.Debug("MicroHealthInterventionGenerator.Generate: processing commitment prompt state", "to", p.To)
 		return MsgCommitment, nil
 	case models.StateFeelingPrompt:
-		slog.Debug("MicroHealthIntervention state feeling prompt", "to", p.To)
+		slog.Debug("MicroHealthInterventionGenerator.Generate: processing feeling prompt state", "to", p.To)
 		return MsgFeeling, nil
 	case models.StateRandomAssignment:
-		slog.Debug("MicroHealthIntervention state random assignment", "to", p.To)
+		slog.Debug("MicroHealthInterventionGenerator.Generate: processing random assignment state", "to", p.To)
 		return MsgRandomAssignment, nil
 	case models.StateSendInterventionImmediate:
-		slog.Debug("MicroHealthIntervention state send intervention immediate", "to", p.To)
+		slog.Debug("MicroHealthInterventionGenerator.Generate: processing send intervention immediate state", "to", p.To)
 		return MsgImmediateIntervention, nil
 	case models.StateSendInterventionReflective:
-		slog.Debug("MicroHealthIntervention state send intervention reflective", "to", p.To)
+		slog.Debug("MicroHealthInterventionGenerator.Generate: processing send intervention reflective state", "to", p.To)
 		return MsgReflectiveIntervention, nil
 	case models.StateReinforcementFollowup:
-		slog.Debug("MicroHealthIntervention state reinforcement followup", "to", p.To)
+		slog.Debug("MicroHealthInterventionGenerator.Generate: processing reinforcement followup state", "to", p.To)
 		return MsgReinforcement, nil
 	case models.StateDidYouGetAChance:
-		slog.Debug("MicroHealthIntervention state did you get a chance", "to", p.To)
+		slog.Debug("MicroHealthInterventionGenerator.Generate: processing did you get a chance state", "to", p.To)
 		return MsgDidYouGetAChance, nil
 	case models.StateContextQuestion:
-		slog.Debug("MicroHealthIntervention state context question", "to", p.To)
+		slog.Debug("MicroHealthInterventionGenerator.Generate: processing context question state", "to", p.To)
 		return MsgContext, nil
 	case models.StateMoodQuestion:
-		slog.Debug("MicroHealthIntervention state mood question", "to", p.To)
+		slog.Debug("MicroHealthInterventionGenerator.Generate: processing mood question state", "to", p.To)
 		return MsgMood, nil
 	case models.StateBarrierCheckAfterContextMood:
-		slog.Debug("MicroHealthIntervention state barrier check", "to", p.To)
+		slog.Debug("MicroHealthInterventionGenerator.Generate: processing barrier check state", "to", p.To)
 		return MsgBarrierDetail, nil
 	case models.StateBarrierReasonNoChance:
-		slog.Debug("MicroHealthIntervention state barrier reason", "to", p.To)
+		slog.Debug("MicroHealthInterventionGenerator.Generate: processing barrier reason state", "to", p.To)
 		return MsgBarrierReason, nil
 	case models.StateIgnoredPath:
-		slog.Debug("MicroHealthIntervention state ignored path", "to", p.To)
+		slog.Debug("MicroHealthInterventionGenerator.Generate: processing ignored path state", "to", p.To)
 		return MsgIgnoredPath, nil
 	case models.StateEndOfDay:
-		slog.Debug("MicroHealthIntervention state end of day", "to", p.To)
+		slog.Debug("MicroHealthInterventionGenerator.Generate: processing end of day state", "to", p.To)
 		return MsgEndOfDay, nil
 	case models.StateHabitReminder:
-		slog.Debug("MicroHealthIntervention state habit reminder", "to", p.To)
+		slog.Debug("MicroHealthInterventionGenerator.Generate: processing habit reminder state", "to", p.To)
 		return MsgHabitReminder, nil
 	case models.StateFollowUp:
-		slog.Debug("MicroHealthIntervention state follow up", "to", p.To)
+		slog.Debug("MicroHealthInterventionGenerator.Generate: processing follow up state", "to", p.To)
 		return MsgFollowUp, nil
 	case models.StateComplete:
-		slog.Debug("MicroHealthIntervention state complete", "to", p.To)
+		slog.Debug("MicroHealthInterventionGenerator.Generate: processing complete state", "to", p.To)
 		return MsgComplete, nil
 	default:
-		slog.Error("MicroHealthIntervention unsupported state", "state", p.State, "to", p.To)
+		slog.Error("MicroHealthInterventionGenerator.Generate: unsupported state", "state", p.State, "to", p.To)
 		return "", fmt.Errorf("unsupported micro health intervention state '%s'", p.State)
 	}
 }
@@ -275,14 +275,14 @@ func (g *MicroHealthInterventionGenerator) Generate(ctx context.Context, p model
 func (g *MicroHealthInterventionGenerator) ProcessResponse(ctx context.Context, participantID, response string) error {
 	// Validate dependencies for stateful operations
 	if g.stateManager == nil || g.timer == nil {
-		slog.Error("MicroHealthIntervention dependencies not initialized for state operations")
+		slog.Error("MicroHealthInterventionGenerator.ProcessResponse: dependencies not initialized for state operations")
 		return fmt.Errorf("generator dependencies not properly initialized for state operations")
 	}
 
 	// Get current state
 	currentState, err := g.stateManager.GetCurrentState(ctx, participantID, models.FlowTypeMicroHealthIntervention)
 	if err != nil {
-		slog.Error("MicroHealthIntervention ProcessResponse: failed to get current state", "error", err, "participantID", participantID)
+		slog.Error("MicroHealthInterventionGenerator.ProcessResponse: failed to get current state", "error", err, "participantID", participantID)
 		return fmt.Errorf("failed to get current state: %w", err)
 	}
 
@@ -291,7 +291,7 @@ func (g *MicroHealthInterventionGenerator) ProcessResponse(ctx context.Context, 
 		currentState = models.StateOrientation
 	}
 
-	slog.Debug("MicroHealthIntervention ProcessResponse", "participantID", participantID, "response", response, "currentState", currentState)
+	slog.Debug("MicroHealthInterventionGenerator.ProcessResponse: processing response", "participantID", participantID, "response", response, "currentState", currentState)
 
 	// Handle "Ready" override - can be sent at any time to trigger immediate intervention
 	if canonicalizeResponse(response) == "ready" && currentState == models.StateEndOfDay {
@@ -333,11 +333,11 @@ func (g *MicroHealthInterventionGenerator) ProcessResponse(ctx context.Context, 
 		if canonicalizeResponse(response) == "ready" {
 			return g.transitionToState(ctx, participantID, models.StateCommitmentPrompt)
 		}
-		slog.Debug("MicroHealthIntervention ignoring response in END_OF_DAY state", "participantID", participantID, "response", response)
+		slog.Debug("MicroHealthInterventionGenerator.ProcessResponse: ignoring response in END_OF_DAY state", "participantID", participantID, "response", response)
 		return nil
 
 	default:
-		slog.Warn("MicroHealthIntervention ProcessResponse: unhandled state", "state", currentState, "participantID", participantID)
+		slog.Warn("MicroHealthInterventionGenerator.ProcessResponse: unhandled state", "state", currentState, "participantID", participantID)
 		return fmt.Errorf("unhandled state: %s", currentState)
 	}
 }
@@ -346,10 +346,10 @@ func (g *MicroHealthInterventionGenerator) ProcessResponse(ctx context.Context, 
 func (g *MicroHealthInterventionGenerator) transitionToState(ctx context.Context, participantID string, newState models.StateType) error {
 	err := g.stateManager.SetCurrentState(ctx, participantID, models.FlowTypeMicroHealthIntervention, newState)
 	if err != nil {
-		slog.Error("MicroHealthIntervention failed to transition state", "error", err, "participantID", participantID, "newState", newState)
+		slog.Error("MicroHealthInterventionGenerator.transitionToState: failed to transition state", "error", err, "participantID", participantID, "newState", newState)
 		return fmt.Errorf("failed to transition to state %s: %w", newState, err)
 	}
-	slog.Info("MicroHealthIntervention state transition", "participantID", participantID, "newState", newState)
+	slog.Info("MicroHealthInterventionGenerator.transitionToState: state transition completed", "participantID", participantID, "newState", newState)
 	return nil
 }
 
@@ -386,7 +386,7 @@ func (g *MicroHealthInterventionGenerator) processCommitmentResponse(ctx context
 
 	default:
 		// Invalid response - could send error message or ignore
-		slog.Warn("MicroHealthIntervention invalid commitment response", "participantID", participantID, "response", response)
+		slog.Warn("MicroHealthInterventionGenerator.processCommitmentResponse: invalid commitment response", "participantID", participantID, "response", response)
 		return nil // Don't transition state, wait for valid response
 	}
 }
@@ -418,7 +418,7 @@ func (g *MicroHealthInterventionGenerator) processFeelingResponse(ctx context.Co
 		return g.processRandomAssignment(ctx, participantID)
 	}
 
-	slog.Warn("MicroHealthIntervention invalid feeling response", "participantID", participantID, "response", response)
+	slog.Warn("MicroHealthInterventionGenerator.processFeelingResponse: invalid feeling response", "participantID", participantID, "response", response)
 	return nil // Don't transition, wait for valid response
 }
 
@@ -480,7 +480,7 @@ func (g *MicroHealthInterventionGenerator) processInterventionResponse(ctx conte
 		return g.scheduleDidYouGetAChance(ctx, participantID)
 
 	default:
-		slog.Warn("MicroHealthIntervention invalid intervention response", "participantID", participantID, "response", response)
+		slog.Warn("MicroHealthInterventionGenerator.processInterventionResponse: invalid intervention response", "participantID", participantID, "response", response)
 		return nil // Don't transition, wait for "done" or "no"
 	}
 }
@@ -525,7 +525,7 @@ func (g *MicroHealthInterventionGenerator) processDidYouGetAChanceResponse(ctx c
 		return g.scheduleBarrierReason(ctx, participantID)
 
 	default:
-		slog.Warn("MicroHealthIntervention invalid did you get a chance response", "participantID", participantID, "response", response)
+		slog.Warn("MicroHealthInterventionGenerator.processDidYouGetAChanceResponse: invalid response", "participantID", participantID, "response", response)
 		return nil
 	}
 }
@@ -559,7 +559,7 @@ func (g *MicroHealthInterventionGenerator) processContextResponse(ctx context.Co
 		return g.scheduleMoodQuestion(ctx, participantID)
 	}
 
-	slog.Warn("MicroHealthIntervention invalid context response", "participantID", participantID, "response", response)
+	slog.Warn("MicroHealthInterventionGenerator.processContextResponse: invalid context response", "participantID", participantID, "response", response)
 	return nil
 }
 
@@ -592,7 +592,7 @@ func (g *MicroHealthInterventionGenerator) processMoodResponse(ctx context.Conte
 		return g.scheduleBarrierCheck(ctx, participantID)
 	}
 
-	slog.Warn("MicroHealthIntervention invalid mood response", "participantID", participantID, "response", response)
+	slog.Warn("MicroHealthInterventionGenerator.processMoodResponse: invalid mood response", "participantID", participantID, "response", response)
 	return nil
 }
 
@@ -666,40 +666,40 @@ func (g *MicroHealthInterventionGenerator) processBarrierReasonResponse(ctx cont
 // Timeout handlers
 
 func (g *MicroHealthInterventionGenerator) handleFeelingTimeout(ctx context.Context, participantID string) {
-	slog.Info("MicroHealthIntervention feeling timeout", "participantID", participantID)
+	slog.Info("MicroHealthInterventionGenerator.handleFeelingTimeout: feeling timeout occurred", "participantID", participantID)
 	g.stateManager.SetStateData(ctx, participantID, models.FlowTypeMicroHealthIntervention, models.DataKeyFeelingResponse, "timed_out")
 	g.processRandomAssignment(ctx, participantID)
 }
 
 func (g *MicroHealthInterventionGenerator) handleCompletionTimeout(ctx context.Context, participantID string) {
-	slog.Info("MicroHealthIntervention completion timeout", "participantID", participantID)
+	slog.Info("MicroHealthInterventionGenerator.handleCompletionTimeout: completion timeout occurred", "participantID", participantID)
 	g.stateManager.SetStateData(ctx, participantID, models.FlowTypeMicroHealthIntervention, models.DataKeyCompletionResponse, string(models.ResponseNoReply))
 	g.scheduleDidYouGetAChance(ctx, participantID)
 }
 
 func (g *MicroHealthInterventionGenerator) handleDidYouGetAChanceTimeout(ctx context.Context, participantID string) {
-	slog.Info("MicroHealthIntervention did you get a chance timeout", "participantID", participantID)
+	slog.Info("MicroHealthInterventionGenerator.handleDidYouGetAChanceTimeout: timeout occurred", "participantID", participantID)
 	g.stateManager.SetStateData(ctx, participantID, models.FlowTypeMicroHealthIntervention, models.DataKeyGotChanceResponse, string(models.ResponseNoReply))
 	g.transitionToState(ctx, participantID, models.StateIgnoredPath)
 }
 
 func (g *MicroHealthInterventionGenerator) handleContextTimeout(ctx context.Context, participantID string) {
-	slog.Info("MicroHealthIntervention context timeout", "participantID", participantID)
+	slog.Info("MicroHealthInterventionGenerator.handleContextTimeout: context timeout occurred", "participantID", participantID)
 	g.transitionToState(ctx, participantID, models.StateEndOfDay)
 }
 
 func (g *MicroHealthInterventionGenerator) handleMoodTimeout(ctx context.Context, participantID string) {
-	slog.Info("MicroHealthIntervention mood timeout", "participantID", participantID)
+	slog.Info("MicroHealthInterventionGenerator.handleMoodTimeout: mood timeout occurred", "participantID", participantID)
 	g.transitionToState(ctx, participantID, models.StateEndOfDay)
 }
 
 func (g *MicroHealthInterventionGenerator) handleBarrierCheckTimeout(ctx context.Context, participantID string) {
-	slog.Info("MicroHealthIntervention barrier check timeout", "participantID", participantID)
+	slog.Info("MicroHealthInterventionGenerator.handleBarrierCheckTimeout: barrier check timeout occurred", "participantID", participantID)
 	g.transitionToState(ctx, participantID, models.StateEndOfDay)
 }
 
 func (g *MicroHealthInterventionGenerator) handleBarrierReasonTimeout(ctx context.Context, participantID string) {
-	slog.Info("MicroHealthIntervention barrier reason timeout", "participantID", participantID)
+	slog.Info("MicroHealthInterventionGenerator.handleBarrierReasonTimeout: barrier reason timeout occurred", "participantID", participantID)
 	g.transitionToState(ctx, participantID, models.StateEndOfDay)
 }
 

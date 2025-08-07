@@ -291,7 +291,7 @@ func (st *SchedulerTool) executeScheduledPrompt(ctx context.Context, prompt mode
 		// Use GenAI to generate personalized message content
 		message, err = st.genaiClient.GeneratePromptWithContext(ctx, prompt.SystemPrompt, prompt.UserPrompt)
 		if err != nil {
-			slog.Error("Failed to generate scheduled prompt content", "error", err, "to", prompt.To)
+			slog.Error("SchedulerTool.executeScheduledPrompt: failed to generate content", "error", err, "to", prompt.To)
 			// Fallback to user prompt if generation fails
 			message = prompt.UserPrompt
 		}
@@ -301,16 +301,16 @@ func (st *SchedulerTool) executeScheduledPrompt(ctx context.Context, prompt mode
 	} else {
 		// Fallback message
 		message = "Daily habit reminder - it's time for your healthy habit!"
-		slog.Warn("No message content available, using fallback", "to", prompt.To)
+		slog.Warn("SchedulerTool.executeScheduledPrompt: no message content available, using fallback", "to", prompt.To)
 	}
 
 	// Send the message
 	if err := st.msgService.SendMessage(ctx, prompt.To, message); err != nil {
-		slog.Error("Failed to send scheduled prompt", "error", err, "to", prompt.To, "message", message)
+		slog.Error("SchedulerTool.executeScheduledPrompt: failed to send message", "error", err, "to", prompt.To, "message", message)
 		return
 	}
 
-	slog.Info("Scheduled prompt sent successfully", "to", prompt.To, "messageLength", len(message))
+	slog.Info("SchedulerTool.executeScheduledPrompt: message sent successfully", "to", prompt.To, "messageLength", len(message))
 }
 
 // executeCreateSchedule creates a new schedule.
@@ -433,7 +433,7 @@ func (st *SchedulerTool) executeCreateSchedule(ctx context.Context, participantI
 		}
 
 		if err := st.storeScheduleInfo(ctx, participantID, scheduleInfo); err != nil {
-			slog.Warn("Failed to store schedule metadata", "participantID", participantID, "scheduleID", scheduleID, "error", err)
+			slog.Warn("SchedulerTool.executeCreateSchedule: failed to store schedule metadata", "participantID", participantID, "scheduleID", scheduleID, "error", err)
 			// Don't fail the whole operation - the schedule is still active
 		}
 	}
@@ -441,7 +441,7 @@ func (st *SchedulerTool) executeCreateSchedule(ctx context.Context, participantI
 	successMessage := fmt.Sprintf("✅ Perfect! I've scheduled your daily habit reminders to be sent %s. You'll receive personalized messages about: %s\n\nYour reminders are all set and will kick off tomorrow! Schedule ID: %s\n\nIf you'd like to try out a personalized message right now, just say the word.",
 		scheduleDescription, params.HabitDescription, scheduleID)
 
-	slog.Info("Scheduler tool executed successfully", "participantID", participantID, "timerID", timerID, "scheduleID", scheduleID, "schedule", scheduleDescription)
+	slog.Info("SchedulerTool.executeCreateSchedule: schedule created successfully", "participantID", participantID, "timerID", timerID, "scheduleID", scheduleID, "schedule", scheduleDescription)
 
 	return &models.ToolResult{
 		Success: true,
@@ -554,7 +554,7 @@ func (st *SchedulerTool) executeDeleteSchedule(ctx context.Context, participantI
 	// Cancel the associated timer
 	if scheduleToDelete.TimerID != "" {
 		if err := st.timer.Cancel(scheduleToDelete.TimerID); err != nil {
-			slog.Warn("Failed to cancel timer for schedule", "scheduleID", scheduleID, "timerID", scheduleToDelete.TimerID, "error", err)
+			slog.Warn("SchedulerTool.executeDeleteSchedule: failed to cancel timer", "participantID", participantID, "scheduleID", scheduleID, "timerID", scheduleToDelete.TimerID, "error", err)
 			// Don't fail the whole operation - continue with deletion
 		}
 	}
@@ -575,7 +575,7 @@ func (st *SchedulerTool) executeDeleteSchedule(ctx context.Context, participantI
 
 	message := fmt.Sprintf("✅ Successfully deleted the schedule for '%s' (ID: %s). Your daily reminders for this habit have been stopped.", habit, scheduleID)
 
-	slog.Info("Schedule deleted successfully", "participantID", participantID, "scheduleID", scheduleID, "timerID", scheduleToDelete.TimerID)
+	slog.Info("SchedulerTool.executeDeleteSchedule: schedule deleted successfully", "participantID", participantID, "scheduleID", scheduleID, "timerID", scheduleToDelete.TimerID)
 
 	return &models.ToolResult{
 		Success: true,

@@ -65,7 +65,7 @@ func (t *SimpleTimer) ScheduleAfter(delay time.Duration, fn func()) (string, err
 	}
 	t.mu.Unlock()
 
-	slog.Debug("SimpleTimer ScheduleAfter succeeded", "id", id, "delay", delay)
+	slog.Debug("SimpleTimer.ScheduleAfter: timer scheduled successfully", "id", id, "delay", delay)
 	return id, nil
 }
 
@@ -73,26 +73,26 @@ func (t *SimpleTimer) ScheduleAfter(delay time.Duration, fn func()) (string, err
 func (t *SimpleTimer) ScheduleAt(when time.Time, fn func()) (string, error) {
 	delay := time.Until(when)
 	if delay < 0 {
-		slog.Warn("SimpleTimer ScheduleAt: time is in the past, executing immediately", "when", when)
+		slog.Warn("SimpleTimer.ScheduleAt: time in past, executing immediately", "when", when)
 		go fn()
 		return "", nil
 	}
 
-	slog.Debug("SimpleTimer ScheduleAt", "when", when, "delay", delay)
+	slog.Debug("SimpleTimer.ScheduleAt: scheduling at specific time", "when", when, "delay", delay)
 	return t.ScheduleAfter(delay, fn)
 }
 
 // ScheduleWithSchedule schedules a function to run according to a Schedule.
 func (t *SimpleTimer) ScheduleWithSchedule(schedule *models.Schedule, fn func()) (string, error) {
 	if err := schedule.Validate(); err != nil {
-		slog.Error("SimpleTimer ScheduleWithSchedule failed validation", "schedule", schedule, "error", err)
+		slog.Error("SimpleTimer.ScheduleWithSchedule: schedule validation failed", "schedule", schedule, "error", err)
 		return "", fmt.Errorf("invalid schedule: %w", err)
 	}
 
 	// Generate random timer ID with "sched_" prefix for scheduled/recurring timers
 	id := util.GenerateRandomID("sched_", 16)
 
-	slog.Debug("SimpleTimer ScheduleWithSchedule", "id", id, "schedule", schedule.ToCronString())
+	slog.Debug("SimpleTimer.ScheduleWithSchedule: scheduling recurring function", "id", id, "schedule", schedule.ToCronString())
 
 	now := time.Now()
 
@@ -105,7 +105,7 @@ func (t *SimpleTimer) ScheduleWithSchedule(schedule *models.Schedule, fn func())
 	// Create a recurring timer function
 	var scheduleNext func()
 	scheduleNext = func() {
-		slog.Debug("SimpleTimer executing recurring function", "id", id, "schedule", schedule.ToCronString())
+		slog.Debug("SimpleTimer.ScheduleWithSchedule: executing recurring function", "id", id, "schedule", schedule.ToCronString())
 
 		// Execute the user function
 		fn()
@@ -117,9 +117,9 @@ func (t *SimpleTimer) ScheduleWithSchedule(schedule *models.Schedule, fn func())
 			delay := time.Until(entry.nextRun)
 			if delay > 0 {
 				entry.timer = time.AfterFunc(delay, scheduleNext)
-				slog.Debug("SimpleTimer rescheduled", "id", id, "nextRun", entry.nextRun)
+				slog.Debug("SimpleTimer.ScheduleWithSchedule: rescheduled function", "id", id, "nextRun", entry.nextRun)
 			} else {
-				slog.Warn("SimpleTimer cannot reschedule, next run time is in the past", "id", id)
+				slog.Warn("SimpleTimer.ScheduleWithSchedule: cannot reschedule, next run time in past", "id", id)
 			}
 		}
 		t.mu.Unlock()
@@ -143,7 +143,7 @@ func (t *SimpleTimer) ScheduleWithSchedule(schedule *models.Schedule, fn func())
 	}
 	t.mu.Unlock()
 
-	slog.Debug("SimpleTimer ScheduleWithSchedule succeeded", "id", id, "schedule", schedule.ToCronString(), "nextRun", nextRun)
+	slog.Debug("SimpleTimer.ScheduleWithSchedule: recurring function scheduled successfully", "id", id, "schedule", schedule.ToCronString(), "nextRun", nextRun)
 	return id, nil
 }
 
@@ -157,11 +157,11 @@ func (t *SimpleTimer) Cancel(id string) error {
 			entry.timer.Stop()
 		}
 		delete(t.timers, id)
-		slog.Debug("SimpleTimer Cancel succeeded", "id", id, "type", entry.timerType)
+		slog.Debug("SimpleTimer.Cancel: timer cancelled successfully", "id", id, "type", entry.timerType)
 		return nil
 	}
 
-	slog.Debug("SimpleTimer Cancel: timer not found", "id", id)
+	slog.Debug("SimpleTimer.Cancel: timer not found", "id", id)
 	return nil
 }
 
@@ -170,15 +170,15 @@ func (t *SimpleTimer) Stop() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	slog.Debug("SimpleTimer stopping all timers", "count", len(t.timers))
+	slog.Debug("SimpleTimer.Stop: stopping all timers", "count", len(t.timers))
 	for id, entry := range t.timers {
 		if entry.timer != nil {
 			entry.timer.Stop()
 		}
-		slog.Debug("SimpleTimer stopped timer", "id", id, "type", entry.timerType)
+		slog.Debug("SimpleTimer.Stop: stopped timer", "id", id, "type", entry.timerType)
 	}
 	t.timers = make(map[string]*timerEntry)
-	slog.Info("SimpleTimer stopped all timers")
+	slog.Info("SimpleTimer.Stop: all timers stopped successfully")
 }
 
 // ListActive returns information about all active timers.
