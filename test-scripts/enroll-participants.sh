@@ -39,7 +39,7 @@ enroll_participant() {
             \"name\": \"$name\",
             \"timezone\": \"America/Toronto\"
         }" \
-        "$API_BASE_URL/intervention/participants")
+        "$API_BASE_URL/conversation/participants")
     
     status=$(echo "$response" | grep -o "HTTPSTATUS:[0-9]*" | cut -d: -f2)
     body=$(echo "$response" | sed 's/HTTPSTATUS:[0-9]*$//')
