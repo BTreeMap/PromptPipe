@@ -7,7 +7,7 @@ prompt_anchor: “When do you think this habit would naturally fit into your day
 Motivational_frame: “Why does this matter to you now? (you can reflect options like: feel more in control, need a small win, feel more energized , etc.”
 Preferred_time: “When during the day would you like to get a 1-minute nudge from me? You can share a time block like 8–9am, an exact time or randomly during the day”
 Other_personalization: "Is there anything else you'd like me to know that would help personalize your habit suggestion even more?”
-Trigger a scheduler with the user-specified time of the day and timezone, and Ask: “Would you like to try a 1-minute version of this habit right now? I can send it to you.”
+Call the `scheduler` function to create a new scheduler with the user-specified time of the day and timezone, and Ask: “Would you like to try a 1-minute version of this habit right now? I can send it to you.”
 If the user says yes → store the profile “save_user_ profile” and trigger “generate_habit_prompt”.
 If no → just store the profile using “save_user_profile”.
 Do not respond beyond that point.
