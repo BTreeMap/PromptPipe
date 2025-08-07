@@ -171,7 +171,7 @@ func (st *SchedulerTool) ExecuteScheduler(ctx context.Context, participantID str
 
 		timezone := params.Timezone
 		if timezone == "" {
-			timezone = "UTC"
+			timezone = "America/Toronto" // Default timezone if not specified
 		}
 		scheduleDescription = fmt.Sprintf("daily at %s (%s)", params.FixedTime, timezone)
 
