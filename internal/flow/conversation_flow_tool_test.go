@@ -150,6 +150,7 @@ func TestConversationFlow_WithSchedulerTool(t *testing.T) {
 
 	// Create valid scheduler parameters
 	schedulerParams := models.SchedulerToolParams{
+		Action:             models.SchedulerActionCreate,
 		Type:               models.SchedulerTypeFixed,
 		FixedTime:          "09:00",
 		Timezone:           "America/Toronto",

@@ -18,6 +18,18 @@ const (
 	ToolTypeOneMinuteIntervention ToolType = "one_minute_intervention"
 )
 
+// SchedulerAction defines the action to be performed by the scheduler tool.
+type SchedulerAction string
+
+const (
+	// SchedulerActionCreate creates a new schedule.
+	SchedulerActionCreate SchedulerAction = "create"
+	// SchedulerActionList lists existing schedules.
+	SchedulerActionList SchedulerAction = "list"
+	// SchedulerActionDelete deletes an existing schedule.
+	SchedulerActionDelete SchedulerAction = "delete"
+)
+
 // SchedulerType defines how the scheduler should send daily prompts.
 type SchedulerType string
 
@@ -30,58 +42,77 @@ const (
 
 // SchedulerToolParams defines the parameters for the scheduler tool call.
 type SchedulerToolParams struct {
-	Type               SchedulerType `json:"type"`                        // "fixed" or "random"
-	FixedTime          string        `json:"fixed_time,omitempty"`        // Time in HH:MM format (e.g., "09:30")
-	Timezone           string        `json:"timezone,omitempty"`          // Timezone (e.g., "America/Toronto")
-	RandomStartTime    string        `json:"random_start_time,omitempty"` // Start of random window in HH:MM format
-	RandomEndTime      string        `json:"random_end_time,omitempty"`   // End of random window in HH:MM format
-	PromptSystemPrompt string        `json:"prompt_system_prompt"`        // System prompt for the daily messages
-	PromptUserPrompt   string        `json:"prompt_user_prompt"`          // User prompt for the daily messages
-	HabitDescription   string        `json:"habit_description,omitempty"` // Description of the habit for personalization
+	Action             SchedulerAction `json:"action"`                         // Action to perform: "create", "list", or "delete"
+	Type               SchedulerType   `json:"type,omitempty"`                 // "fixed" or "random" (for create action)
+	FixedTime          string          `json:"fixed_time,omitempty"`           // Time in HH:MM format (e.g., "09:30")
+	Timezone           string          `json:"timezone,omitempty"`             // Timezone (e.g., "America/Toronto")
+	RandomStartTime    string          `json:"random_start_time,omitempty"`    // Start of random window in HH:MM format
+	RandomEndTime      string          `json:"random_end_time,omitempty"`      // End of random window in HH:MM format
+	PromptSystemPrompt string          `json:"prompt_system_prompt,omitempty"` // System prompt for the daily messages (for create)
+	PromptUserPrompt   string          `json:"prompt_user_prompt,omitempty"`   // User prompt for the daily messages (for create)
+	HabitDescription   string          `json:"habit_description,omitempty"`    // Description of the habit for personalization (for create)
+	ScheduleID         string          `json:"schedule_id,omitempty"`          // Schedule ID for delete action
 }
 
 // Validate ensures the scheduler tool parameters are valid.
 func (stp *SchedulerToolParams) Validate() error {
-	if stp.Type != SchedulerTypeFixed && stp.Type != SchedulerTypeRandom {
-		return fmt.Errorf("invalid scheduler type: %s", stp.Type)
+	// Validate action
+	if stp.Action != SchedulerActionCreate && stp.Action != SchedulerActionList && stp.Action != SchedulerActionDelete {
+		return fmt.Errorf("invalid scheduler action: %s", stp.Action)
 	}
 
-	if stp.Type == SchedulerTypeFixed {
-		if stp.FixedTime == "" {
-			return fmt.Errorf("fixed_time is required for fixed scheduler type")
-		}
-		if err := validateTimeFormat(stp.FixedTime); err != nil {
-			return fmt.Errorf("invalid fixed_time format: %w", err)
-		}
-	}
-
-	if stp.Type == SchedulerTypeRandom {
-		if stp.RandomStartTime == "" {
-			return fmt.Errorf("random_start_time is required for random scheduler type")
-		}
-		if stp.RandomEndTime == "" {
-			return fmt.Errorf("random_end_time is required for random scheduler type")
-		}
-		if err := validateTimeFormat(stp.RandomStartTime); err != nil {
-			return fmt.Errorf("invalid random_start_time format: %w", err)
-		}
-		if err := validateTimeFormat(stp.RandomEndTime); err != nil {
-			return fmt.Errorf("invalid random_end_time format: %w", err)
+	// Validate action-specific parameters
+	switch stp.Action {
+	case SchedulerActionCreate:
+		if stp.Type != SchedulerTypeFixed && stp.Type != SchedulerTypeRandom {
+			return fmt.Errorf("invalid scheduler type: %s", stp.Type)
 		}
 
-		// Validate that start time is before end time
-		startTime, _ := time.Parse("15:04", stp.RandomStartTime)
-		endTime, _ := time.Parse("15:04", stp.RandomEndTime)
-		if !endTime.After(startTime) {
-			return fmt.Errorf("random_end_time must be after random_start_time")
+		if stp.Type == SchedulerTypeFixed {
+			if stp.FixedTime == "" {
+				return fmt.Errorf("fixed_time is required for fixed scheduler type")
+			}
+			if err := validateTimeFormat(stp.FixedTime); err != nil {
+				return fmt.Errorf("invalid fixed_time format: %w", err)
+			}
 		}
-	}
 
-	if stp.PromptSystemPrompt == "" {
-		return fmt.Errorf("prompt_system_prompt is required")
-	}
-	if stp.PromptUserPrompt == "" {
-		return fmt.Errorf("prompt_user_prompt is required")
+		if stp.Type == SchedulerTypeRandom {
+			if stp.RandomStartTime == "" {
+				return fmt.Errorf("random_start_time is required for random scheduler type")
+			}
+			if stp.RandomEndTime == "" {
+				return fmt.Errorf("random_end_time is required for random scheduler type")
+			}
+			if err := validateTimeFormat(stp.RandomStartTime); err != nil {
+				return fmt.Errorf("invalid random_start_time format: %w", err)
+			}
+			if err := validateTimeFormat(stp.RandomEndTime); err != nil {
+				return fmt.Errorf("invalid random_end_time format: %w", err)
+			}
+
+			// Validate that start time is before end time
+			startTime, _ := time.Parse("15:04", stp.RandomStartTime)
+			endTime, _ := time.Parse("15:04", stp.RandomEndTime)
+			if !endTime.After(startTime) {
+				return fmt.Errorf("random_end_time must be after random_start_time")
+			}
+		}
+
+		if stp.PromptSystemPrompt == "" {
+			return fmt.Errorf("prompt_system_prompt is required for create action")
+		}
+		if stp.PromptUserPrompt == "" {
+			return fmt.Errorf("prompt_user_prompt is required for create action")
+		}
+
+	case SchedulerActionDelete:
+		if stp.ScheduleID == "" {
+			return fmt.Errorf("schedule_id is required for delete action")
+		}
+
+	case SchedulerActionList:
+		// No additional validation needed for list action
 	}
 
 	return nil
@@ -136,10 +167,24 @@ func (fc *FunctionCall) ParseSchedulerParams() (*SchedulerToolParams, error) {
 
 // ToolResult represents the result of executing a tool.
 type ToolResult struct {
-	ToolCallID string `json:"tool_call_id"`    // ID of the tool call this responds to
-	Success    bool   `json:"success"`         // Whether the tool execution succeeded
-	Message    string `json:"message"`         // Human-readable result message
-	Error      string `json:"error,omitempty"` // Error message if success is false
+	ToolCallID string      `json:"tool_call_id"`    // ID of the tool call this responds to
+	Success    bool        `json:"success"`         // Whether the tool execution succeeded
+	Message    string      `json:"message"`         // Human-readable result message
+	Error      string      `json:"error,omitempty"` // Error message if success is false
+	Data       interface{} `json:"data,omitempty"`  // Additional data (e.g., schedule list)
+}
+
+// ScheduleInfo represents information about an active schedule.
+type ScheduleInfo struct {
+	ID               string        `json:"id"`                          // Unique schedule ID
+	Type             SchedulerType `json:"type"`                        // "fixed" or "random"
+	FixedTime        string        `json:"fixed_time,omitempty"`        // Time in HH:MM format
+	RandomStartTime  string        `json:"random_start_time,omitempty"` // Start of random window
+	RandomEndTime    string        `json:"random_end_time,omitempty"`   // End of random window
+	Timezone         string        `json:"timezone,omitempty"`          // Schedule timezone
+	HabitDescription string        `json:"habit_description,omitempty"` // Description of the habit
+	CreatedAt        time.Time     `json:"created_at"`                  // When the schedule was created
+	TimerID          string        `json:"timer_id,omitempty"`          // Associated timer ID
 }
 
 // OneMinuteInterventionToolParams defines the parameters for the intervention tool call.

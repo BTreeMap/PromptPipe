@@ -80,6 +80,7 @@ const (
 	DataKeyFeedbackState           DataKey = "feedbackState"           // For tracking feedback collection state
 	DataKeyFeedbackTimerID         DataKey = "feedbackTimerID"         // For tracking initial feedback timer
 	DataKeyFeedbackFollowupTimerID DataKey = "feedbackFollowupTimerID" // For tracking follow-up feedback timer
+	DataKeyScheduleRegistry        DataKey = "scheduleRegistry"        // For storing active schedules metadata
 )
 
 // Flow assignment values.
