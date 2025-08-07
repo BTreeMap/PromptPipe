@@ -215,54 +215,6 @@ func (rh *ResponseHandler) Start(ctx context.Context) {
 	slog.Info("ResponseHandler response processing started")
 }
 
-// CreateInterventionHook creates a specialized hook for intervention participants that
-// processes responses according to the micro health intervention flow logic.
-// It includes timer management for timeout-based state transitions.
-func CreateInterventionHook(participantID, phoneNumber string, stateManager flow.StateManager, msgService Service, timer models.Timer) ResponseAction {
-	return func(ctx context.Context, from, responseText string, timestamp int64) (bool, error) {
-		slog.Debug("InterventionHook processing response", "from", from, "responseText", responseText)
-
-		// Create micro health intervention generator with dependencies
-		generator := flow.NewMicroHealthInterventionGenerator(stateManager, timer)
-
-		// Process the response through the complete flow logic
-		if err := generator.ProcessResponse(ctx, participantID, responseText); err != nil {
-			slog.Error("InterventionHook flow processing failed", "error", err, "participantID", participantID)
-			return false, fmt.Errorf("failed to process response through flow: %w", err)
-		}
-
-		// Get the new state after processing
-		newState, err := stateManager.GetCurrentState(ctx, participantID, models.FlowTypeMicroHealthIntervention)
-		if err != nil {
-			slog.Error("InterventionHook failed to get new state", "error", err, "participantID", participantID)
-			return false, fmt.Errorf("failed to get new state: %w", err)
-		}
-
-		// Generate and send the appropriate message for the new state
-		if newState != "" && newState != models.StateEndOfDay {
-			prompt := models.Prompt{
-				To:    from,
-				State: newState,
-			}
-
-			message, err := generator.Generate(ctx, prompt)
-			if err != nil {
-				slog.Error("InterventionHook failed to generate message", "error", err, "participantID", participantID, "state", newState)
-				return false, fmt.Errorf("failed to generate message for state %s: %w", newState, err)
-			}
-
-			if err := msgService.SendMessage(ctx, from, message); err != nil {
-				slog.Error("InterventionHook failed to send message", "error", err, "participantID", participantID, "state", newState)
-				return false, fmt.Errorf("failed to send message: %w", err)
-			}
-
-			slog.Info("InterventionHook sent message for new state", "participantID", participantID, "state", newState)
-		}
-
-		return true, nil
-	}
-}
-
 // CreateBranchHook creates a response handler for branch-type prompts that validates
 // user selections and responds appropriately.
 func CreateBranchHook(branchOptions []models.BranchOption, msgService Service) ResponseAction {
@@ -559,13 +511,7 @@ func (rh *ResponseHandler) CleanupStaleHooks(ctx context.Context) error {
 		return nil
 	}
 
-	// Get lists of active participants from both flow types
-	interventionParticipants, err := rh.store.ListInterventionParticipants()
-	if err != nil {
-		slog.Error("Failed to list intervention participants for cleanup", "error", err)
-		return fmt.Errorf("failed to list intervention participants: %w", err)
-	}
-
+	// Get lists of active participants from conversation flow
 	conversationParticipants, err := rh.store.ListConversationParticipants()
 	if err != nil {
 		slog.Error("Failed to list conversation participants for cleanup", "error", err)
@@ -574,19 +520,6 @@ func (rh *ResponseHandler) CleanupStaleHooks(ctx context.Context) error {
 
 	// Create a map of active phone numbers for quick lookup
 	activePhones := make(map[string]bool)
-
-	// Add active intervention participants
-	for _, participant := range interventionParticipants {
-		if participant.Status == models.ParticipantStatusActive {
-			canonical, err := rh.msgService.ValidateAndCanonicalizeRecipient(participant.PhoneNumber)
-			if err != nil {
-				slog.Warn("Failed to canonicalize intervention participant phone during cleanup",
-					"error", err, "phone", participant.PhoneNumber, "id", participant.ID)
-				continue
-			}
-			activePhones[canonical] = true
-		}
-	}
 
 	// Add active conversation participants
 	for _, participant := range conversationParticipants {
@@ -665,13 +598,7 @@ func (rh *ResponseHandler) ValidateAndCleanupHooks(ctx context.Context) error {
 	var removedCount int
 	var errorCount int
 
-	// Get lists of active participants from both flow types
-	interventionParticipants, err := rh.store.ListInterventionParticipants()
-	if err != nil {
-		slog.Error("Failed to list intervention participants for validation", "error", err)
-		errorCount++
-	}
-
+	// Get lists of active participants from conversation flow
 	conversationParticipants, err := rh.store.ListConversationParticipants()
 	if err != nil {
 		slog.Error("Failed to list conversation participants for validation", "error", err)
@@ -680,19 +607,6 @@ func (rh *ResponseHandler) ValidateAndCleanupHooks(ctx context.Context) error {
 
 	// Create a map of active phone numbers for quick lookup
 	activePhones := make(map[string]bool)
-
-	// Add active intervention participants
-	for _, participant := range interventionParticipants {
-		if participant.Status == models.ParticipantStatusActive {
-			canonical, err := rh.msgService.ValidateAndCanonicalizeRecipient(participant.PhoneNumber)
-			if err != nil {
-				slog.Warn("Failed to canonicalize intervention participant phone",
-					"error", err, "phone", participant.PhoneNumber, "id", participant.ID)
-				continue
-			}
-			activePhones[canonical] = true
-		}
-	}
 
 	// Add active conversation participants
 	for _, participant := range conversationParticipants {
@@ -732,18 +646,6 @@ func (rh *ResponseHandler) ValidateAndCleanupHooks(ctx context.Context) error {
 func (rh *ResponseHandler) GetActiveParticipantCount(ctx context.Context) (int, error) {
 	var total int
 
-	// Count active intervention participants
-	interventionParticipants, err := rh.store.ListInterventionParticipants()
-	if err != nil {
-		return 0, fmt.Errorf("failed to list intervention participants: %w", err)
-	}
-
-	for _, participant := range interventionParticipants {
-		if participant.Status == models.ParticipantStatusActive {
-			total++
-		}
-	}
-
 	// Count active conversation participants
 	conversationParticipants, err := rh.store.ListConversationParticipants()
 	if err != nil {
@@ -764,15 +666,6 @@ func (rh *ResponseHandler) IsParticipantActive(ctx context.Context, phoneNumber 
 	canonical, err := rh.msgService.ValidateAndCanonicalizeRecipient(phoneNumber)
 	if err != nil {
 		return false, fmt.Errorf("failed to canonicalize phone number: %w", err)
-	}
-
-	// Check intervention participants
-	interventionParticipant, err := rh.store.GetInterventionParticipantByPhone(canonical)
-	if err != nil {
-		return false, fmt.Errorf("failed to get intervention participant: %w", err)
-	}
-	if interventionParticipant != nil && interventionParticipant.Status == models.ParticipantStatusActive {
-		return true, nil
 	}
 
 	// Check conversation participants

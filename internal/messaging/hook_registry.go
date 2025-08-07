@@ -33,19 +33,6 @@ func NewHookRegistry() *HookRegistry {
 
 // registerDefaultFactories registers the default hook factory functions
 func (hr *HookRegistry) registerDefaultFactories() {
-	// Intervention hook factory
-	hr.factories[models.HookTypeIntervention] = func(params map[string]string, stateManager flow.StateManager, msgService Service, timer models.Timer) (ResponseAction, error) {
-		participantID, exists := params["participant_id"]
-		if !exists {
-			return nil, fmt.Errorf("missing required parameter: participant_id")
-		}
-		phoneNumber, exists := params["phone_number"]
-		if !exists {
-			return nil, fmt.Errorf("missing required parameter: phone_number")
-		}
-		return CreateInterventionHook(participantID, phoneNumber, stateManager, msgService, timer), nil
-	}
-
 	// Conversation hook factory
 	hr.factories[models.HookTypeConversation] = func(params map[string]string, stateManager flow.StateManager, msgService Service, timer models.Timer) (ResponseAction, error) {
 		participantID, exists := params["participant_id"]
