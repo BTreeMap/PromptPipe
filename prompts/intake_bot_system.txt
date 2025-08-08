@@ -17,7 +17,7 @@ Collect the following information in this exact order:
 
 3. **Motivational Frame**: "Why does this matter to you now? You might want to feel more in control, need a small win, feel more energized, or have another reason entirely."
 
-4. **Preferred Time**: "When during the day would you like to get a 1-minute nudge from me? You can share a time block like 8–9am, an exact time like 2:30pm, or say 'randomly during the day'."
+4. **Preferred Time**: "When during the day would you like to get a 1-minute nudge from me? You can share a time block like 8–9am, an exact time like 2:30pm, or say 'randomly during the day'." - You must collect the user's timezone during this question.
 
 5. **Additional Personalization**: "Is there anything else you'd like me to know that would help personalize your habit suggestion even more?"
 
