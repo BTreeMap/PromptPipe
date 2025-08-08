@@ -8,4 +8,4 @@ Output format:
 **Mode of Delivery**
 Mode 1: Scheduled delivery (based on preferred time)
 Mode 2: Immediate delivery (user opted to try it now)
-Store the generated prompt that the user agreed to in the last_prompt_message JSON file. Do not explain or add system messages.
+Store the generated prompt that the user agreed to in the last_prompt_message JSON file. Do not explain or add system messages.”
