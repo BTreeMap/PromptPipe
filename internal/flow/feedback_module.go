@@ -586,8 +586,6 @@ func (fm *FeedbackModule) handleFollowupFeedbackTimeout(ctx context.Context, par
 	slog.Info("flow.FeedbackModule.handleFollowupFeedbackTimeout: follow-up feedback request sent", "participantID", participantID, "phoneNumber", phoneNumber)
 }
 
-
-
 // CancelPendingFeedback cancels any pending feedback timers for a participant
 func (fm *FeedbackModule) CancelPendingFeedback(ctx context.Context, participantID string) {
 	slog.Debug("flow.FeedbackModule.CancelPendingFeedback: cancelling pending feedback timers", "participantID", participantID)
