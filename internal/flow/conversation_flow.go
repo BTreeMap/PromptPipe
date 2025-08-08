@@ -331,91 +331,12 @@ func (f *ConversationFlow) processConversationMessage(ctx context.Context, parti
 	// Return the AI response for sending
 	slog.Info("ConversationFlow.processConversationMessage: generated response", "participantID", participantID, "responseLength", len(response))
 
-	// Append debug information to response if debug mode is enabled
+	// Send separate debug message if debug mode is enabled
 	if f.debugMode {
-		debugInfo := f.buildDebugInfo(ctx, participantID, conversationState)
-		if debugInfo != "" {
-			response = fmt.Sprintf("%s\n\n%s", response, debugInfo)
-		}
+		f.sendDebugInfo(ctx, participantID, conversationState)
 	}
 
 	return response, nil
-}
-
-// processWithTools handles conversation with tool calling capability.
-func (f *ConversationFlow) processWithTools(ctx context.Context, participantID string, messages []openai.ChatCompletionMessageParamUnion, history *ConversationHistory) (string, error) {
-	slog.Debug("flow.processWithTools", "participantID", participantID, "messageCount", len(messages))
-
-	// Create tool definitions
-	tools := []openai.ChatCompletionToolParam{}
-
-	if f.schedulerTool != nil {
-		toolDef := f.schedulerTool.GetToolDefinition()
-		tools = append(tools, toolDef)
-		slog.Debug("flow.added scheduler tool",
-			"participantID", participantID,
-			"toolName", "scheduler")
-	} else {
-		slog.Debug("flow.scheduler tool not available", "participantID", participantID)
-	}
-
-	if f.promptGeneratorTool != nil {
-		toolDef := f.promptGeneratorTool.GetToolDefinition()
-		tools = append(tools, toolDef)
-		slog.Debug("flow.added prompt generator tool",
-			"participantID", participantID,
-			"toolName", "generate_habit_prompt")
-	} else {
-		slog.Debug("flow.prompt generator tool not available", "participantID", participantID)
-	}
-
-	slog.Info("flow.calling GenAI with tools",
-		"participantID", participantID,
-		"toolCount", len(tools),
-		"messageCount", len(messages))
-
-	// Generate response with tools
-	toolResponse, err := f.genaiClient.GenerateWithTools(ctx, messages, tools)
-	if err != nil {
-		slog.Error("flow.tool generation failed", "error", err, "participantID", participantID)
-		return "", fmt.Errorf("failed to generate response with tools: %w", err)
-	}
-
-	slog.Debug("flow.received tool response",
-		"participantID", participantID,
-		"hasContent", toolResponse.Content != "",
-		"contentLength", len(toolResponse.Content),
-		"toolCallCount", len(toolResponse.ToolCalls))
-
-	// Check if the AI wants to call tools
-	if len(toolResponse.ToolCalls) > 0 {
-		slog.Info("flow.processing tool calls", "participantID", participantID, "toolCallCount", len(toolResponse.ToolCalls))
-		return f.handleToolCalls(ctx, participantID, toolResponse, history, messages, tools)
-	}
-
-	// No tool calls, process as regular response
-	if toolResponse.Content == "" {
-		slog.Warn("flow.received empty content and no tool calls", "participantID", participantID)
-		return "I'm here to help you with your habits. What would you like to work on?", nil
-	}
-
-	// Add assistant response to history
-	assistantMsg := ConversationMessage{
-		Role:      "assistant",
-		Content:   toolResponse.Content,
-		Timestamp: time.Now(),
-	}
-	history.Messages = append(history.Messages, assistantMsg)
-
-	// Save updated history
-	err = f.saveConversationHistory(ctx, participantID, history)
-	if err != nil {
-		slog.Error("ConversationFlow.processWithTools: failed to save conversation history", "error", err, "participantID", participantID)
-		// Don't fail the request if we can't save history, but log the error
-	}
-
-	slog.Info("ConversationFlow.processWithTools: generated tool-enabled response", "participantID", participantID, "responseLength", len(toolResponse.Content))
-	return toolResponse.Content, nil
 }
 
 // handleToolCalls processes tool calls from the AI and executes them.
@@ -620,16 +541,16 @@ func (f *ConversationFlow) handleToolCalls(ctx context.Context, participantID st
 		"finalResponseLength", len(finalResponse),
 		"historyRecordCount", len(historyRecords))
 
-	// Add debug information to response if debug mode is enabled
+	// Send separate debug message if debug mode is enabled
 	if f.debugMode {
 		// Collect the tool names that were executed
 		var executedTools []string
 		for _, toolCall := range toolResponse.ToolCalls {
 			executedTools = append(executedTools, toolCall.Function.Name)
 		}
-		debugInfo := fmt.Sprintf("\n\n---\n🐛 DEBUG: Executed tools: %s - Response length: %d",
+		debugMessage := fmt.Sprintf("Executed tools: %s - Response length: %d",
 			strings.Join(executedTools, ", "), len(finalResponse))
-		finalResponse = finalResponse + debugInfo
+		f.sendDebugMessage(ctx, participantID, debugMessage)
 	}
 
 	return finalResponse, nil
@@ -1076,33 +997,19 @@ func (f *ConversationFlow) sendDebugMessage(ctx context.Context, participantID, 
 	}
 }
 
-// sendUserProfileDebugMessage sends user profile information as a debug message if debug mode is enabled.
-func (f *ConversationFlow) sendUserProfileDebugMessage(ctx context.Context, participantID string) {
-	if !f.debugMode || f.msgService == nil || f.profileSaveTool == nil {
+// sendDebugInfo sends comprehensive debug information as a separate message if debug mode is enabled.
+func (f *ConversationFlow) sendDebugInfo(ctx context.Context, participantID string, conversationState models.StateType) {
+	if !f.debugMode {
 		return
 	}
 
-	// Get user profile
-	profile, err := f.profileSaveTool.GetOrCreateUserProfile(ctx, participantID)
-	if err != nil {
-		f.sendDebugMessage(ctx, participantID, fmt.Sprintf("Failed to retrieve user profile: %s", err.Error()))
-		return
+	debugInfo := f.buildDebugInfo(ctx, participantID, conversationState)
+	if debugInfo != "" {
+		f.sendDebugMessage(ctx, participantID, debugInfo)
 	}
-
-	// Create profile summary
-	profileSummary := fmt.Sprintf("Profile - Domain: %s, Motivation: %s, Time: %s, Anchor: %s, Info: %s, Success: %d/%d",
-		profile.HabitDomain,
-		profile.MotivationalFrame,
-		profile.PreferredTime,
-		profile.PromptAnchor,
-		profile.AdditionalInfo,
-		profile.SuccessCount,
-		profile.TotalPrompts)
-
-	f.sendDebugMessage(ctx, participantID, profileSummary)
 }
 
-// buildDebugInfo creates comprehensive debug information to append to responses.
+// buildDebugInfo creates comprehensive debug information as a single message.
 func (f *ConversationFlow) buildDebugInfo(ctx context.Context, participantID string, conversationState models.StateType) string {
 	if !f.debugMode {
 		return ""
@@ -1110,20 +1017,19 @@ func (f *ConversationFlow) buildDebugInfo(ctx context.Context, participantID str
 
 	var debugParts []string
 
-	// Add separator and header
-	debugParts = append(debugParts, "---")
-	debugParts = append(debugParts, "🐛 DEBUG INFO:")
+	// Add header
+	debugParts = append(debugParts, "DEBUG INFO:")
 
 	// Add current state information
-	debugParts = append(debugParts, fmt.Sprintf("• Current State: %s", conversationState))
+	debugParts = append(debugParts, fmt.Sprintf("Current State: %s", conversationState))
 
 	// Add user profile information
 	if f.profileSaveTool != nil {
 		profile, err := f.profileSaveTool.GetOrCreateUserProfile(ctx, participantID)
 		if err != nil {
-			debugParts = append(debugParts, fmt.Sprintf("• Profile: Error retrieving (%s)", err.Error()))
+			debugParts = append(debugParts, fmt.Sprintf("Profile: Error retrieving (%s)", err.Error()))
 		} else {
-			profileSummary := fmt.Sprintf("• Profile: Domain=%s, Motivation=%s, Time=%s, Anchor=%s, Success=%d/%d",
+			profileSummary := fmt.Sprintf("Profile: Domain=%s, Motivation=%s, Time=%s, Anchor=%s, Success=%d/%d",
 				profile.HabitDomain,
 				profile.MotivationalFrame,
 				profile.PreferredTime,
@@ -1156,7 +1062,7 @@ func (f *ConversationFlow) buildDebugInfo(ctx context.Context, participantID str
 	}
 
 	if len(availableModules) > 0 {
-		debugParts = append(debugParts, fmt.Sprintf("• Available Tools: %s", strings.Join(availableModules, ", ")))
+		debugParts = append(debugParts, fmt.Sprintf("Available Tools: %s", strings.Join(availableModules, ", ")))
 	}
 
 	return strings.Join(debugParts, "\n")
@@ -1258,10 +1164,9 @@ func (f *ConversationFlow) processIntakeState(ctx context.Context, participantID
 		return "", fmt.Errorf("intake processing failed: %w", err)
 	}
 
-	// Add debug information to response if debug mode is enabled
+	// Send separate debug message if debug mode is enabled
 	if f.debugMode {
-		debugInfo := fmt.Sprintf("\n\n---\n🐛 DEBUG: Executed IntakeModule.ExecuteIntakeBotWithHistory() - Response length: %d", len(response))
-		response = response + debugInfo
+		f.sendDebugMessage(ctx, participantID, fmt.Sprintf("Executed IntakeModule.ExecuteIntakeBotWithHistory() - Response length: %d", len(response)))
 	}
 
 	return response, nil
@@ -1296,10 +1201,9 @@ func (f *ConversationFlow) processFeedbackState(ctx context.Context, participant
 		return "", fmt.Errorf("feedback processing failed: %w", err)
 	}
 
-	// Add debug information to response if debug mode is enabled
+	// Send separate debug message if debug mode is enabled
 	if f.debugMode {
-		debugInfo := fmt.Sprintf("\n\n---\n🐛 DEBUG: Executed FeedbackModule.ExecuteFeedbackTrackerWithHistory() - Response length: %d", len(response))
-		response = response + debugInfo
+		f.sendDebugMessage(ctx, participantID, fmt.Sprintf("Executed FeedbackModule.ExecuteFeedbackTrackerWithHistory() - Response length: %d", len(response)))
 	}
 
 	// Cancel any pending feedback timers since feedback was received
