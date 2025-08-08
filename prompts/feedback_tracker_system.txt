@@ -22,4 +22,4 @@ Questions to ask:
 “Did you get a chance to try it?”
  If yes → “What made it work well?”
  If no → “What got in the way?”
-Then → “What would you like to change in the prompt?
+Then → “What would you like to change in the prompt?”
