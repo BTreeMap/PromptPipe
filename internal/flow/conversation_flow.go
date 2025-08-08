@@ -50,13 +50,21 @@ func SendDebugMessageIfEnabled(ctx context.Context, participantID string, msgSer
 		return
 	}
 
+	// Get phone number from context - if not available, we can't send debug message
+	phoneNumber, hasPhone := GetPhoneNumberFromContext(ctx)
+	if !hasPhone || phoneNumber == "" {
+		slog.Debug("SendDebugMessageIfEnabled: no phone number in context, skipping debug message", "participantID", participantID)
+		return
+	}
+
 	// Format the debug message
 	debugMsg := fmt.Sprintf("🐛 DEBUG: %s", message)
 
 	// Send the debug message (don't fail if it doesn't work)
-	if err := msgService.SendMessage(ctx, participantID, debugMsg); err != nil {
+	if err := msgService.SendMessage(ctx, phoneNumber, debugMsg); err != nil {
 		slog.Warn("SendDebugMessageIfEnabled: failed to send debug message",
 			"participantID", participantID,
+			"phoneNumber", phoneNumber,
 			"error", err)
 	}
 }

@@ -502,9 +502,9 @@ func (fm *FeedbackModule) handleInitialFeedbackTimeout(ctx context.Context, part
 	// Send initial feedback request
 	feedbackMessage := "Hi! 🌱 How did that habit suggestion work for you? I'd love to hear your thoughts - did you give it a try? Any feedback helps me make better suggestions for you!"
 
-	phoneNumber, err := fm.getParticipantPhoneNumber(ctx, participantID)
-	if err != nil {
-		slog.Error("flow.FeedbackModule.handleInitialFeedbackTimeout: failed to get phone number", "participantID", participantID, "error", err)
+	phoneNumber, hasPhone := GetPhoneNumberFromContext(ctx)
+	if !hasPhone || phoneNumber == "" {
+		slog.Error("flow.FeedbackModule.handleInitialFeedbackTimeout: no phone number in context", "participantID", participantID)
 		return
 	}
 
@@ -567,9 +567,9 @@ func (fm *FeedbackModule) handleFollowupFeedbackTimeout(ctx context.Context, par
 	// Send follow-up feedback request
 	followupMessage := "Hey! 👋 Just checking in - I sent you a habit suggestion earlier. Even if you didn't try it, I'd love to know what you think! Your feedback helps me learn what works best for you. 😊"
 
-	phoneNumber, err := fm.getParticipantPhoneNumber(ctx, participantID)
-	if err != nil {
-		slog.Error("flow.FeedbackModule.handleFollowupFeedbackTimeout: failed to get phone number", "participantID", participantID, "error", err)
+	phoneNumber, hasPhone := GetPhoneNumberFromContext(ctx)
+	if !hasPhone || phoneNumber == "" {
+		slog.Error("flow.FeedbackModule.handleFollowupFeedbackTimeout: no phone number in context", "participantID", participantID)
 		return
 	}
 
@@ -586,15 +586,7 @@ func (fm *FeedbackModule) handleFollowupFeedbackTimeout(ctx context.Context, par
 	slog.Info("flow.FeedbackModule.handleFollowupFeedbackTimeout: follow-up feedback request sent", "participantID", participantID, "phoneNumber", phoneNumber)
 }
 
-// getParticipantPhoneNumber retrieves the phone number for a participant
-func (fm *FeedbackModule) getParticipantPhoneNumber(ctx context.Context, participantID string) (string, error) {
-	// For now, we'll assume the participantID is the phone number
-	// In a more complex system, this would look up the phone number from the participant record
-	if participantID == "" {
-		return "", fmt.Errorf("participantID is empty")
-	}
-	return participantID, nil
-}
+
 
 // CancelPendingFeedback cancels any pending feedback timers for a participant
 func (fm *FeedbackModule) CancelPendingFeedback(ctx context.Context, participantID string) {
