@@ -49,14 +49,14 @@ func SendDebugMessageIfEnabled(ctx context.Context, participantID string, msgSer
 	if !GetDebugModeFromContext(ctx) || msgService == nil {
 		return
 	}
-	
+
 	// Format the debug message
 	debugMsg := fmt.Sprintf("🐛 DEBUG: %s", message)
-	
+
 	// Send the debug message (don't fail if it doesn't work)
 	if err := msgService.SendMessage(ctx, participantID, debugMsg); err != nil {
-		slog.Warn("SendDebugMessageIfEnabled: failed to send debug message", 
-			"participantID", participantID, 
+		slog.Warn("SendDebugMessageIfEnabled: failed to send debug message",
+			"participantID", participantID,
 			"error", err)
 	}
 }
@@ -81,6 +81,7 @@ type ConversationFlow struct {
 	systemPromptFile    string
 	chatHistoryLimit    int                  // Limit for number of history messages sent to bot tools (-1: no limit, 0: no history, positive: limit to last N messages)
 	schedulerTool       *SchedulerTool       // Tool for scheduling daily prompts
+	coordinatorModule   *CoordinatorModule   // Module for coordinator conversations and routing
 	intakeModule        *IntakeModule        // Module for conducting intake conversations
 	promptGeneratorTool *PromptGeneratorTool // Tool for generating personalized habit prompts
 	feedbackModule      *FeedbackModule      // Module for tracking user feedback and updating profiles
@@ -130,6 +131,7 @@ func NewConversationFlowWithAllToolsAndTimeouts(stateManager StateManager, genai
 	promptGeneratorTool := NewPromptGeneratorTool(stateManager, genaiClient, msgService, promptGeneratorPromptFile)
 
 	// Create modules with shared tools
+	coordinatorModule := NewCoordinatorModule(stateManager, genaiClient, msgService, systemPromptFile, schedulerTool, promptGeneratorTool, stateTransitionTool, profileSaveTool)
 	intakeModule := NewIntakeModule(stateManager, genaiClient, msgService, intakeBotPromptFile, stateTransitionTool, profileSaveTool, schedulerTool)
 	feedbackModule := NewFeedbackModuleWithTimeouts(stateManager, genaiClient, feedbackTrackerPromptFile, timer, msgService, feedbackInitialTimeout, feedbackFollowupDelay, stateTransitionTool, profileSaveTool, schedulerTool)
 
@@ -139,6 +141,7 @@ func NewConversationFlowWithAllToolsAndTimeouts(stateManager StateManager, genai
 		systemPromptFile:    systemPromptFile,
 		chatHistoryLimit:    -1, // Default: no limit
 		schedulerTool:       schedulerTool,
+		coordinatorModule:   coordinatorModule,
 		intakeModule:        intakeModule,
 		promptGeneratorTool: promptGeneratorTool,
 		feedbackModule:      feedbackModule,
@@ -185,6 +188,14 @@ func (f *ConversationFlow) LoadSystemPrompt() error {
 // LoadToolSystemPrompts loads system prompts for all modules.
 func (f *ConversationFlow) LoadToolSystemPrompts() error {
 	slog.Debug("flow.LoadToolSystemPrompts: loading module system prompts")
+
+	// Load coordinator module system prompt
+	if f.coordinatorModule != nil {
+		if err := f.coordinatorModule.LoadSystemPrompt(); err != nil {
+			slog.Warn("flow.LoadToolSystemPrompts: failed to load coordinator module system prompt", "error", err)
+			// Continue even if coordinator module prompt fails to load
+		}
+	}
 
 	// Load intake module system prompt
 	if f.intakeModule != nil {
@@ -235,7 +246,7 @@ func (f *ConversationFlow) Generate(ctx context.Context, p models.Prompt) (strin
 func (f *ConversationFlow) ProcessResponse(ctx context.Context, participantID, response string) (string, error) {
 	// Add debug mode to context
 	ctx = SetDebugModeInContext(ctx, f.debugMode)
-	
+
 	// Log context information for debugging
 	phoneNumber, hasPhone := GetPhoneNumberFromContext(ctx)
 	slog.Debug("flow.ProcessResponse: checking context",
@@ -379,14 +390,14 @@ func (f *ConversationFlow) handleToolCalls(ctx context.Context, participantID st
 	for _, toolCall := range toolResponse.ToolCalls {
 		executingToolNames = append(executingToolNames, toolCall.Function.Name)
 	}
-	slog.Info("ConversationFlow.handleToolCalls: executing tools", 
-		"participantID", participantID, 
+	slog.Info("ConversationFlow.handleToolCalls: executing tools",
+		"participantID", participantID,
 		"toolCallCount", len(toolResponse.ToolCalls),
 		"executingTools", executingToolNames)
 
 	// Send debug message if debug mode is enabled
 	debugMessage := fmt.Sprintf("Coordinator executing tools: %s", strings.Join(executingToolNames, ", "))
-	SendDebugMessageIfEnabled(ctx, participantID, f.msgService, debugMessage)	// Create the tool calls in OpenAI format first
+	SendDebugMessageIfEnabled(ctx, participantID, f.msgService, debugMessage) // Create the tool calls in OpenAI format first
 	var toolCalls []openai.ChatCompletionMessageToolCallParam
 	for _, toolCall := range toolResponse.ToolCalls {
 		toolCalls = append(toolCalls, openai.ChatCompletionMessageToolCallParam{
@@ -1089,6 +1100,10 @@ func (f *ConversationFlow) buildDebugInfo(ctx context.Context, participantID str
 	var availableModules []string
 	var toolDetails []string
 
+	if f.coordinatorModule != nil {
+		availableModules = append(availableModules, "CoordinatorModule")
+		toolDetails = append(toolDetails, "CoordinatorModule (state transitions, profile saving, prompt generation, scheduling)")
+	}
 	if f.intakeModule != nil {
 		availableModules = append(availableModules, "IntakeModule")
 		toolDetails = append(toolDetails, "IntakeModule (state transitions, profile saving, scheduling)")
@@ -1145,49 +1160,30 @@ func (f *ConversationFlow) getCurrentConversationState(ctx context.Context, part
 // processCoordinatorState handles messages when in the coordinator state.
 // The coordinator decides which tools to use and can transition to other states.
 func (f *ConversationFlow) processCoordinatorState(ctx context.Context, participantID, userMessage string, history *ConversationHistory) (string, error) {
-	slog.Debug("ConversationFlow.processCoordinatorState: processing coordinator message",
+	slog.Debug("ConversationFlow.processCoordinatorState: delegating to coordinator module",
 		"participantID", participantID)
 
-	// Build OpenAI messages using coordinator system prompt
-	messages, err := f.buildOpenAIMessages(ctx, participantID, history)
+	if f.coordinatorModule == nil {
+		return "", fmt.Errorf("coordinator module not available")
+	}
+
+	// Convert conversation history to OpenAI format
+	chatHistory, err := f.buildOpenAIMessages(ctx, participantID, history)
 	if err != nil {
-		slog.Error("ConversationFlow.processCoordinatorState: failed to build OpenAI messages", "error", err, "participantID", participantID)
-		return "", fmt.Errorf("failed to build OpenAI messages: %w", err)
+		slog.Error("ConversationFlow.processCoordinatorState: failed to build chat history", "error", err, "participantID", participantID)
+		return "", fmt.Errorf("failed to build chat history: %w", err)
 	}
 
-	// Create tool definitions for coordinator - it has access to all tools including state transition
-	tools := []openai.ChatCompletionToolParam{}
-
-	// Add state transition tool - this is the key new tool for coordinator
-	if f.stateTransitionTool != nil {
-		toolDef := f.stateTransitionTool.GetToolDefinition()
-		tools = append(tools, toolDef)
-		slog.Debug("ConversationFlow.processCoordinatorState: added state transition tool", "participantID", participantID)
+	// Remove the system prompt from chat history since coordinator module will add its own
+	if len(chatHistory) > 0 {
+		// Check if first message is system message and remove it
+		if msg := chatHistory[0]; msg.OfSystem != nil {
+			chatHistory = chatHistory[1:]
+		}
 	}
 
-	// Add profile save tool - coordinator can save profiles
-	if f.profileSaveTool != nil {
-		toolDef := f.profileSaveTool.GetToolDefinition()
-		tools = append(tools, toolDef)
-		slog.Debug("ConversationFlow.processCoordinatorState: added profile save tool", "participantID", participantID)
-	}
-
-	// Add prompt generator tool - coordinator can still generate prompts
-	if f.promptGeneratorTool != nil {
-		toolDef := f.promptGeneratorTool.GetToolDefinition()
-		tools = append(tools, toolDef)
-		slog.Debug("ConversationFlow.processCoordinatorState: added prompt generator tool", "participantID", participantID)
-	}
-
-	// Add scheduler tool
-	if f.schedulerTool != nil {
-		toolDef := f.schedulerTool.GetToolDefinition()
-		tools = append(tools, toolDef)
-		slog.Debug("ConversationFlow.processCoordinatorState: added scheduler tool", "participantID", participantID)
-	}
-
-	// Generate response with tools
-	return f.processWithSpecificTools(ctx, participantID, messages, history, tools)
+	// Delegate to coordinator module
+	return f.coordinatorModule.ProcessMessage(ctx, participantID, userMessage, chatHistory)
 }
 
 // processIntakeState handles messages when in the intake state.
@@ -1267,87 +1263,4 @@ func (f *ConversationFlow) processFeedbackState(ctx context.Context, participant
 	}
 
 	return response, nil
-}
-
-// processWithSpecificTools handles conversation with a specific set of tools.
-func (f *ConversationFlow) processWithSpecificTools(ctx context.Context, participantID string, messages []openai.ChatCompletionMessageParamUnion, history *ConversationHistory, tools []openai.ChatCompletionToolParam) (string, error) {
-	slog.Debug("ConversationFlow.processWithSpecificTools", "participantID", participantID, "messageCount", len(messages), "toolCount", len(tools))
-
-	if len(tools) == 0 {
-		// No tools available, use standard generation
-		response, err := f.genaiClient.GenerateWithMessages(ctx, messages)
-		if err != nil {
-			slog.Error("ConversationFlow.processWithSpecificTools: GenAI generation failed", "error", err, "participantID", participantID)
-			return "", fmt.Errorf("failed to generate response: %w", err)
-		}
-		return response, nil
-	}
-
-	// Tool call loop - continue until we get a user-facing message
-	const maxToolRounds = 10 // Prevent infinite loops
-	currentMessages := messages
-	
-	for round := 1; round <= maxToolRounds; round++ {
-		// Log the exact tools being passed to LLM
-		var toolNames []string
-		for _, tool := range tools {
-			toolNames = append(toolNames, tool.Function.Name)
-		}
-		slog.Info("ConversationFlow.processWithSpecificTools: calling GenAI with tools",
-			"participantID", participantID,
-			"round", round,
-			"toolCount", len(tools),
-			"toolNames", toolNames,
-			"messageCount", len(currentMessages))
-
-		// Generate response with tools
-		toolResponse, err := f.genaiClient.GenerateWithTools(ctx, currentMessages, tools)
-		if err != nil {
-			slog.Error("ConversationFlow.processWithSpecificTools: tool generation failed", "error", err, "participantID", participantID, "round", round, "toolNames", toolNames)
-			return "", fmt.Errorf("failed to generate response with tools: %w", err)
-		}
-
-		slog.Debug("ConversationFlow.processWithSpecificTools: received tool response",
-			"participantID", participantID,
-			"round", round,
-			"hasContent", toolResponse.Content != "",
-			"contentLength", len(toolResponse.Content),
-			"toolCallCount", len(toolResponse.ToolCalls))
-
-		// Check if the AI wants to call tools
-		if len(toolResponse.ToolCalls) > 0 {
-			slog.Info("ConversationFlow.processWithSpecificTools: processing tool calls", "participantID", participantID, "round", round, "toolCallCount", len(toolResponse.ToolCalls))
-			
-			// Execute tools and update conversation context
-			updatedMessages, err := f.executeToolCallsAndUpdateContext(ctx, participantID, toolResponse, currentMessages, tools, history)
-			if err != nil {
-				return "", err
-			}
-			currentMessages = updatedMessages
-			
-			// If we have content, this is the final response
-			if toolResponse.Content != "" {
-				slog.Info("ConversationFlow.processWithSpecificTools: tool round completed with user message", "participantID", participantID, "round", round, "responseLength", len(toolResponse.Content))
-				return toolResponse.Content, nil
-			}
-			
-			// No content yet, continue to next round
-			slog.Debug("ConversationFlow.processWithSpecificTools: no user message yet, continuing to next round", "participantID", participantID, "round", round)
-			continue
-		}
-
-		// No tool calls - check if we have content
-		if toolResponse.Content != "" {
-			slog.Info("ConversationFlow.processWithSpecificTools: final response without tool calls", "participantID", participantID, "round", round, "responseLength", len(toolResponse.Content))
-			return toolResponse.Content, nil
-		}
-
-		// No tool calls and no content - this shouldn't happen, but handle it
-		slog.Warn("ConversationFlow.processWithSpecificTools: received empty content and no tool calls", "participantID", participantID, "round", round)
-		return "I'm here to help you with your habits. What would you like to work on?", nil
-	}
-
-	// If we hit max rounds, return what we have
-	slog.Warn("ConversationFlow.processWithSpecificTools: hit maximum tool rounds", "participantID", participantID, "maxRounds", maxToolRounds)
-	return "I've completed the requested actions.", nil
 }

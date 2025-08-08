@@ -12,6 +12,7 @@ import (
 	"github.com/BTreeMap/PromptPipe/internal/genai"
 	"github.com/BTreeMap/PromptPipe/internal/models"
 	"github.com/openai/openai-go"
+	"github.com/openai/openai-go/packages/param"
 )
 
 // CoordinatorModule provides functionality for the coordinator conversation state.
@@ -20,6 +21,7 @@ import (
 type CoordinatorModule struct {
 	stateManager        StateManager
 	genaiClient         genai.ClientInterface
+	msgService          MessagingService // Messaging service for sending responses
 	systemPromptFile    string
 	systemPrompt        string
 	schedulerTool       *SchedulerTool       // Tool for scheduling daily prompts
@@ -29,10 +31,11 @@ type CoordinatorModule struct {
 }
 
 // NewCoordinatorModule creates a new coordinator module instance.
-func NewCoordinatorModule(stateManager StateManager, genaiClient genai.ClientInterface, systemPromptFile string, schedulerTool *SchedulerTool, promptGeneratorTool *PromptGeneratorTool, stateTransitionTool *StateTransitionTool, profileSaveTool *ProfileSaveTool) *CoordinatorModule {
+func NewCoordinatorModule(stateManager StateManager, genaiClient genai.ClientInterface, msgService MessagingService, systemPromptFile string, schedulerTool *SchedulerTool, promptGeneratorTool *PromptGeneratorTool, stateTransitionTool *StateTransitionTool, profileSaveTool *ProfileSaveTool) *CoordinatorModule {
 	slog.Debug("CoordinatorModule.NewCoordinatorModule: creating coordinator module",
 		"hasStateManager", stateManager != nil,
 		"hasGenAI", genaiClient != nil,
+		"hasMessaging", msgService != nil,
 		"systemPromptFile", systemPromptFile,
 		"hasScheduler", schedulerTool != nil,
 		"hasPromptGenerator", promptGeneratorTool != nil,
@@ -41,6 +44,7 @@ func NewCoordinatorModule(stateManager StateManager, genaiClient genai.ClientInt
 	return &CoordinatorModule{
 		stateManager:        stateManager,
 		genaiClient:         genaiClient,
+		msgService:          msgService,
 		systemPromptFile:    systemPromptFile,
 		schedulerTool:       schedulerTool,
 		promptGeneratorTool: promptGeneratorTool,
@@ -151,15 +155,19 @@ func (cm *CoordinatorModule) ProcessMessage(ctx context.Context, participantID, 
 		return response, nil
 	}
 
-	// Generate response with tools
-	response, err := cm.genaiClient.GenerateWithMessages(ctx, messages)
-	if err != nil {
-		slog.Error("CoordinatorModule.ProcessMessage: GenAI generation failed", "error", err, "participantID", participantID)
-		return "", fmt.Errorf("failed to generate coordinator response: %w", err)
+	// Log the exact tools being passed to LLM
+	var toolNames []string
+	for _, tool := range tools {
+		toolNames = append(toolNames, tool.Function.Name)
 	}
+	slog.Info("CoordinatorModule.ProcessMessage: calling LLM with tools",
+		"participantID", participantID,
+		"toolCount", len(tools),
+		"toolNames", toolNames,
+		"messageCount", len(messages))
 
-	slog.Info("CoordinatorModule.ProcessMessage: coordinator response generated", "participantID", participantID, "responseLength", len(response))
-	return response, nil
+	// Start tool call loop
+	return cm.handleCoordinatorToolLoop(ctx, participantID, messages, tools)
 }
 
 // buildCoordinatorMessages creates the message array for the coordinator LLM.
@@ -252,4 +260,200 @@ func (cm *CoordinatorModule) getProfileStatus(ctx context.Context, participantID
 	}
 
 	return "PROFILE STATUS: User profile is complete. You can generate_habit_prompt for this user."
+}
+
+// handleCoordinatorToolLoop manages the tool call loop for the coordinator module.
+// It continues calling the LLM until a user-facing message is generated.
+func (cm *CoordinatorModule) handleCoordinatorToolLoop(ctx context.Context, participantID string, messages []openai.ChatCompletionMessageParamUnion, tools []openai.ChatCompletionToolParam) (string, error) {
+	const maxToolRounds = 10 // Prevent infinite loops
+	currentMessages := messages
+
+	for round := 1; round <= maxToolRounds; round++ {
+		slog.Debug("CoordinatorModule.handleCoordinatorToolLoop: round start", "participantID", participantID, "round", round, "messageCount", len(currentMessages))
+
+		// Generate response with tools
+		toolResponse, err := cm.genaiClient.GenerateWithTools(ctx, currentMessages, tools)
+		if err != nil {
+			slog.Error("CoordinatorModule.handleCoordinatorToolLoop: tool generation failed", "error", err, "participantID", participantID, "round", round)
+			return "", fmt.Errorf("failed to generate response with tools: %w", err)
+		}
+
+		slog.Debug("CoordinatorModule.handleCoordinatorToolLoop: received tool response",
+			"participantID", participantID,
+			"round", round,
+			"hasContent", toolResponse.Content != "",
+			"contentLength", len(toolResponse.Content),
+			"toolCallCount", len(toolResponse.ToolCalls))
+
+		// Check if the AI wants to call tools
+		if len(toolResponse.ToolCalls) > 0 {
+			slog.Info("CoordinatorModule.handleCoordinatorToolLoop: processing tool calls", "participantID", participantID, "round", round, "toolCallCount", len(toolResponse.ToolCalls))
+
+			// Execute tools and update conversation context
+			updatedMessages, err := cm.executeCoordinatorToolCallsAndUpdateContext(ctx, participantID, toolResponse, currentMessages, tools)
+			if err != nil {
+				return "", err
+			}
+			currentMessages = updatedMessages
+
+			// If we have content, this is the final response
+			if toolResponse.Content != "" {
+				slog.Info("CoordinatorModule.handleCoordinatorToolLoop: tool round completed with user message", "participantID", participantID, "round", round, "responseLength", len(toolResponse.Content))
+				return toolResponse.Content, nil
+			}
+
+			// No content yet, continue to next round
+			slog.Debug("CoordinatorModule.handleCoordinatorToolLoop: no user message yet, continuing to next round", "participantID", participantID, "round", round)
+			continue
+		}
+
+		// No tool calls - check if we have content
+		if toolResponse.Content != "" {
+			slog.Info("CoordinatorModule.handleCoordinatorToolLoop: final response without tool calls", "participantID", participantID, "round", round, "responseLength", len(toolResponse.Content))
+			return toolResponse.Content, nil
+		}
+
+		// No tool calls and no content - this shouldn't happen, but handle it
+		slog.Warn("CoordinatorModule.handleCoordinatorToolLoop: received empty content and no tool calls", "participantID", participantID, "round", round)
+		return "I'm here to help you with your habits. What would you like to work on?", nil
+	}
+
+	// If we hit max rounds, return fallback message
+	slog.Warn("CoordinatorModule.handleCoordinatorToolLoop: hit maximum tool rounds", "participantID", participantID, "maxRounds", maxToolRounds)
+	return "I've completed the requested actions.", nil
+}
+
+// executeCoordinatorToolCallsAndUpdateContext executes tool calls and updates the conversation context.
+func (cm *CoordinatorModule) executeCoordinatorToolCallsAndUpdateContext(ctx context.Context, participantID string, toolResponse *genai.ToolCallResponse, messages []openai.ChatCompletionMessageParamUnion, tools []openai.ChatCompletionToolParam) ([]openai.ChatCompletionMessageParamUnion, error) {
+	// Log and debug the exact tools being executed
+	var executingToolNames []string
+	for _, toolCall := range toolResponse.ToolCalls {
+		executingToolNames = append(executingToolNames, toolCall.Function.Name)
+	}
+	slog.Info("CoordinatorModule.executeCoordinatorToolCallsAndUpdateContext: executing tools",
+		"participantID", participantID,
+		"toolCallCount", len(toolResponse.ToolCalls),
+		"executingTools", executingToolNames)
+
+	// Send debug message if debug mode is enabled in context
+	debugMessage := fmt.Sprintf("CoordinatorModule executing tools: %s", strings.Join(executingToolNames, ", "))
+	SendDebugMessageIfEnabled(ctx, participantID, cm.msgService, debugMessage)
+
+	// Create the tool calls in OpenAI format
+	var toolCalls []openai.ChatCompletionMessageToolCallParam
+	for _, toolCall := range toolResponse.ToolCalls {
+		toolCalls = append(toolCalls, openai.ChatCompletionMessageToolCallParam{
+			ID:   toolCall.ID,
+			Type: "function",
+			Function: openai.ChatCompletionMessageToolCallFunctionParam{
+				Name:      toolCall.Function.Name,
+				Arguments: string(toolCall.Function.Arguments),
+			},
+		})
+	}
+
+	// Create assistant message with both content and tool calls for OpenAI API
+	assistantMessageWithToolCalls := openai.ChatCompletionAssistantMessageParam{
+		Content: openai.ChatCompletionAssistantMessageParamContentUnion{
+			OfString: param.NewOpt(toolResponse.Content),
+		},
+		ToolCalls: toolCalls,
+	}
+
+	// Add this assistant message with tool calls to the OpenAI conversation context
+	messages = append(messages, openai.ChatCompletionMessageParamUnion{OfAssistant: &assistantMessageWithToolCalls})
+
+	// Execute each tool call and collect results
+	var toolResults []string
+	for _, toolCall := range toolResponse.ToolCalls {
+		slog.Info("CoordinatorModule: executing tool call", "participantID", participantID, "toolName", toolCall.Function.Name, "toolCallID", toolCall.ID)
+
+		var result string
+		var err error
+
+		switch toolCall.Function.Name {
+		case "transition_state":
+			// Parse arguments
+			var args map[string]interface{}
+			if parseErr := json.Unmarshal(toolCall.Function.Arguments, &args); parseErr != nil {
+				slog.Error("CoordinatorModule: failed to parse state transition arguments", "error", parseErr, "participantID", participantID)
+				result = "State transition completed"
+			} else {
+				result, err = cm.stateTransitionTool.ExecuteStateTransition(ctx, participantID, args)
+				if err != nil {
+					slog.Error("CoordinatorModule: state transition failed", "error", err, "participantID", participantID)
+					result = "State transition completed"
+				}
+			}
+			toolResults = append(toolResults, result)
+
+		case "save_user_profile":
+			// Parse arguments
+			var args map[string]interface{}
+			if parseErr := json.Unmarshal(toolCall.Function.Arguments, &args); parseErr != nil {
+				slog.Error("CoordinatorModule: failed to parse profile save arguments", "error", parseErr, "participantID", participantID)
+				result = "❌ Failed to save profile: invalid arguments"
+			} else {
+				result, err = cm.profileSaveTool.ExecuteProfileSave(ctx, participantID, args)
+				if err != nil {
+					slog.Error("CoordinatorModule: profile save failed", "error", err, "participantID", participantID)
+					result = fmt.Sprintf("❌ Failed to save profile: %s", err.Error())
+				}
+			}
+			toolResults = append(toolResults, result)
+
+		case "generate_habit_prompt":
+			// Parse arguments
+			var args map[string]interface{}
+			if parseErr := json.Unmarshal(toolCall.Function.Arguments, &args); parseErr != nil {
+				slog.Error("CoordinatorModule: failed to parse prompt generator arguments", "error", parseErr, "participantID", participantID)
+				result = "❌ Failed to generate prompt: invalid arguments"
+			} else {
+				result, err = cm.promptGeneratorTool.ExecutePromptGenerator(ctx, participantID, args)
+				if err != nil {
+					slog.Error("CoordinatorModule: prompt generator failed", "error", err, "participantID", participantID)
+					result = fmt.Sprintf("❌ Failed to generate prompt: %s", err.Error())
+				}
+			}
+			toolResults = append(toolResults, result)
+
+		case "scheduler":
+			// Parse arguments
+			var params models.SchedulerToolParams
+			if parseErr := json.Unmarshal(toolCall.Function.Arguments, &params); parseErr != nil {
+				slog.Error("CoordinatorModule: failed to parse scheduler arguments", "error", parseErr, "participantID", participantID)
+				result = "❌ Failed to set up scheduling: invalid arguments"
+			} else {
+				schedulerResult, err := cm.schedulerTool.ExecuteScheduler(ctx, participantID, params)
+				if err != nil {
+					slog.Error("CoordinatorModule: scheduler failed", "error", err, "participantID", participantID)
+					result = fmt.Sprintf("❌ Failed to set up scheduling: %s", err.Error())
+				} else if !schedulerResult.Success {
+					result = fmt.Sprintf("❌ %s", schedulerResult.Message)
+				} else {
+					result = schedulerResult.Message
+				}
+			}
+			toolResults = append(toolResults, result)
+
+		default:
+			slog.Warn("CoordinatorModule: unknown tool call", "toolName", toolCall.Function.Name, "participantID", participantID)
+			result = fmt.Sprintf("❌ Unknown tool: %s", toolCall.Function.Name)
+			toolResults = append(toolResults, result)
+		}
+	}
+
+	// Add tool call results to the OpenAI conversation context
+	for i, toolCall := range toolResponse.ToolCalls {
+		// Use the corresponding result from our toolResults array
+		resultContent := toolResults[i]
+		if resultContent == "" {
+			resultContent = "Tool executed successfully"
+		}
+
+		// Add tool result message to conversation
+		messages = append(messages, openai.ToolMessage(resultContent, toolCall.ID))
+	}
+
+	return messages, nil
 }

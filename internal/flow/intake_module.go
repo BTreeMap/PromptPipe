@@ -119,7 +119,7 @@ func (im *IntakeModule) ExecuteIntakeBotWithHistory(ctx context.Context, partici
 	// Check if there are tool calls to handle
 	if len(response.ToolCalls) > 0 {
 		slog.Info("IntakeModule.ExecuteIntakeBotWithHistory: processing tool calls", "participantID", participantID, "toolCallCount", len(response.ToolCalls))
-		return im.handleIntakeToolCalls(ctx, participantID, response, messages, tools)
+		return im.handleIntakeToolLoop(ctx, participantID, response, messages, tools)
 	}
 
 	// No tool calls, return direct response
@@ -237,15 +237,78 @@ func (im *IntakeModule) buildIntakeContext(profile *UserProfile) string {
 	return context
 }
 
-// handleIntakeToolCalls processes tool calls from the intake module AI and executes them.
-func (im *IntakeModule) handleIntakeToolCalls(ctx context.Context, participantID string, toolResponse *genai.ToolCallResponse, messages []openai.ChatCompletionMessageParamUnion, tools []openai.ChatCompletionToolParam) (string, error) {
+// handleIntakeToolLoop manages the tool call loop for the intake module.
+// It continues calling the LLM until a user-facing message is generated.
+func (im *IntakeModule) handleIntakeToolLoop(ctx context.Context, participantID string, initialResponse *genai.ToolCallResponse, messages []openai.ChatCompletionMessageParamUnion, tools []openai.ChatCompletionToolParam) (string, error) {
+	const maxToolRounds = 10 // Prevent infinite loops
+	currentMessages := messages
+	currentResponse := initialResponse
+
+	for round := 1; round <= maxToolRounds; round++ {
+		slog.Debug("IntakeModule.handleIntakeToolLoop: round start", "participantID", participantID, "round", round, "messageCount", len(currentMessages))
+
+		// Process tool calls if any
+		if len(currentResponse.ToolCalls) > 0 {
+			slog.Info("IntakeModule.handleIntakeToolLoop: processing tool calls", "participantID", participantID, "round", round, "toolCallCount", len(currentResponse.ToolCalls))
+
+			// Execute tools and update conversation context
+			updatedMessages, err := im.executeIntakeToolCallsAndUpdateContext(ctx, participantID, currentResponse, currentMessages, tools)
+			if err != nil {
+				return "", err
+			}
+			currentMessages = updatedMessages
+
+			// If we have content, this is the final response
+			if currentResponse.Content != "" {
+				slog.Info("IntakeModule.handleIntakeToolLoop: tool round completed with user message", "participantID", participantID, "round", round, "responseLength", len(currentResponse.Content))
+				return currentResponse.Content, nil
+			}
+
+			// No content yet, call LLM again for next round
+			slog.Debug("IntakeModule.handleIntakeToolLoop: no user message yet, continuing to next round", "participantID", participantID, "round", round)
+		} else {
+			// No tool calls - check if we have content
+			if currentResponse.Content != "" {
+				slog.Info("IntakeModule.handleIntakeToolLoop: final response without tool calls", "participantID", participantID, "round", round, "responseLength", len(currentResponse.Content))
+				return currentResponse.Content, nil
+			}
+
+			// No tool calls and no content - this shouldn't happen, but handle it
+			slog.Warn("IntakeModule.handleIntakeToolLoop: received empty content and no tool calls", "participantID", participantID, "round", round)
+			return "I'm here to help you build better habits. What would you like to work on?", nil
+		}
+
+		// Generate next response with tools
+		toolResponse, err := im.genaiClient.GenerateWithTools(ctx, currentMessages, tools)
+		if err != nil {
+			slog.Error("IntakeModule.handleIntakeToolLoop: tool generation failed", "error", err, "participantID", participantID, "round", round)
+			return "", fmt.Errorf("failed to generate response with tools: %w", err)
+		}
+
+		slog.Debug("IntakeModule.handleIntakeToolLoop: received tool response",
+			"participantID", participantID,
+			"round", round,
+			"hasContent", toolResponse.Content != "",
+			"contentLength", len(toolResponse.Content),
+			"toolCallCount", len(toolResponse.ToolCalls))
+
+		currentResponse = toolResponse
+	}
+
+	// If we hit max rounds, return fallback message
+	slog.Warn("IntakeModule.handleIntakeToolLoop: hit maximum tool rounds", "participantID", participantID, "maxRounds", maxToolRounds)
+	return "I've completed the requested actions.", nil
+}
+
+// executeIntakeToolCallsAndUpdateContext executes tool calls and updates the conversation context.
+func (im *IntakeModule) executeIntakeToolCallsAndUpdateContext(ctx context.Context, participantID string, toolResponse *genai.ToolCallResponse, messages []openai.ChatCompletionMessageParamUnion, tools []openai.ChatCompletionToolParam) ([]openai.ChatCompletionMessageParamUnion, error) {
 	// Log and debug the exact tools being executed
 	var executingToolNames []string
 	for _, toolCall := range toolResponse.ToolCalls {
 		executingToolNames = append(executingToolNames, toolCall.Function.Name)
 	}
-	slog.Info("IntakeModule.handleIntakeToolCalls: executing tools", 
-		"participantID", participantID, 
+	slog.Info("IntakeModule.executeIntakeToolCallsAndUpdateContext: executing tools",
+		"participantID", participantID,
 		"toolCallCount", len(toolResponse.ToolCalls),
 		"executingTools", executingToolNames)
 
@@ -253,7 +316,31 @@ func (im *IntakeModule) handleIntakeToolCalls(ctx context.Context, participantID
 	debugMessage := fmt.Sprintf("IntakeModule executing tools: %s", strings.Join(executingToolNames, ", "))
 	SendDebugMessageIfEnabled(ctx, participantID, im.msgService, debugMessage)
 
-	// Execute each tool call
+	// Create the tool calls in OpenAI format
+	var toolCalls []openai.ChatCompletionMessageToolCallParam
+	for _, toolCall := range toolResponse.ToolCalls {
+		toolCalls = append(toolCalls, openai.ChatCompletionMessageToolCallParam{
+			ID:   toolCall.ID,
+			Type: "function",
+			Function: openai.ChatCompletionMessageToolCallFunctionParam{
+				Name:      toolCall.Function.Name,
+				Arguments: string(toolCall.Function.Arguments),
+			},
+		})
+	}
+
+	// Create assistant message with both content and tool calls for OpenAI API
+	assistantMessageWithToolCalls := openai.ChatCompletionAssistantMessageParam{
+		Content: openai.ChatCompletionAssistantMessageParamContentUnion{
+			OfString: param.NewOpt(toolResponse.Content),
+		},
+		ToolCalls: toolCalls,
+	}
+
+	// Add this assistant message with tool calls to the OpenAI conversation context
+	messages = append(messages, openai.ChatCompletionMessageParamUnion{OfAssistant: &assistantMessageWithToolCalls})
+
+	// Execute each tool call and collect results
 	var toolResults []string
 	for _, toolCall := range toolResponse.ToolCalls {
 		slog.Info("IntakeModule: executing tool call", "participantID", participantID, "toolName", toolCall.Function.Name, "toolCallID", toolCall.ID)
@@ -318,51 +405,17 @@ func (im *IntakeModule) handleIntakeToolCalls(ctx context.Context, participantID
 		}
 	}
 
-	// Add tool calls and results to conversation context for LLM follow-up
+	// Add tool call results to the OpenAI conversation context
 	for i, toolCall := range toolResponse.ToolCalls {
-		// Add assistant message with tool call
-		assistantMsg := openai.ChatCompletionAssistantMessageParam{
-			Content: openai.ChatCompletionAssistantMessageParamContentUnion{
-				OfString: param.NewOpt(toolResponse.Content),
-			},
-			ToolCalls: []openai.ChatCompletionMessageToolCallParam{{
-				ID:   toolCall.ID,
-				Type: "function",
-				Function: openai.ChatCompletionMessageToolCallFunctionParam{
-					Name:      toolCall.Function.Name,
-					Arguments: string(toolCall.Function.Arguments),
-				},
-			}},
+		// Use the corresponding result from our toolResults array
+		resultContent := toolResults[i]
+		if resultContent == "" {
+			resultContent = "Tool executed successfully"
 		}
-		messages = append(messages, openai.ChatCompletionMessageParamUnion{OfAssistant: &assistantMsg})
 
-		// Add tool result
-		if i < len(toolResults) {
-			messages = append(messages, openai.ToolMessage(toolResults[i], toolCall.ID))
-		}
+		// Add tool result message to conversation
+		messages = append(messages, openai.ToolMessage(resultContent, toolCall.ID))
 	}
 
-	// Log tools available for final response generation
-	var toolNames []string
-	for _, tool := range tools {
-		toolNames = append(toolNames, tool.Function.Name)
-	}
-	slog.Info("IntakeModule.handleIntakeToolCalls: generating final response with tools",
-		"participantID", participantID,
-		"toolCount", len(tools),
-		"toolNames", toolNames,
-		"messageCount", len(messages))
-
-	// Call LLM again to generate final response with tools available
-	finalResponse, err := im.genaiClient.GenerateWithTools(ctx, messages, tools)
-	if err != nil {
-		slog.Error("IntakeModule: failed to generate final response after tool execution", "error", err, "participantID", participantID)
-		// Fallback: return tool results directly
-		if len(toolResults) == 1 {
-			return toolResults[0], nil
-		}
-		return strings.Join(toolResults, "\n\n"), nil
-	}
-
-	return finalResponse.Content, nil
+	return messages, nil
 }
