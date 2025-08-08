@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/BTreeMap/PromptPipe/internal/genai"
 	"github.com/BTreeMap/PromptPipe/internal/models"
@@ -44,16 +45,21 @@ func NewIntakeModule(stateManager StateManager, genaiClient genai.ClientInterfac
 
 // ExecuteIntakeBotWithHistory executes the intake bot tool with conversation history context.
 func (im *IntakeModule) ExecuteIntakeBotWithHistory(ctx context.Context, participantID string, args map[string]interface{}, chatHistory []openai.ChatCompletionMessageParamUnion) (string, error) {
-	slog.Debug("flow.ExecuteIntakeBotWithHistory: processing intake with chat history", "participantID", participantID, "args", args, "historyLength", len(chatHistory))
+	return im.ExecuteIntakeBotWithHistoryAndConversation(ctx, participantID, args, chatHistory, nil)
+}
+
+// ExecuteIntakeBotWithHistoryAndConversation executes the intake bot tool and can modify the conversation history directly.
+func (im *IntakeModule) ExecuteIntakeBotWithHistoryAndConversation(ctx context.Context, participantID string, args map[string]interface{}, chatHistory []openai.ChatCompletionMessageParamUnion, conversationHistory *ConversationHistory) (string, error) {
+	slog.Debug("flow.ExecuteIntakeBotWithHistoryAndConversation: processing intake with chat history", "participantID", participantID, "args", args, "historyLength", len(chatHistory))
 
 	// Validate required dependencies
 	if im.stateManager == nil {
-		slog.Error("flow.ExecuteIntakeBotWithHistory: state manager not initialized")
+		slog.Error("flow.ExecuteIntakeBotWithHistoryAndConversation: state manager not initialized")
 		return "", fmt.Errorf("state manager not initialized")
 	}
 
 	if im.genaiClient == nil {
-		slog.Error("flow.ExecuteIntakeBotWithHistory: genai client not initialized")
+		slog.Error("flow.ExecuteIntakeBotWithHistoryAndConversation: genai client not initialized")
 		return "", fmt.Errorf("genai client not initialized")
 	}
 
@@ -119,7 +125,7 @@ func (im *IntakeModule) ExecuteIntakeBotWithHistory(ctx context.Context, partici
 	// Check if there are tool calls to handle
 	if len(response.ToolCalls) > 0 {
 		slog.Info("IntakeModule.ExecuteIntakeBotWithHistory: processing tool calls", "participantID", participantID, "toolCallCount", len(response.ToolCalls))
-		return im.handleIntakeToolLoop(ctx, participantID, response, messages, tools)
+		return im.handleIntakeToolLoop(ctx, participantID, response, messages, tools, conversationHistory)
 	}
 
 	// No tool calls, return direct response
@@ -239,7 +245,7 @@ func (im *IntakeModule) buildIntakeContext(profile *UserProfile) string {
 
 // handleIntakeToolLoop manages the tool call loop for the intake module.
 // It continues calling the LLM until a user-facing message is generated.
-func (im *IntakeModule) handleIntakeToolLoop(ctx context.Context, participantID string, initialResponse *genai.ToolCallResponse, messages []openai.ChatCompletionMessageParamUnion, tools []openai.ChatCompletionToolParam) (string, error) {
+func (im *IntakeModule) handleIntakeToolLoop(ctx context.Context, participantID string, initialResponse *genai.ToolCallResponse, messages []openai.ChatCompletionMessageParamUnion, tools []openai.ChatCompletionToolParam, conversationHistory *ConversationHistory) (string, error) {
 	const maxToolRounds = 10 // Prevent infinite loops
 	currentMessages := messages
 	currentResponse := initialResponse
@@ -252,7 +258,7 @@ func (im *IntakeModule) handleIntakeToolLoop(ctx context.Context, participantID 
 			slog.Info("IntakeModule.handleIntakeToolLoop: processing tool calls", "participantID", participantID, "round", round, "toolCallCount", len(currentResponse.ToolCalls))
 
 			// Execute tools and update conversation context
-			updatedMessages, err := im.executeIntakeToolCallsAndUpdateContext(ctx, participantID, currentResponse, currentMessages, tools)
+			updatedMessages, err := im.executeIntakeToolCallsAndUpdateContext(ctx, participantID, currentResponse, currentMessages, tools, conversationHistory)
 			if err != nil {
 				return "", err
 			}
@@ -301,7 +307,7 @@ func (im *IntakeModule) handleIntakeToolLoop(ctx context.Context, participantID 
 }
 
 // executeIntakeToolCallsAndUpdateContext executes tool calls and updates the conversation context.
-func (im *IntakeModule) executeIntakeToolCallsAndUpdateContext(ctx context.Context, participantID string, toolResponse *genai.ToolCallResponse, messages []openai.ChatCompletionMessageParamUnion, tools []openai.ChatCompletionToolParam) ([]openai.ChatCompletionMessageParamUnion, error) {
+func (im *IntakeModule) executeIntakeToolCallsAndUpdateContext(ctx context.Context, participantID string, toolResponse *genai.ToolCallResponse, messages []openai.ChatCompletionMessageParamUnion, tools []openai.ChatCompletionToolParam, conversationHistory *ConversationHistory) ([]openai.ChatCompletionMessageParamUnion, error) {
 	// Log and debug the exact tools being executed
 	var executingToolNames []string
 	for _, toolCall := range toolResponse.ToolCalls {
@@ -415,6 +421,46 @@ func (im *IntakeModule) executeIntakeToolCallsAndUpdateContext(ctx context.Conte
 
 		// Add tool result message to conversation
 		messages = append(messages, openai.ToolMessage(resultContent, toolCall.ID))
+	}
+
+	// Also add a summary assistant message about tool execution for conversation history
+	// This helps the LLM understand that tools were executed and prevents repeated calls
+	if len(toolResults) > 0 {
+		var toolSummary strings.Builder
+		toolSummary.WriteString("I've executed the following tools: ")
+
+		for i, toolCall := range toolResponse.ToolCalls {
+			if i > 0 {
+				toolSummary.WriteString(", ")
+			}
+			toolSummary.WriteString(toolCall.Function.Name)
+			if i < len(toolResults) && toolResults[i] != "" {
+				// Include a brief result summary (truncated to avoid flooding)
+				result := toolResults[i]
+				if len(result) > 100 {
+					result = result[:97] + "..."
+				}
+				toolSummary.WriteString(fmt.Sprintf(" (%s)", result))
+			}
+		}
+
+		// Add as assistant message so it appears in conversation history
+		toolSummaryMessage := openai.AssistantMessage(toolSummary.String())
+		messages = append(messages, toolSummaryMessage)
+
+		// IMPORTANT: Also add this tool summary to persistent conversation history
+		// so future LLM calls can see that tools were already executed
+		if conversationHistory != nil {
+			toolSummaryHistoryMsg := ConversationMessage{
+				Role:      "assistant",
+				Content:   toolSummary.String(),
+				Timestamp: time.Now(),
+			}
+			conversationHistory.Messages = append(conversationHistory.Messages, toolSummaryHistoryMsg)
+
+			slog.Debug("IntakeModule.executeIntakeToolCallsAndUpdateContext: added tool summary to conversation history",
+				"participantID", participantID, "toolCount", len(toolResults), "summary", toolSummary.String())
+		}
 	}
 
 	return messages, nil

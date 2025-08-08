@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/BTreeMap/PromptPipe/internal/genai"
 	"github.com/BTreeMap/PromptPipe/internal/models"
@@ -80,37 +81,36 @@ func (cm *CoordinatorModule) LoadSystemPrompt() error {
 	return nil
 }
 
-// ProcessMessage handles a user message in the coordinator state.
-// The coordinator has access to all tools and can decide when to transition to other states.
-func (cm *CoordinatorModule) ProcessMessage(ctx context.Context, participantID, userMessage string, chatHistory []openai.ChatCompletionMessageParamUnion) (string, error) {
-	slog.Debug("CoordinatorModule.ProcessMessage: processing coordinator message",
+// ProcessMessageWithHistory handles a user message and can modify the conversation history directly.
+func (cm *CoordinatorModule) ProcessMessageWithHistory(ctx context.Context, participantID, userMessage string, chatHistory []openai.ChatCompletionMessageParamUnion, conversationHistory *ConversationHistory) (string, error) {
+	slog.Debug("CoordinatorModule.ProcessMessageWithHistory: processing coordinator message",
 		"participantID", participantID, "historyLength", len(chatHistory))
 
 	// Validate required dependencies
 	if cm.stateManager == nil {
-		slog.Error("CoordinatorModule.ProcessMessage: state manager not initialized")
+		slog.Error("CoordinatorModule.ProcessMessageWithHistory: state manager not initialized")
 		return "", fmt.Errorf("state manager not initialized")
 	}
 
 	if cm.genaiClient == nil {
-		slog.Error("CoordinatorModule.ProcessMessage: genai client not initialized")
+		slog.Error("CoordinatorModule.ProcessMessageWithHistory: genai client not initialized")
 		return "", fmt.Errorf("genai client not initialized")
 	}
 
 	// Load system prompt if not already loaded
 	if cm.systemPrompt == "" {
-		slog.Debug("CoordinatorModule.ProcessMessage: loading system prompt", "participantID", participantID)
+		slog.Debug("CoordinatorModule.ProcessMessageWithHistory: loading system prompt", "participantID", participantID)
 		if err := cm.LoadSystemPrompt(); err != nil {
 			// If system prompt file doesn't exist or fails to load, use a default
 			cm.systemPrompt = "You are a helpful AI coordinator for habit building. You can use tools to help users build habits, schedule prompts, and save their profiles. Use transition_state to move to specialized modules when needed."
-			slog.Warn("CoordinatorModule.ProcessMessage: using default system prompt due to load failure", "error", err)
+			slog.Warn("CoordinatorModule.ProcessMessageWithHistory: using default system prompt due to load failure", "error", err)
 		}
 	}
 
 	// Build messages for LLM with current context
 	messages, err := cm.buildCoordinatorMessages(ctx, participantID, userMessage, chatHistory)
 	if err != nil {
-		slog.Error("CoordinatorModule.ProcessMessage: failed to build messages", "error", err, "participantID", participantID)
+		slog.Error("CoordinatorModule.ProcessMessageWithHistory: failed to build messages", "error", err, "participantID", participantID)
 		return "", fmt.Errorf("failed to build coordinator messages: %w", err)
 	}
 
@@ -121,35 +121,35 @@ func (cm *CoordinatorModule) ProcessMessage(ctx context.Context, participantID, 
 	if cm.stateTransitionTool != nil {
 		toolDef := cm.stateTransitionTool.GetToolDefinition()
 		tools = append(tools, toolDef)
-		slog.Debug("CoordinatorModule.ProcessMessage: added state transition tool", "participantID", participantID)
+		slog.Debug("CoordinatorModule.ProcessMessageWithHistory: added state transition tool", "participantID", participantID)
 	}
 
 	// Add profile save tool - coordinator can save user profiles
 	if cm.profileSaveTool != nil {
 		toolDef := cm.profileSaveTool.GetToolDefinition()
 		tools = append(tools, toolDef)
-		slog.Debug("CoordinatorModule.ProcessMessage: added profile save tool", "participantID", participantID)
+		slog.Debug("CoordinatorModule.ProcessMessageWithHistory: added profile save tool", "participantID", participantID)
 	}
 
 	// Add prompt generator tool - coordinator can generate prompts
 	if cm.promptGeneratorTool != nil {
 		toolDef := cm.promptGeneratorTool.GetToolDefinition()
 		tools = append(tools, toolDef)
-		slog.Debug("CoordinatorModule.ProcessMessage: added prompt generator tool", "participantID", participantID)
+		slog.Debug("CoordinatorModule.ProcessMessageWithHistory: added prompt generator tool", "participantID", participantID)
 	}
 
 	// Add scheduler tool
 	if cm.schedulerTool != nil {
 		toolDef := cm.schedulerTool.GetToolDefinition()
 		tools = append(tools, toolDef)
-		slog.Debug("CoordinatorModule.ProcessMessage: added scheduler tool", "participantID", participantID)
+		slog.Debug("CoordinatorModule.ProcessMessageWithHistory: added scheduler tool", "participantID", participantID)
 	}
 
 	if len(tools) == 0 {
 		// No tools available, use standard generation
 		response, err := cm.genaiClient.GenerateWithMessages(ctx, messages)
 		if err != nil {
-			slog.Error("CoordinatorModule.ProcessMessage: GenAI generation failed", "error", err, "participantID", participantID)
+			slog.Error("CoordinatorModule.ProcessMessageWithHistory: GenAI generation failed", "error", err, "participantID", participantID)
 			return "", fmt.Errorf("failed to generate response: %w", err)
 		}
 		return response, nil
@@ -160,14 +160,14 @@ func (cm *CoordinatorModule) ProcessMessage(ctx context.Context, participantID, 
 	for _, tool := range tools {
 		toolNames = append(toolNames, tool.Function.Name)
 	}
-	slog.Info("CoordinatorModule.ProcessMessage: calling LLM with tools",
+	slog.Info("CoordinatorModule.ProcessMessageWithHistory: calling LLM with tools",
 		"participantID", participantID,
 		"toolCount", len(tools),
 		"toolNames", toolNames,
 		"messageCount", len(messages))
 
 	// Start tool call loop
-	return cm.handleCoordinatorToolLoop(ctx, participantID, messages, tools)
+	return cm.handleCoordinatorToolLoop(ctx, participantID, messages, tools, conversationHistory)
 }
 
 // buildCoordinatorMessages creates the message array for the coordinator LLM.
@@ -264,7 +264,7 @@ func (cm *CoordinatorModule) getProfileStatus(ctx context.Context, participantID
 
 // handleCoordinatorToolLoop manages the tool call loop for the coordinator module.
 // It continues calling the LLM until a user-facing message is generated.
-func (cm *CoordinatorModule) handleCoordinatorToolLoop(ctx context.Context, participantID string, messages []openai.ChatCompletionMessageParamUnion, tools []openai.ChatCompletionToolParam) (string, error) {
+func (cm *CoordinatorModule) handleCoordinatorToolLoop(ctx context.Context, participantID string, messages []openai.ChatCompletionMessageParamUnion, tools []openai.ChatCompletionToolParam, conversationHistory *ConversationHistory) (string, error) {
 	const maxToolRounds = 10 // Prevent infinite loops
 	currentMessages := messages
 
@@ -290,7 +290,7 @@ func (cm *CoordinatorModule) handleCoordinatorToolLoop(ctx context.Context, part
 			slog.Info("CoordinatorModule.handleCoordinatorToolLoop: processing tool calls", "participantID", participantID, "round", round, "toolCallCount", len(toolResponse.ToolCalls))
 
 			// Execute tools and update conversation context
-			updatedMessages, err := cm.executeCoordinatorToolCallsAndUpdateContext(ctx, participantID, toolResponse, currentMessages, tools)
+			updatedMessages, err := cm.executeCoordinatorToolCallsAndUpdateContext(ctx, participantID, toolResponse, currentMessages, tools, conversationHistory)
 			if err != nil {
 				return "", err
 			}
@@ -324,7 +324,7 @@ func (cm *CoordinatorModule) handleCoordinatorToolLoop(ctx context.Context, part
 }
 
 // executeCoordinatorToolCallsAndUpdateContext executes tool calls and updates the conversation context.
-func (cm *CoordinatorModule) executeCoordinatorToolCallsAndUpdateContext(ctx context.Context, participantID string, toolResponse *genai.ToolCallResponse, messages []openai.ChatCompletionMessageParamUnion, tools []openai.ChatCompletionToolParam) ([]openai.ChatCompletionMessageParamUnion, error) {
+func (cm *CoordinatorModule) executeCoordinatorToolCallsAndUpdateContext(ctx context.Context, participantID string, toolResponse *genai.ToolCallResponse, messages []openai.ChatCompletionMessageParamUnion, tools []openai.ChatCompletionToolParam, conversationHistory *ConversationHistory) ([]openai.ChatCompletionMessageParamUnion, error) {
 	// Log and debug the exact tools being executed
 	var executingToolNames []string
 	for _, toolCall := range toolResponse.ToolCalls {
@@ -453,6 +453,46 @@ func (cm *CoordinatorModule) executeCoordinatorToolCallsAndUpdateContext(ctx con
 
 		// Add tool result message to conversation
 		messages = append(messages, openai.ToolMessage(resultContent, toolCall.ID))
+	}
+
+	// Also add a summary assistant message about tool execution for conversation history
+	// This helps the LLM understand that tools were executed and prevents repeated calls
+	if len(toolResults) > 0 {
+		var toolSummary strings.Builder
+		toolSummary.WriteString("I've executed the following tools: ")
+
+		for i, toolCall := range toolResponse.ToolCalls {
+			if i > 0 {
+				toolSummary.WriteString(", ")
+			}
+			toolSummary.WriteString(toolCall.Function.Name)
+			if i < len(toolResults) && toolResults[i] != "" {
+				// Include a brief result summary (truncated to avoid flooding)
+				result := toolResults[i]
+				if len(result) > 100 {
+					result = result[:97] + "..."
+				}
+				toolSummary.WriteString(fmt.Sprintf(" (%s)", result))
+			}
+		}
+
+		// Add as assistant message so it appears in conversation history
+		toolSummaryMessage := openai.AssistantMessage(toolSummary.String())
+		messages = append(messages, toolSummaryMessage)
+
+		// IMPORTANT: Also add this tool summary to persistent conversation history
+		// so future LLM calls can see that tools were already executed
+		if conversationHistory != nil {
+			toolSummaryHistoryMsg := ConversationMessage{
+				Role:      "assistant",
+				Content:   toolSummary.String(),
+				Timestamp: time.Now(),
+			}
+			conversationHistory.Messages = append(conversationHistory.Messages, toolSummaryHistoryMsg)
+
+			slog.Debug("CoordinatorModule.executeCoordinatorToolCallsAndUpdateContext: added tool summary to conversation history",
+				"participantID", participantID, "toolCount", len(toolResults), "summary", toolSummary.String())
+		}
 	}
 
 	return messages, nil

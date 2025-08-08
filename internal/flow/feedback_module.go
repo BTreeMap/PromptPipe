@@ -104,13 +104,8 @@ func (fm *FeedbackModule) GetToolDefinition() openai.ChatCompletionToolParam {
 	}
 }
 
-// ExecuteFeedbackTracker executes the feedback tracking tool call (legacy method - calls history version with empty history).
-func (fm *FeedbackModule) ExecuteFeedbackTracker(ctx context.Context, participantID string, args map[string]interface{}) (string, error) {
-	return fm.ExecuteFeedbackTrackerWithHistory(ctx, participantID, args, []openai.ChatCompletionMessageParamUnion{})
-}
-
-// ExecuteFeedbackTrackerWithHistory executes the feedback tracking tool with conversation history.
-func (fm *FeedbackModule) ExecuteFeedbackTrackerWithHistory(ctx context.Context, participantID string, args map[string]interface{}, chatHistory []openai.ChatCompletionMessageParamUnion) (string, error) {
+// ExecuteFeedbackTrackerWithHistoryAndConversation executes the feedback tracking tool and can modify the conversation history directly.
+func (fm *FeedbackModule) ExecuteFeedbackTrackerWithHistoryAndConversation(ctx context.Context, participantID string, args map[string]interface{}, chatHistory []openai.ChatCompletionMessageParamUnion, conversationHistory *ConversationHistory) (string, error) {
 	slog.Debug("flow.ExecuteFeedbackTrackerWithHistory: processing feedback with chat history", "participantID", participantID, "args", args, "historyLength", len(chatHistory))
 
 	// Validate required dependencies

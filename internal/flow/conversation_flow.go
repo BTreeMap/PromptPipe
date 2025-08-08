@@ -70,7 +70,7 @@ func SendDebugMessageIfEnabled(ctx context.Context, participantID string, msgSer
 
 // ConversationMessage represents a single message in the conversation history.
 type ConversationMessage struct {
-	Role      string    `json:"role"`      // "user" or "assistant"
+	Role      string    `json:"role"`      // "user", "assistant", or "system"
 	Content   string    `json:"content"`   // message content
 	Timestamp time.Time `json:"timestamp"` // when the message was sent
 }
@@ -593,6 +593,8 @@ func (f *ConversationFlow) getPreviousChatHistory(ctx context.Context, participa
 			messages = append(messages, openai.UserMessage(msg.Content))
 		} else if msg.Role == "assistant" {
 			messages = append(messages, openai.AssistantMessage(msg.Content))
+		} else if msg.Role == "system" {
+			messages = append(messages, openai.SystemMessage(msg.Content))
 		}
 	}
 
@@ -605,195 +607,6 @@ func (f *ConversationFlow) getPreviousChatHistory(ctx context.Context, participa
 		"effectiveLimit", effectiveLimit)
 
 	return messages, nil
-}
-
-// executeSchedulerTool executes a scheduler tool call.
-func (f *ConversationFlow) executeSchedulerTool(ctx context.Context, participantID string, toolCall genai.ToolCall) (*models.ToolResult, error) {
-	// Log the raw tool call for debugging
-	slog.Debug("flow.executeSchedulerTool raw call",
-		"participantID", participantID,
-		"toolCallID", toolCall.ID,
-		"functionName", toolCall.Function.Name,
-		"rawArguments", string(toolCall.Function.Arguments))
-
-	// Parse the scheduler parameters from the tool call
-	var params models.SchedulerToolParams
-	if err := json.Unmarshal(toolCall.Function.Arguments, &params); err != nil {
-		slog.Error("flow.failed to parse scheduler parameters",
-			"error", err,
-			"participantID", participantID,
-			"rawArguments", string(toolCall.Function.Arguments))
-		return &models.ToolResult{
-			Success: false,
-			Message: "Failed to parse scheduling parameters",
-			Error:   err.Error(),
-		}, fmt.Errorf("failed to unmarshal scheduler parameters: %w", err)
-	}
-
-	// Log parsed parameters for debugging
-	slog.Debug("flow.parsed scheduler parameters",
-		"participantID", participantID,
-		"type", params.Type,
-		"fixedTime", params.FixedTime,
-		"timezone", params.Timezone,
-		"randomStartTime", params.RandomStartTime,
-		"randomEndTime", params.RandomEndTime,
-		"promptSystemPrompt", params.PromptSystemPrompt,
-		"promptUserPrompt", params.PromptUserPrompt,
-		"habitDescription", params.HabitDescription)
-
-	// Auto-detect and fix missing type field based on provided parameters
-	slog.Debug("flow.auto-detection check",
-		"participantID", participantID,
-		"typeIsEmpty", params.Type == "",
-		"typeValue", string(params.Type),
-		"fixedTimeProvided", params.FixedTime != "",
-		"fixedTimeValue", params.FixedTime,
-		"randomStartProvided", params.RandomStartTime != "",
-		"randomEndProvided", params.RandomEndTime != "")
-
-	if params.Type == "" {
-		slog.Debug("flow.type field is empty, attempting auto-detection", "participantID", participantID)
-
-		if params.FixedTime != "" {
-			slog.Debug("flow.auto-detecting fixed type", "participantID", participantID, "fixedTime", params.FixedTime)
-			params.Type = models.SchedulerTypeFixed
-			slog.Info("flow.auto-detected scheduler type as 'fixed'",
-				"participantID", participantID,
-				"reason", "fixed_time provided",
-				"newType", string(params.Type))
-		} else if params.RandomStartTime != "" && params.RandomEndTime != "" {
-			slog.Debug("flow.auto-detecting random type", "participantID", participantID)
-			params.Type = models.SchedulerTypeRandom
-			slog.Info("flow.auto-detected scheduler type as 'random'",
-				"participantID", participantID,
-				"reason", "random start and end times provided",
-				"newType", string(params.Type))
-		} else {
-			slog.Error("flow.cannot determine scheduler type",
-				"participantID", participantID,
-				"fixedTime", params.FixedTime,
-				"randomStartTime", params.RandomStartTime,
-				"randomEndTime", params.RandomEndTime)
-			return &models.ToolResult{
-				Success: false,
-				Message: "Cannot determine scheduler type. Please specify either a fixed time or random time window.",
-				Error:   "type field missing and cannot be auto-detected",
-			}, fmt.Errorf("type field missing and cannot be auto-detected")
-		}
-
-		// Log the corrected parameters
-		slog.Debug("flow.corrected scheduler parameters",
-			"participantID", participantID,
-			"correctedType", string(params.Type))
-	} else {
-		slog.Debug("flow.type field already provided",
-			"participantID", participantID,
-			"typeValue", string(params.Type))
-	}
-
-	// Check if phone number is available in context
-	phoneNumber, hasPhone := GetPhoneNumberFromContext(ctx)
-	slog.Debug("flow.scheduler tool context check",
-		"participantID", participantID,
-		"hasPhoneNumber", hasPhone,
-		"phoneNumber", phoneNumber)
-
-	// Final validation log before executing scheduler tool
-	slog.Debug("flow.final parameters before scheduler execution",
-		"participantID", participantID,
-		"finalType", string(params.Type),
-		"finalTypeIsEmpty", params.Type == "",
-		"fixedTime", params.FixedTime)
-
-	// Execute the scheduler tool
-	return f.schedulerTool.ExecuteScheduler(ctx, participantID, params)
-}
-
-// executePromptGeneratorTool executes a prompt generator tool call.
-func (f *ConversationFlow) executePromptGeneratorTool(ctx context.Context, participantID string, toolCall genai.ToolCall) (string, error) {
-	slog.Debug("flow.executePromptGeneratorTool",
-		"participantID", participantID,
-		"toolCallID", toolCall.ID,
-		"rawArguments", string(toolCall.Function.Arguments))
-
-	// Parse the tool call arguments
-	var args map[string]interface{}
-	if err := json.Unmarshal(toolCall.Function.Arguments, &args); err != nil {
-		slog.Error("flow.failed to parse prompt generator parameters",
-			"error", err,
-			"participantID", participantID,
-			"rawArguments", string(toolCall.Function.Arguments))
-		return "", fmt.Errorf("failed to unmarshal prompt generator parameters: %w", err)
-	}
-
-	// Get previous chat history for context (configurable limit, default fallback for safety)
-	chatHistory, err := f.getPreviousChatHistory(ctx, participantID, 50)
-	if err != nil {
-		slog.Warn("flow.failed to get chat history for prompt generator", "error", err, "participantID", participantID)
-		// Continue without history rather than failing
-		chatHistory = []openai.ChatCompletionMessageParamUnion{}
-	}
-
-	// Execute the prompt generator tool with conversation history
-	result, err := f.promptGeneratorTool.ExecutePromptGeneratorWithHistory(ctx, participantID, args, chatHistory)
-	if err != nil {
-		return result, err
-	}
-
-	// After successful prompt generation, schedule automatic feedback collection
-	if f.feedbackModule != nil {
-		if scheduleErr := f.feedbackModule.ScheduleFeedbackCollection(ctx, participantID); scheduleErr != nil {
-			slog.Warn("flow.executePromptGeneratorTool: failed to schedule feedback collection", "participantID", participantID, "error", scheduleErr)
-			// Don't fail the prompt generation, just log the warning
-		} else {
-			slog.Info("flow.executePromptGeneratorTool: feedback collection scheduled", "participantID", participantID)
-		}
-	}
-
-	return result, err
-}
-
-// executeProfileSaveTool executes a profile save tool call.
-func (f *ConversationFlow) executeProfileSaveTool(ctx context.Context, participantID string, toolCall genai.ToolCall) (string, error) {
-	slog.Debug("flow.executeProfileSaveTool",
-		"participantID", participantID,
-		"toolCallID", toolCall.ID,
-		"rawArguments", string(toolCall.Function.Arguments))
-
-	// Parse the tool call arguments
-	var args map[string]interface{}
-	if err := json.Unmarshal(toolCall.Function.Arguments, &args); err != nil {
-		slog.Error("flow.failed to parse profile save parameters",
-			"error", err,
-			"participantID", participantID,
-			"rawArguments", string(toolCall.Function.Arguments))
-		return "", fmt.Errorf("failed to unmarshal profile save parameters: %w", err)
-	}
-
-	// Execute the profile save tool
-	return f.profileSaveTool.ExecuteProfileSave(ctx, participantID, args)
-}
-
-// executeStateTransitionTool executes a state transition tool call.
-func (f *ConversationFlow) executeStateTransitionTool(ctx context.Context, participantID string, toolCall genai.ToolCall) (string, error) {
-	slog.Debug("flow.executeStateTransitionTool",
-		"participantID", participantID,
-		"toolCallID", toolCall.ID,
-		"rawArguments", string(toolCall.Function.Arguments))
-
-	// Parse the tool call arguments
-	var args map[string]interface{}
-	if err := json.Unmarshal(toolCall.Function.Arguments, &args); err != nil {
-		slog.Error("flow.failed to parse state transition parameters",
-			"error", err,
-			"participantID", participantID,
-			"rawArguments", string(toolCall.Function.Arguments))
-		return "", fmt.Errorf("failed to unmarshal state transition parameters: %w", err)
-	}
-
-	// Execute the state transition tool
-	return f.stateTransitionTool.ExecuteStateTransition(ctx, participantID, args)
 }
 
 // SetChatHistoryLimit sets the limit for number of history messages sent to bot tools.
@@ -923,7 +736,7 @@ func (f *ConversationFlow) processCoordinatorState(ctx context.Context, particip
 	}
 
 	// Delegate to coordinator module
-	return f.coordinatorModule.ProcessMessage(ctx, participantID, userMessage, chatHistory)
+	return f.coordinatorModule.ProcessMessageWithHistory(ctx, participantID, userMessage, chatHistory, history)
 }
 
 // processIntakeState handles messages when in the intake state.
@@ -948,7 +761,7 @@ func (f *ConversationFlow) processIntakeState(ctx context.Context, participantID
 		"user_response": userMessage,
 	}
 
-	response, err := f.intakeModule.ExecuteIntakeBotWithHistory(ctx, participantID, args, chatHistory)
+	response, err := f.intakeModule.ExecuteIntakeBotWithHistoryAndConversation(ctx, participantID, args, chatHistory, history)
 	if err != nil {
 		slog.Error("ConversationFlow.processIntakeState: intake execution failed", "error", err, "participantID", participantID)
 		return "", fmt.Errorf("intake processing failed: %w", err)
@@ -985,7 +798,7 @@ func (f *ConversationFlow) processFeedbackState(ctx context.Context, participant
 		"completion_status": "attempted", // Default, the feedback tracker will analyze the actual response
 	}
 
-	response, err := f.feedbackModule.ExecuteFeedbackTrackerWithHistory(ctx, participantID, args, chatHistory)
+	response, err := f.feedbackModule.ExecuteFeedbackTrackerWithHistoryAndConversation(ctx, participantID, args, chatHistory, history)
 	if err != nil {
 		slog.Error("ConversationFlow.processFeedbackState: feedback execution failed", "error", err, "participantID", participantID)
 		return "", fmt.Errorf("feedback processing failed: %w", err)
