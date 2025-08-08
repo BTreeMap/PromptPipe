@@ -379,10 +379,21 @@ func (fm *FeedbackModule) generatePersonalizedFeedback(ctx context.Context, part
 		slog.Debug("FeedbackModule.generatePersonalizedFeedback: added scheduler tool", "participantID", participantID)
 	}
 
+	// Log the exact tools being passed to LLM
+	var toolNames []string
+	for _, tool := range tools {
+		toolNames = append(toolNames, tool.Function.Name)
+	}
+	slog.Info("FeedbackModule.generatePersonalizedFeedback: calling LLM with tools",
+		"participantID", participantID,
+		"toolCount", len(tools),
+		"toolNames", toolNames,
+		"messageCount", len(messages))
+
 	// Generate response using LLM with tools
 	response, err := fm.genaiClient.GenerateWithTools(ctx, messages, tools)
 	if err != nil {
-		slog.Error("flow.generatePersonalizedFeedback: GenAI generation failed", "error", err, "participantID", participantID)
+		slog.Error("flow.generatePersonalizedFeedback: GenAI generation failed", "error", err, "participantID", participantID, "toolNames", toolNames)
 		return "", fmt.Errorf("failed to generate personalized feedback: %w", err)
 	}
 
@@ -710,10 +721,21 @@ func (fm *FeedbackModule) handleFeedbackToolCalls(ctx context.Context, participa
 		}
 	}
 
+	// Log tools available for final response generation
+	var toolNames []string
+	for _, tool := range tools {
+		toolNames = append(toolNames, tool.Function.Name)
+	}
+	slog.Info("FeedbackModule.handleFeedbackToolCalls: generating final response with tools",
+		"participantID", participantID,
+		"toolCount", len(tools),
+		"toolNames", toolNames,
+		"messageCount", len(messages))
+
 	// Call LLM again to generate final response with tools available
 	finalResponse, err := fm.genaiClient.GenerateWithTools(ctx, messages, tools)
 	if err != nil {
-		slog.Error("FeedbackModule: failed to generate final response after tool execution", "error", err, "participantID", participantID)
+		slog.Error("FeedbackModule: failed to generate final response after tool execution", "error", err, "participantID", participantID, "toolNames", toolNames)
 		// Fallback: return tool results directly
 		if len(toolResults) == 1 {
 			return toolResults[0], nil

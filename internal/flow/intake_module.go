@@ -98,10 +98,21 @@ func (im *IntakeModule) ExecuteIntakeBotWithHistory(ctx context.Context, partici
 		slog.Debug("IntakeModule.ExecuteIntakeBotWithHistory: added scheduler tool", "participantID", participantID)
 	}
 
+	// Log the exact tools being passed to LLM
+	var toolNames []string
+	for _, tool := range tools {
+		toolNames = append(toolNames, tool.Function.Name)
+	}
+	slog.Info("IntakeModule.ExecuteIntakeBotWithHistory: calling LLM with tools",
+		"participantID", participantID,
+		"toolCount", len(tools),
+		"toolNames", toolNames,
+		"messageCount", len(messages))
+
 	// Generate response using LLM with tools
 	response, err := im.genaiClient.GenerateWithTools(ctx, messages, tools)
 	if err != nil {
-		slog.Error("flow.ExecuteIntakeBotWithHistory: GenAI generation failed", "error", err, "participantID", participantID)
+		slog.Error("flow.ExecuteIntakeBotWithHistory: GenAI generation failed", "error", err, "participantID", participantID, "toolNames", toolNames)
 		return "", fmt.Errorf("failed to generate intake response: %w", err)
 	}
 
@@ -318,6 +329,17 @@ func (im *IntakeModule) handleIntakeToolCalls(ctx context.Context, participantID
 			messages = append(messages, openai.ToolMessage(toolResults[i], toolCall.ID))
 		}
 	}
+
+	// Log tools available for final response generation
+	var toolNames []string
+	for _, tool := range tools {
+		toolNames = append(toolNames, tool.Function.Name)
+	}
+	slog.Info("IntakeModule.handleIntakeToolCalls: generating final response with tools",
+		"participantID", participantID,
+		"toolCount", len(tools),
+		"toolNames", toolNames,
+		"messageCount", len(messages))
 
 	// Call LLM again to generate final response with tools available
 	finalResponse, err := im.genaiClient.GenerateWithTools(ctx, messages, tools)

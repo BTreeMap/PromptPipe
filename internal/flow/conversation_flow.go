@@ -341,6 +341,22 @@ func (f *ConversationFlow) processConversationMessage(ctx context.Context, parti
 
 // handleToolCalls processes tool calls from the AI and executes them.
 func (f *ConversationFlow) handleToolCalls(ctx context.Context, participantID string, toolResponse *genai.ToolCallResponse, history *ConversationHistory, messages []openai.ChatCompletionMessageParamUnion, tools []openai.ChatCompletionToolParam) (string, error) {
+	// Log and debug the exact tools being executed
+	var executingToolNames []string
+	for _, toolCall := range toolResponse.ToolCalls {
+		executingToolNames = append(executingToolNames, toolCall.Function.Name)
+	}
+	slog.Info("ConversationFlow.handleToolCalls: executing tools",
+		"participantID", participantID,
+		"toolCallCount", len(toolResponse.ToolCalls),
+		"executingTools", executingToolNames)
+
+	// Send debug message if debug mode is enabled
+	if f.debugMode {
+		debugMessage := fmt.Sprintf("🔧 Executing tools: %s", strings.Join(executingToolNames, ", "))
+		f.sendDebugMessage(ctx, participantID, debugMessage)
+	}
+
 	// Create the tool calls in OpenAI format first
 	var toolCalls []openai.ChatCompletionMessageToolCallParam
 	for _, toolCall := range toolResponse.ToolCalls {
@@ -1040,29 +1056,38 @@ func (f *ConversationFlow) buildDebugInfo(ctx context.Context, participantID str
 		}
 	}
 
-	// Add available modules/tools
+	// Add available modules/tools with their exact function names
 	var availableModules []string
+	var toolDetails []string
+
 	if f.intakeModule != nil {
 		availableModules = append(availableModules, "IntakeModule")
+		toolDetails = append(toolDetails, "IntakeModule (state transitions, profile saving, scheduling)")
 	}
 	if f.feedbackModule != nil {
 		availableModules = append(availableModules, "FeedbackModule")
+		toolDetails = append(toolDetails, "FeedbackModule (state transitions, profile saving, scheduling)")
 	}
 	if f.schedulerTool != nil {
 		availableModules = append(availableModules, "SchedulerTool")
+		toolDetails = append(toolDetails, "SchedulerTool → scheduler")
 	}
 	if f.promptGeneratorTool != nil {
 		availableModules = append(availableModules, "PromptGeneratorTool")
+		toolDetails = append(toolDetails, "PromptGeneratorTool → generate_habit_prompt")
 	}
 	if f.stateTransitionTool != nil {
 		availableModules = append(availableModules, "StateTransitionTool")
+		toolDetails = append(toolDetails, "StateTransitionTool → transition_state")
 	}
 	if f.profileSaveTool != nil {
 		availableModules = append(availableModules, "ProfileSaveTool")
+		toolDetails = append(toolDetails, "ProfileSaveTool → save_user_profile")
 	}
 
 	if len(availableModules) > 0 {
 		debugParts = append(debugParts, fmt.Sprintf("Available Tools: %s", strings.Join(availableModules, ", ")))
+		debugParts = append(debugParts, fmt.Sprintf("Tool Details: %s", strings.Join(toolDetails, " | ")))
 	}
 
 	return strings.Join(debugParts, "\n")
@@ -1229,15 +1254,21 @@ func (f *ConversationFlow) processWithSpecificTools(ctx context.Context, partici
 		return response, nil
 	}
 
+	// Log the exact tools being passed to LLM
+	var toolNames []string
+	for _, tool := range tools {
+		toolNames = append(toolNames, tool.Function.Name)
+	}
 	slog.Info("ConversationFlow.processWithSpecificTools: calling GenAI with tools",
 		"participantID", participantID,
 		"toolCount", len(tools),
+		"toolNames", toolNames,
 		"messageCount", len(messages))
 
 	// Generate response with tools
 	toolResponse, err := f.genaiClient.GenerateWithTools(ctx, messages, tools)
 	if err != nil {
-		slog.Error("ConversationFlow.processWithSpecificTools: tool generation failed", "error", err, "participantID", participantID)
+		slog.Error("ConversationFlow.processWithSpecificTools: tool generation failed", "error", err, "participantID", participantID, "toolNames", toolNames)
 		return "", fmt.Errorf("failed to generate response with tools: %w", err)
 	}
 
