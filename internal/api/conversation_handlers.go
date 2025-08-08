@@ -149,7 +149,7 @@ func (s *Server) generateFirstConversationMessage(ctx context.Context, participa
 
 	// For the first message, we simulate the user starting the conversation
 	// This allows the AI to respond naturally with a greeting instead of following an instruction
-	simulatedUserGreeting := "Hi!"
+	simulatedUserGreeting := "<Hint: The user has joined the conversation and is expecting a greeting>"
 
 	response, err := conversationFlow.ProcessResponse(ctx, participantID, simulatedUserGreeting)
 	if err != nil {
