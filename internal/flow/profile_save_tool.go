@@ -108,7 +108,7 @@ func (pst *ProfileSaveTool) ExecuteProfileSave(ctx context.Context, participantI
 	}
 
 	// Get or create user profile
-	profile, err := pst.getOrCreateUserProfile(ctx, participantID)
+	profile, err := pst.GetOrCreateUserProfile(ctx, participantID)
 	if err != nil {
 		slog.Error("ProfileSaveTool.ExecuteProfileSave: failed to get user profile", "error", err, "participantID", participantID)
 		return "", fmt.Errorf("failed to get user profile: %w", err)
@@ -179,7 +179,7 @@ func (pst *ProfileSaveTool) ExecuteProfileSave(ctx context.Context, participantI
 }
 
 // getOrCreateUserProfile retrieves or creates a new user profile
-func (pst *ProfileSaveTool) getOrCreateUserProfile(ctx context.Context, participantID string) (*UserProfile, error) {
+func (pst *ProfileSaveTool) GetOrCreateUserProfile(ctx context.Context, participantID string) (*UserProfile, error) {
 	profileJSON, err := pst.stateManager.GetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyUserProfile)
 	if err != nil {
 		slog.Debug("ProfileSaveTool.getOrCreateUserProfile: creating new profile", "participantID", participantID)

@@ -58,7 +58,7 @@ func (im *IntakeModule) ExecuteIntakeBotWithHistory(ctx context.Context, partici
 	userResponse, _ := args["user_response"].(string)
 
 	// Get current user profile to understand what information we already have
-	profile, err := im.profileSaveTool.getOrCreateUserProfile(ctx, participantID)
+	profile, err := im.profileSaveTool.GetOrCreateUserProfile(ctx, participantID)
 	if err != nil {
 		slog.Error("flow.ExecuteIntakeBotWithHistory: failed to get user profile", "error", err, "participantID", participantID)
 		return "", fmt.Errorf("failed to get user profile: %w", err)
