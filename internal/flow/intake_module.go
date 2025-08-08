@@ -239,7 +239,19 @@ func (im *IntakeModule) buildIntakeContext(profile *UserProfile) string {
 
 // handleIntakeToolCalls processes tool calls from the intake module AI and executes them.
 func (im *IntakeModule) handleIntakeToolCalls(ctx context.Context, participantID string, toolResponse *genai.ToolCallResponse, messages []openai.ChatCompletionMessageParamUnion, tools []openai.ChatCompletionToolParam) (string, error) {
-	slog.Info("IntakeModule.handleIntakeToolCalls: processing tool calls", "participantID", participantID, "toolCallCount", len(toolResponse.ToolCalls))
+	// Log and debug the exact tools being executed
+	var executingToolNames []string
+	for _, toolCall := range toolResponse.ToolCalls {
+		executingToolNames = append(executingToolNames, toolCall.Function.Name)
+	}
+	slog.Info("IntakeModule.handleIntakeToolCalls: executing tools", 
+		"participantID", participantID, 
+		"toolCallCount", len(toolResponse.ToolCalls),
+		"executingTools", executingToolNames)
+
+	// Send debug message if debug mode is enabled in context
+	debugMessage := fmt.Sprintf("IntakeModule executing tools: %s", strings.Join(executingToolNames, ", "))
+	SendDebugMessageIfEnabled(ctx, participantID, im.msgService, debugMessage)
 
 	// Execute each tool call
 	var toolResults []string

@@ -630,7 +630,19 @@ func (fm *FeedbackModule) CancelPendingFeedback(ctx context.Context, participant
 
 // handleFeedbackToolCalls processes tool calls from the feedback module AI and executes them.
 func (fm *FeedbackModule) handleFeedbackToolCalls(ctx context.Context, participantID string, toolResponse *genai.ToolCallResponse, messages []openai.ChatCompletionMessageParamUnion, tools []openai.ChatCompletionToolParam) (string, error) {
-	slog.Info("FeedbackModule.handleFeedbackToolCalls: processing tool calls", "participantID", participantID, "toolCallCount", len(toolResponse.ToolCalls))
+	// Log and debug the exact tools being executed
+	var executingToolNames []string
+	for _, toolCall := range toolResponse.ToolCalls {
+		executingToolNames = append(executingToolNames, toolCall.Function.Name)
+	}
+	slog.Info("FeedbackModule.handleFeedbackToolCalls: executing tools", 
+		"participantID", participantID, 
+		"toolCallCount", len(toolResponse.ToolCalls),
+		"executingTools", executingToolNames)
+
+	// Send debug message if debug mode is enabled in context
+	debugMessage := fmt.Sprintf("FeedbackModule executing tools: %s", strings.Join(executingToolNames, ", "))
+	SendDebugMessageIfEnabled(ctx, participantID, fm.msgService, debugMessage)
 
 	// Execute each tool call
 	var toolResults []string

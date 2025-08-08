@@ -20,6 +20,7 @@ import (
 type contextKey string
 
 const phoneNumberContextKey contextKey = "phone_number"
+const debugModeContextKey contextKey = "debug_mode"
 
 // GetPhoneNumberContextKey returns the context key used for storing phone numbers
 func GetPhoneNumberContextKey() contextKey {
@@ -30,6 +31,34 @@ func GetPhoneNumberContextKey() contextKey {
 func GetPhoneNumberFromContext(ctx context.Context) (string, bool) {
 	phoneNumber, ok := ctx.Value(phoneNumberContextKey).(string)
 	return phoneNumber, ok && phoneNumber != ""
+}
+
+// SetDebugModeInContext adds debug mode to the context
+func SetDebugModeInContext(ctx context.Context, debugMode bool) context.Context {
+	return context.WithValue(ctx, debugModeContextKey, debugMode)
+}
+
+// GetDebugModeFromContext retrieves debug mode from the context
+func GetDebugModeFromContext(ctx context.Context) bool {
+	debugMode, ok := ctx.Value(debugModeContextKey).(bool)
+	return ok && debugMode
+}
+
+// SendDebugMessageIfEnabled sends a debug message if debug mode is enabled in context
+func SendDebugMessageIfEnabled(ctx context.Context, participantID string, msgService MessagingService, message string) {
+	if !GetDebugModeFromContext(ctx) || msgService == nil {
+		return
+	}
+	
+	// Format the debug message
+	debugMsg := fmt.Sprintf("🐛 DEBUG: %s", message)
+	
+	// Send the debug message (don't fail if it doesn't work)
+	if err := msgService.SendMessage(ctx, participantID, debugMsg); err != nil {
+		slog.Warn("SendDebugMessageIfEnabled: failed to send debug message", 
+			"participantID", participantID, 
+			"error", err)
+	}
 }
 
 // ConversationMessage represents a single message in the conversation history.
@@ -204,12 +233,16 @@ func (f *ConversationFlow) Generate(ctx context.Context, p models.Prompt) (strin
 // ProcessResponse handles participant responses and maintains conversation state.
 // Returns the AI response that should be sent back to the user.
 func (f *ConversationFlow) ProcessResponse(ctx context.Context, participantID, response string) (string, error) {
+	// Add debug mode to context
+	ctx = SetDebugModeInContext(ctx, f.debugMode)
+	
 	// Log context information for debugging
 	phoneNumber, hasPhone := GetPhoneNumberFromContext(ctx)
 	slog.Debug("flow.ProcessResponse: checking context",
 		"participantID", participantID,
 		"hasPhoneNumber", hasPhone,
 		"phoneNumber", phoneNumber,
+		"debugMode", f.debugMode,
 		"responseLength", len(response))
 
 	// Validate dependencies for stateful operations
@@ -346,18 +379,14 @@ func (f *ConversationFlow) handleToolCalls(ctx context.Context, participantID st
 	for _, toolCall := range toolResponse.ToolCalls {
 		executingToolNames = append(executingToolNames, toolCall.Function.Name)
 	}
-	slog.Info("ConversationFlow.handleToolCalls: executing tools",
-		"participantID", participantID,
+	slog.Info("ConversationFlow.handleToolCalls: executing tools", 
+		"participantID", participantID, 
 		"toolCallCount", len(toolResponse.ToolCalls),
 		"executingTools", executingToolNames)
 
 	// Send debug message if debug mode is enabled
-	if f.debugMode {
-		debugMessage := fmt.Sprintf("🔧 Executing tools: %s", strings.Join(executingToolNames, ", "))
-		f.sendDebugMessage(ctx, participantID, debugMessage)
-	}
-
-	// Create the tool calls in OpenAI format first
+	debugMessage := fmt.Sprintf("Coordinator executing tools: %s", strings.Join(executingToolNames, ", "))
+	SendDebugMessageIfEnabled(ctx, participantID, f.msgService, debugMessage)	// Create the tool calls in OpenAI format first
 	var toolCalls []openai.ChatCompletionMessageToolCallParam
 	for _, toolCall := range toolResponse.ToolCalls {
 		toolCalls = append(toolCalls, openai.ChatCompletionMessageToolCallParam{
@@ -1254,41 +1283,71 @@ func (f *ConversationFlow) processWithSpecificTools(ctx context.Context, partici
 		return response, nil
 	}
 
-	// Log the exact tools being passed to LLM
-	var toolNames []string
-	for _, tool := range tools {
-		toolNames = append(toolNames, tool.Function.Name)
-	}
-	slog.Info("ConversationFlow.processWithSpecificTools: calling GenAI with tools",
-		"participantID", participantID,
-		"toolCount", len(tools),
-		"toolNames", toolNames,
-		"messageCount", len(messages))
+	// Tool call loop - continue until we get a user-facing message
+	const maxToolRounds = 10 // Prevent infinite loops
+	currentMessages := messages
+	
+	for round := 1; round <= maxToolRounds; round++ {
+		// Log the exact tools being passed to LLM
+		var toolNames []string
+		for _, tool := range tools {
+			toolNames = append(toolNames, tool.Function.Name)
+		}
+		slog.Info("ConversationFlow.processWithSpecificTools: calling GenAI with tools",
+			"participantID", participantID,
+			"round", round,
+			"toolCount", len(tools),
+			"toolNames", toolNames,
+			"messageCount", len(currentMessages))
 
-	// Generate response with tools
-	toolResponse, err := f.genaiClient.GenerateWithTools(ctx, messages, tools)
-	if err != nil {
-		slog.Error("ConversationFlow.processWithSpecificTools: tool generation failed", "error", err, "participantID", participantID, "toolNames", toolNames)
-		return "", fmt.Errorf("failed to generate response with tools: %w", err)
-	}
+		// Generate response with tools
+		toolResponse, err := f.genaiClient.GenerateWithTools(ctx, currentMessages, tools)
+		if err != nil {
+			slog.Error("ConversationFlow.processWithSpecificTools: tool generation failed", "error", err, "participantID", participantID, "round", round, "toolNames", toolNames)
+			return "", fmt.Errorf("failed to generate response with tools: %w", err)
+		}
 
-	slog.Debug("ConversationFlow.processWithSpecificTools: received tool response",
-		"participantID", participantID,
-		"hasContent", toolResponse.Content != "",
-		"contentLength", len(toolResponse.Content),
-		"toolCallCount", len(toolResponse.ToolCalls))
+		slog.Debug("ConversationFlow.processWithSpecificTools: received tool response",
+			"participantID", participantID,
+			"round", round,
+			"hasContent", toolResponse.Content != "",
+			"contentLength", len(toolResponse.Content),
+			"toolCallCount", len(toolResponse.ToolCalls))
 
-	// Check if the AI wants to call tools
-	if len(toolResponse.ToolCalls) > 0 {
-		slog.Info("ConversationFlow.processWithSpecificTools: processing tool calls", "participantID", participantID, "toolCallCount", len(toolResponse.ToolCalls))
-		return f.handleToolCalls(ctx, participantID, toolResponse, history, messages, tools)
-	}
+		// Check if the AI wants to call tools
+		if len(toolResponse.ToolCalls) > 0 {
+			slog.Info("ConversationFlow.processWithSpecificTools: processing tool calls", "participantID", participantID, "round", round, "toolCallCount", len(toolResponse.ToolCalls))
+			
+			// Execute tools and update conversation context
+			updatedMessages, err := f.executeToolCallsAndUpdateContext(ctx, participantID, toolResponse, currentMessages, tools, history)
+			if err != nil {
+				return "", err
+			}
+			currentMessages = updatedMessages
+			
+			// If we have content, this is the final response
+			if toolResponse.Content != "" {
+				slog.Info("ConversationFlow.processWithSpecificTools: tool round completed with user message", "participantID", participantID, "round", round, "responseLength", len(toolResponse.Content))
+				return toolResponse.Content, nil
+			}
+			
+			// No content yet, continue to next round
+			slog.Debug("ConversationFlow.processWithSpecificTools: no user message yet, continuing to next round", "participantID", participantID, "round", round)
+			continue
+		}
 
-	// No tool calls, process as regular response
-	if toolResponse.Content == "" {
-		slog.Warn("ConversationFlow.processWithSpecificTools: received empty content and no tool calls", "participantID", participantID)
+		// No tool calls - check if we have content
+		if toolResponse.Content != "" {
+			slog.Info("ConversationFlow.processWithSpecificTools: final response without tool calls", "participantID", participantID, "round", round, "responseLength", len(toolResponse.Content))
+			return toolResponse.Content, nil
+		}
+
+		// No tool calls and no content - this shouldn't happen, but handle it
+		slog.Warn("ConversationFlow.processWithSpecificTools: received empty content and no tool calls", "participantID", participantID, "round", round)
 		return "I'm here to help you with your habits. What would you like to work on?", nil
 	}
 
-	return toolResponse.Content, nil
+	// If we hit max rounds, return what we have
+	slog.Warn("ConversationFlow.processWithSpecificTools: hit maximum tool rounds", "participantID", participantID, "maxRounds", maxToolRounds)
+	return "I've completed the requested actions.", nil
 }
