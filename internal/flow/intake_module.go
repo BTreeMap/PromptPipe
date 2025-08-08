@@ -3,13 +3,16 @@ package flow
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
 	"strings"
 
 	"github.com/BTreeMap/PromptPipe/internal/genai"
+	"github.com/BTreeMap/PromptPipe/internal/models"
 	"github.com/openai/openai-go"
+	"github.com/openai/openai-go/packages/param"
 )
 
 // IntakeModule provides LLM module functionality for conducting intake conversations and building user profiles.
@@ -71,15 +74,46 @@ func (im *IntakeModule) ExecuteIntakeBotWithHistory(ctx context.Context, partici
 		return "", fmt.Errorf("failed to build intake messages: %w", err)
 	}
 
-	// Generate response using LLM
-	response, err := im.genaiClient.GenerateWithMessages(ctx, messages)
+	// Create tool definitions for intake module
+	tools := []openai.ChatCompletionToolParam{}
+
+	// Add state transition tool
+	if im.stateTransitionTool != nil {
+		toolDef := im.stateTransitionTool.GetToolDefinition()
+		tools = append(tools, toolDef)
+		slog.Debug("IntakeModule.ExecuteIntakeBotWithHistory: added state transition tool", "participantID", participantID)
+	}
+
+	// Add profile save tool
+	if im.profileSaveTool != nil {
+		toolDef := im.profileSaveTool.GetToolDefinition()
+		tools = append(tools, toolDef)
+		slog.Debug("IntakeModule.ExecuteIntakeBotWithHistory: added profile save tool", "participantID", participantID)
+	}
+
+	// Add scheduler tool
+	if im.schedulerTool != nil {
+		toolDef := im.schedulerTool.GetToolDefinition()
+		tools = append(tools, toolDef)
+		slog.Debug("IntakeModule.ExecuteIntakeBotWithHistory: added scheduler tool", "participantID", participantID)
+	}
+
+	// Generate response using LLM with tools
+	response, err := im.genaiClient.GenerateWithTools(ctx, messages, tools)
 	if err != nil {
 		slog.Error("flow.ExecuteIntakeBotWithHistory: GenAI generation failed", "error", err, "participantID", participantID)
 		return "", fmt.Errorf("failed to generate intake response: %w", err)
 	}
 
-	slog.Info("flow.ExecuteIntakeBotWithHistory: intake response generated", "participantID", participantID, "responseLength", len(response))
-	return response, nil
+	// Check if there are tool calls to handle
+	if len(response.ToolCalls) > 0 {
+		slog.Info("IntakeModule.ExecuteIntakeBotWithHistory: processing tool calls", "participantID", participantID, "toolCallCount", len(response.ToolCalls))
+		return im.handleIntakeToolCalls(ctx, participantID, response, messages, tools)
+	}
+
+	// No tool calls, return direct response
+	slog.Info("flow.ExecuteIntakeBotWithHistory: intake response generated", "participantID", participantID, "responseLength", len(response.Content))
+	return response.Content, nil
 }
 
 // LoadSystemPrompt loads the system prompt from the configured file.
@@ -190,4 +224,111 @@ func (im *IntakeModule) buildIntakeContext(profile *UserProfile) string {
 	context += "• Keep responses warm, encouraging, and concise\n"
 
 	return context
+}
+
+// handleIntakeToolCalls processes tool calls from the intake module AI and executes them.
+func (im *IntakeModule) handleIntakeToolCalls(ctx context.Context, participantID string, toolResponse *genai.ToolCallResponse, messages []openai.ChatCompletionMessageParamUnion, tools []openai.ChatCompletionToolParam) (string, error) {
+	slog.Info("IntakeModule.handleIntakeToolCalls: processing tool calls", "participantID", participantID, "toolCallCount", len(toolResponse.ToolCalls))
+
+	// Execute each tool call
+	var toolResults []string
+	for _, toolCall := range toolResponse.ToolCalls {
+		slog.Info("IntakeModule: executing tool call", "participantID", participantID, "toolName", toolCall.Function.Name, "toolCallID", toolCall.ID)
+
+		var result string
+		var err error
+
+		switch toolCall.Function.Name {
+		case "transition_state":
+			// Parse arguments
+			var args map[string]interface{}
+			if parseErr := json.Unmarshal(toolCall.Function.Arguments, &args); parseErr != nil {
+				slog.Error("IntakeModule: failed to parse state transition arguments", "error", parseErr, "participantID", participantID)
+				result = "State transition completed"
+			} else {
+				result, err = im.stateTransitionTool.ExecuteStateTransition(ctx, participantID, args)
+				if err != nil {
+					slog.Error("IntakeModule: state transition failed", "error", err, "participantID", participantID)
+					result = "State transition completed"
+				}
+			}
+			toolResults = append(toolResults, result)
+
+		case "save_user_profile":
+			// Parse arguments
+			var args map[string]interface{}
+			if parseErr := json.Unmarshal(toolCall.Function.Arguments, &args); parseErr != nil {
+				slog.Error("IntakeModule: failed to parse profile save arguments", "error", parseErr, "participantID", participantID)
+				result = "❌ Failed to save profile: invalid arguments"
+			} else {
+				result, err = im.profileSaveTool.ExecuteProfileSave(ctx, participantID, args)
+				if err != nil {
+					slog.Error("IntakeModule: profile save failed", "error", err, "participantID", participantID)
+					result = fmt.Sprintf("❌ Failed to save profile: %s", err.Error())
+				}
+			}
+			toolResults = append(toolResults, result)
+
+		case "scheduler":
+			// Parse arguments
+			var params models.SchedulerToolParams
+			if parseErr := json.Unmarshal(toolCall.Function.Arguments, &params); parseErr != nil {
+				slog.Error("IntakeModule: failed to parse scheduler arguments", "error", parseErr, "participantID", participantID)
+				result = "❌ Failed to set up scheduling: invalid arguments"
+			} else {
+				schedulerResult, err := im.schedulerTool.ExecuteScheduler(ctx, participantID, params)
+				if err != nil {
+					slog.Error("IntakeModule: scheduler failed", "error", err, "participantID", participantID)
+					result = fmt.Sprintf("❌ Failed to set up scheduling: %s", err.Error())
+				} else if !schedulerResult.Success {
+					result = fmt.Sprintf("❌ %s", schedulerResult.Message)
+				} else {
+					result = schedulerResult.Message
+				}
+			}
+			toolResults = append(toolResults, result)
+
+		default:
+			slog.Warn("IntakeModule: unknown tool call", "toolName", toolCall.Function.Name, "participantID", participantID)
+			result = fmt.Sprintf("❌ Unknown tool: %s", toolCall.Function.Name)
+			toolResults = append(toolResults, result)
+		}
+	}
+
+	// Add tool calls and results to conversation context for LLM follow-up
+	for i, toolCall := range toolResponse.ToolCalls {
+		// Add assistant message with tool call
+		assistantMsg := openai.ChatCompletionAssistantMessageParam{
+			Content: openai.ChatCompletionAssistantMessageParamContentUnion{
+				OfString: param.NewOpt(toolResponse.Content),
+			},
+			ToolCalls: []openai.ChatCompletionMessageToolCallParam{{
+				ID:   toolCall.ID,
+				Type: "function",
+				Function: openai.ChatCompletionMessageToolCallFunctionParam{
+					Name:      toolCall.Function.Name,
+					Arguments: string(toolCall.Function.Arguments),
+				},
+			}},
+		}
+		messages = append(messages, openai.ChatCompletionMessageParamUnion{OfAssistant: &assistantMsg})
+
+		// Add tool result
+		if i < len(toolResults) {
+			messages = append(messages, openai.ToolMessage(toolResults[i], toolCall.ID))
+		}
+	}
+
+	// Call LLM again to generate final response with tools available
+	finalResponse, err := im.genaiClient.GenerateWithTools(ctx, messages, tools)
+	if err != nil {
+		slog.Error("IntakeModule: failed to generate final response after tool execution", "error", err, "participantID", participantID)
+		// Fallback: return tool results directly
+		if len(toolResults) == 1 {
+			return toolResults[0], nil
+		}
+		return strings.Join(toolResults, "\n\n"), nil
+	}
+
+	return finalResponse.Content, nil
 }

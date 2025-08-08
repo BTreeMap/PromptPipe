@@ -13,6 +13,7 @@ import (
 	"github.com/BTreeMap/PromptPipe/internal/genai"
 	"github.com/BTreeMap/PromptPipe/internal/models"
 	"github.com/openai/openai-go"
+	"github.com/openai/openai-go/packages/param"
 	"github.com/openai/openai-go/shared"
 )
 
@@ -354,14 +355,45 @@ func (fm *FeedbackModule) generatePersonalizedFeedback(ctx context.Context, part
 	// Add current user feedback as a message
 	messages = append(messages, openai.UserMessage(userResponse))
 
-	// Generate personalized response
-	response, err := fm.genaiClient.GenerateWithMessages(ctx, messages)
+	// Create tool definitions for feedback module
+	tools := []openai.ChatCompletionToolParam{}
+
+	// Add state transition tool
+	if fm.stateTransitionTool != nil {
+		toolDef := fm.stateTransitionTool.GetToolDefinition()
+		tools = append(tools, toolDef)
+		slog.Debug("FeedbackModule.generatePersonalizedFeedback: added state transition tool", "participantID", participantID)
+	}
+
+	// Add profile save tool
+	if fm.profileSaveTool != nil {
+		toolDef := fm.profileSaveTool.GetToolDefinition()
+		tools = append(tools, toolDef)
+		slog.Debug("FeedbackModule.generatePersonalizedFeedback: added profile save tool", "participantID", participantID)
+	}
+
+	// Add scheduler tool
+	if fm.schedulerTool != nil {
+		toolDef := fm.schedulerTool.GetToolDefinition()
+		tools = append(tools, toolDef)
+		slog.Debug("FeedbackModule.generatePersonalizedFeedback: added scheduler tool", "participantID", participantID)
+	}
+
+	// Generate response using LLM with tools
+	response, err := fm.genaiClient.GenerateWithTools(ctx, messages, tools)
 	if err != nil {
 		slog.Error("flow.generatePersonalizedFeedback: GenAI generation failed", "error", err, "participantID", participantID)
 		return "", fmt.Errorf("failed to generate personalized feedback: %w", err)
 	}
 
-	return response, nil
+	// Check if there are tool calls to handle
+	if len(response.ToolCalls) > 0 {
+		slog.Info("FeedbackModule.generatePersonalizedFeedback: processing tool calls", "participantID", participantID, "toolCallCount", len(response.ToolCalls))
+		return fm.handleFeedbackToolCalls(ctx, participantID, response, messages, tools)
+	}
+
+	// No tool calls, return direct response
+	return response.Content, nil
 }
 
 // buildFeedbackContext creates context for the GenAI about the feedback situation
@@ -583,4 +615,111 @@ func (fm *FeedbackModule) CancelPendingFeedback(ctx context.Context, participant
 	if err := fm.stateManager.SetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyFeedbackState, "completed"); err != nil {
 		slog.Debug("flow.FeedbackModule.CancelPendingFeedback: failed to clear feedback state", "participantID", participantID, "error", err)
 	}
+}
+
+// handleFeedbackToolCalls processes tool calls from the feedback module AI and executes them.
+func (fm *FeedbackModule) handleFeedbackToolCalls(ctx context.Context, participantID string, toolResponse *genai.ToolCallResponse, messages []openai.ChatCompletionMessageParamUnion, tools []openai.ChatCompletionToolParam) (string, error) {
+	slog.Info("FeedbackModule.handleFeedbackToolCalls: processing tool calls", "participantID", participantID, "toolCallCount", len(toolResponse.ToolCalls))
+
+	// Execute each tool call
+	var toolResults []string
+	for _, toolCall := range toolResponse.ToolCalls {
+		slog.Info("FeedbackModule: executing tool call", "participantID", participantID, "toolName", toolCall.Function.Name, "toolCallID", toolCall.ID)
+
+		var result string
+		var err error
+
+		switch toolCall.Function.Name {
+		case "transition_state":
+			// Parse arguments
+			var args map[string]interface{}
+			if parseErr := json.Unmarshal(toolCall.Function.Arguments, &args); parseErr != nil {
+				slog.Error("FeedbackModule: failed to parse state transition arguments", "error", parseErr, "participantID", participantID)
+				result = "State transition completed"
+			} else {
+				result, err = fm.stateTransitionTool.ExecuteStateTransition(ctx, participantID, args)
+				if err != nil {
+					slog.Error("FeedbackModule: state transition failed", "error", err, "participantID", participantID)
+					result = "State transition completed"
+				}
+			}
+			toolResults = append(toolResults, result)
+
+		case "save_user_profile":
+			// Parse arguments
+			var args map[string]interface{}
+			if parseErr := json.Unmarshal(toolCall.Function.Arguments, &args); parseErr != nil {
+				slog.Error("FeedbackModule: failed to parse profile save arguments", "error", parseErr, "participantID", participantID)
+				result = "❌ Failed to save profile: invalid arguments"
+			} else {
+				result, err = fm.profileSaveTool.ExecuteProfileSave(ctx, participantID, args)
+				if err != nil {
+					slog.Error("FeedbackModule: profile save failed", "error", err, "participantID", participantID)
+					result = fmt.Sprintf("❌ Failed to save profile: %s", err.Error())
+				}
+			}
+			toolResults = append(toolResults, result)
+
+		case "scheduler":
+			// Parse arguments
+			var params models.SchedulerToolParams
+			if parseErr := json.Unmarshal(toolCall.Function.Arguments, &params); parseErr != nil {
+				slog.Error("FeedbackModule: failed to parse scheduler arguments", "error", parseErr, "participantID", participantID)
+				result = "❌ Failed to set up scheduling: invalid arguments"
+			} else {
+				schedulerResult, err := fm.schedulerTool.ExecuteScheduler(ctx, participantID, params)
+				if err != nil {
+					slog.Error("FeedbackModule: scheduler failed", "error", err, "participantID", participantID)
+					result = fmt.Sprintf("❌ Failed to set up scheduling: %s", err.Error())
+				} else if !schedulerResult.Success {
+					result = fmt.Sprintf("❌ %s", schedulerResult.Message)
+				} else {
+					result = schedulerResult.Message
+				}
+			}
+			toolResults = append(toolResults, result)
+
+		default:
+			slog.Warn("FeedbackModule: unknown tool call", "toolName", toolCall.Function.Name, "participantID", participantID)
+			result = fmt.Sprintf("❌ Unknown tool: %s", toolCall.Function.Name)
+			toolResults = append(toolResults, result)
+		}
+	}
+
+	// Add tool calls and results to conversation context for LLM follow-up
+	for i, toolCall := range toolResponse.ToolCalls {
+		// Add assistant message with tool call
+		assistantMsg := openai.ChatCompletionAssistantMessageParam{
+			Content: openai.ChatCompletionAssistantMessageParamContentUnion{
+				OfString: param.NewOpt(toolResponse.Content),
+			},
+			ToolCalls: []openai.ChatCompletionMessageToolCallParam{{
+				ID:   toolCall.ID,
+				Type: "function",
+				Function: openai.ChatCompletionMessageToolCallFunctionParam{
+					Name:      toolCall.Function.Name,
+					Arguments: string(toolCall.Function.Arguments),
+				},
+			}},
+		}
+		messages = append(messages, openai.ChatCompletionMessageParamUnion{OfAssistant: &assistantMsg})
+
+		// Add tool result
+		if i < len(toolResults) {
+			messages = append(messages, openai.ToolMessage(toolResults[i], toolCall.ID))
+		}
+	}
+
+	// Call LLM again to generate final response with tools available
+	finalResponse, err := fm.genaiClient.GenerateWithTools(ctx, messages, tools)
+	if err != nil {
+		slog.Error("FeedbackModule: failed to generate final response after tool execution", "error", err, "participantID", participantID)
+		// Fallback: return tool results directly
+		if len(toolResults) == 1 {
+			return toolResults[0], nil
+		}
+		return strings.Join(toolResults, "\n\n"), nil
+	}
+
+	return finalResponse.Content, nil
 }
