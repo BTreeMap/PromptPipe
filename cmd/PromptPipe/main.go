@@ -429,6 +429,8 @@ func buildAPIOptions(flags Flags) []api.Option {
 	}
 	// Always pass the chat history limit since it has a meaningful default
 	apiOpts = append(apiOpts, api.WithChatHistoryLimit(*flags.chatHistoryLimit))
+	// Always pass the debug mode since it has a meaningful default
+	apiOpts = append(apiOpts, api.WithDebugMode(*flags.debug))
 	if *flags.feedbackInitialTimeout != "" {
 		apiOpts = append(apiOpts, api.WithFeedbackInitialTimeout(*flags.feedbackInitialTimeout))
 	}

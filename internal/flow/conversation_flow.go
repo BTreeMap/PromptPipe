@@ -57,6 +57,8 @@ type ConversationFlow struct {
 	feedbackModule      *FeedbackModule      // Module for tracking user feedback and updating profiles
 	stateTransitionTool *StateTransitionTool // Tool for managing conversation state transitions
 	profileSaveTool     *ProfileSaveTool     // Tool for saving user profiles (shared across modules)
+	debugMode           bool                 // Enable debug mode for user-facing debug messages
+	msgService          MessagingService     // Messaging service for sending debug messages
 } // NewConversationFlow creates a new conversation flow with dependencies.
 func NewConversationFlow(stateManager StateManager, genaiClient genai.ClientInterface, systemPromptFile string) *ConversationFlow {
 	slog.Debug("ConversationFlow.NewConversationFlow: creating flow with dependencies", "systemPromptFile", systemPromptFile)
@@ -113,6 +115,7 @@ func NewConversationFlowWithAllToolsAndTimeouts(stateManager StateManager, genai
 		feedbackModule:      feedbackModule,
 		stateTransitionTool: stateTransitionTool,
 		profileSaveTool:     profileSaveTool,
+		msgService:          msgService,
 	}
 }
 
@@ -327,6 +330,15 @@ func (f *ConversationFlow) processConversationMessage(ctx context.Context, parti
 
 	// Return the AI response for sending
 	slog.Info("ConversationFlow.processConversationMessage: generated response", "participantID", participantID, "responseLength", len(response))
+
+	// Append debug information to response if debug mode is enabled
+	if f.debugMode {
+		debugInfo := f.buildDebugInfo(ctx, participantID, conversationState)
+		if debugInfo != "" {
+			response = fmt.Sprintf("%s\n\n%s", response, debugInfo)
+		}
+	}
+
 	return response, nil
 }
 
@@ -607,6 +619,18 @@ func (f *ConversationFlow) handleToolCalls(ctx context.Context, participantID st
 		"toolCount", len(toolResponse.ToolCalls),
 		"finalResponseLength", len(finalResponse),
 		"historyRecordCount", len(historyRecords))
+
+	// Add debug information to response if debug mode is enabled
+	if f.debugMode {
+		// Collect the tool names that were executed
+		var executedTools []string
+		for _, toolCall := range toolResponse.ToolCalls {
+			executedTools = append(executedTools, toolCall.Function.Name)
+		}
+		debugInfo := fmt.Sprintf("\n\n---\n🐛 DEBUG: Executed tools: %s - Response length: %d",
+			strings.Join(executedTools, ", "), len(finalResponse))
+		finalResponse = finalResponse + debugInfo
+	}
 
 	return finalResponse, nil
 }
@@ -1024,6 +1048,120 @@ func (f *ConversationFlow) SetChatHistoryLimit(limit int) {
 	slog.Debug("ConversationFlow: chat history limit set", "limit", limit)
 }
 
+// SetDebugMode enables or disables debug mode for user-facing debug messages.
+func (f *ConversationFlow) SetDebugMode(enabled bool) {
+	f.debugMode = enabled
+	slog.Debug("ConversationFlow: debug mode set", "enabled", enabled)
+}
+
+// sendDebugMessage sends a debug message to the user if debug mode is enabled.
+func (f *ConversationFlow) sendDebugMessage(ctx context.Context, participantID, message string) {
+	if !f.debugMode || f.msgService == nil {
+		return
+	}
+
+	// Get phone number from context to send the debug message
+	phoneNumber, hasPhone := GetPhoneNumberFromContext(ctx)
+	if !hasPhone || phoneNumber == "" {
+		slog.Debug("ConversationFlow.sendDebugMessage: no phone number in context", "participantID", participantID)
+		return
+	}
+
+	debugMsg := fmt.Sprintf("🐛 DEBUG: %s", message)
+	err := f.msgService.SendMessage(ctx, phoneNumber, debugMsg)
+	if err != nil {
+		slog.Error("ConversationFlow.sendDebugMessage: failed to send debug message", "error", err, "participantID", participantID)
+	} else {
+		slog.Debug("ConversationFlow.sendDebugMessage: sent debug message", "participantID", participantID, "message", message)
+	}
+}
+
+// sendUserProfileDebugMessage sends user profile information as a debug message if debug mode is enabled.
+func (f *ConversationFlow) sendUserProfileDebugMessage(ctx context.Context, participantID string) {
+	if !f.debugMode || f.msgService == nil || f.profileSaveTool == nil {
+		return
+	}
+
+	// Get user profile
+	profile, err := f.profileSaveTool.GetOrCreateUserProfile(ctx, participantID)
+	if err != nil {
+		f.sendDebugMessage(ctx, participantID, fmt.Sprintf("Failed to retrieve user profile: %s", err.Error()))
+		return
+	}
+
+	// Create profile summary
+	profileSummary := fmt.Sprintf("Profile - Domain: %s, Motivation: %s, Time: %s, Anchor: %s, Info: %s, Success: %d/%d",
+		profile.HabitDomain,
+		profile.MotivationalFrame,
+		profile.PreferredTime,
+		profile.PromptAnchor,
+		profile.AdditionalInfo,
+		profile.SuccessCount,
+		profile.TotalPrompts)
+
+	f.sendDebugMessage(ctx, participantID, profileSummary)
+}
+
+// buildDebugInfo creates comprehensive debug information to append to responses.
+func (f *ConversationFlow) buildDebugInfo(ctx context.Context, participantID string, conversationState models.StateType) string {
+	if !f.debugMode {
+		return ""
+	}
+
+	var debugParts []string
+
+	// Add separator and header
+	debugParts = append(debugParts, "---")
+	debugParts = append(debugParts, "🐛 DEBUG INFO:")
+
+	// Add current state information
+	debugParts = append(debugParts, fmt.Sprintf("• Current State: %s", conversationState))
+
+	// Add user profile information
+	if f.profileSaveTool != nil {
+		profile, err := f.profileSaveTool.GetOrCreateUserProfile(ctx, participantID)
+		if err != nil {
+			debugParts = append(debugParts, fmt.Sprintf("• Profile: Error retrieving (%s)", err.Error()))
+		} else {
+			profileSummary := fmt.Sprintf("• Profile: Domain=%s, Motivation=%s, Time=%s, Anchor=%s, Success=%d/%d",
+				profile.HabitDomain,
+				profile.MotivationalFrame,
+				profile.PreferredTime,
+				profile.PromptAnchor,
+				profile.SuccessCount,
+				profile.TotalPrompts)
+			debugParts = append(debugParts, profileSummary)
+		}
+	}
+
+	// Add available modules/tools
+	var availableModules []string
+	if f.intakeModule != nil {
+		availableModules = append(availableModules, "IntakeModule")
+	}
+	if f.feedbackModule != nil {
+		availableModules = append(availableModules, "FeedbackModule")
+	}
+	if f.schedulerTool != nil {
+		availableModules = append(availableModules, "SchedulerTool")
+	}
+	if f.promptGeneratorTool != nil {
+		availableModules = append(availableModules, "PromptGeneratorTool")
+	}
+	if f.stateTransitionTool != nil {
+		availableModules = append(availableModules, "StateTransitionTool")
+	}
+	if f.profileSaveTool != nil {
+		availableModules = append(availableModules, "ProfileSaveTool")
+	}
+
+	if len(availableModules) > 0 {
+		debugParts = append(debugParts, fmt.Sprintf("• Available Tools: %s", strings.Join(availableModules, ", ")))
+	}
+
+	return strings.Join(debugParts, "\n")
+}
+
 // getCurrentConversationState retrieves the current conversation state for a participant.
 func (f *ConversationFlow) getCurrentConversationState(ctx context.Context, participantID string) (models.StateType, error) {
 	if f.stateManager == nil {
@@ -1113,10 +1251,17 @@ func (f *ConversationFlow) processIntakeState(ctx context.Context, participantID
 	args := map[string]interface{}{
 		"user_response": userMessage,
 	}
+
 	response, err := f.intakeModule.ExecuteIntakeBotWithHistory(ctx, participantID, args, chatHistory)
 	if err != nil {
 		slog.Error("ConversationFlow.processIntakeState: intake execution failed", "error", err, "participantID", participantID)
 		return "", fmt.Errorf("intake processing failed: %w", err)
+	}
+
+	// Add debug information to response if debug mode is enabled
+	if f.debugMode {
+		debugInfo := fmt.Sprintf("\n\n---\n🐛 DEBUG: Executed IntakeModule.ExecuteIntakeBotWithHistory() - Response length: %d", len(response))
+		response = response + debugInfo
 	}
 
 	return response, nil
@@ -1144,10 +1289,17 @@ func (f *ConversationFlow) processFeedbackState(ctx context.Context, participant
 		"user_response":     userMessage,
 		"completion_status": "attempted", // Default, the feedback tracker will analyze the actual response
 	}
+
 	response, err := f.feedbackModule.ExecuteFeedbackTrackerWithHistory(ctx, participantID, args, chatHistory)
 	if err != nil {
 		slog.Error("ConversationFlow.processFeedbackState: feedback execution failed", "error", err, "participantID", participantID)
 		return "", fmt.Errorf("feedback processing failed: %w", err)
+	}
+
+	// Add debug information to response if debug mode is enabled
+	if f.debugMode {
+		debugInfo := fmt.Sprintf("\n\n---\n🐛 DEBUG: Executed FeedbackModule.ExecuteFeedbackTrackerWithHistory() - Response length: %d", len(response))
+		response = response + debugInfo
 	}
 
 	// Cancel any pending feedback timers since feedback was received
