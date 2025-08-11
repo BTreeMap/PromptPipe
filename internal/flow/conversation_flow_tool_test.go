@@ -5,44 +5,8 @@ import (
 	"encoding/json"
 
 	"github.com/BTreeMap/PromptPipe/internal/genai"
-	"github.com/BTreeMap/PromptPipe/internal/models"
 	"github.com/openai/openai-go"
 )
-
-// Helper functions for test comparisons
-func intPtr(i int) *int {
-	return &i
-}
-
-// scheduleEquals compares two Schedule pointers for equality
-func scheduleEquals(a, b *models.Schedule) bool {
-	// Both nil
-	if a == nil && b == nil {
-		return true
-	}
-	// One nil, one not
-	if a == nil || b == nil {
-		return false
-	}
-	// Compare fields
-	return intPtrEquals(a.Minute, b.Minute) &&
-		intPtrEquals(a.Hour, b.Hour) &&
-		intPtrEquals(a.Day, b.Day) &&
-		intPtrEquals(a.Month, b.Month) &&
-		intPtrEquals(a.Weekday, b.Weekday) &&
-		a.Timezone == b.Timezone
-}
-
-// intPtrEquals compares two int pointers for equality
-func intPtrEquals(a, b *int) bool {
-	if a == nil && b == nil {
-		return true
-	}
-	if a == nil || b == nil {
-		return false
-	}
-	return *a == *b
-}
 
 // Mock GenAI client for testing tool use
 type MockGenAIClientWithTools struct {
