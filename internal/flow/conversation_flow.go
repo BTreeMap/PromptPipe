@@ -139,7 +139,7 @@ func NewConversationFlowWithAllToolsAndTimeouts(stateManager StateManager, genai
 
 	// Create modules with shared tools
 	coordinatorModule := NewCoordinatorModule(stateManager, genaiClient, msgService, systemPromptFile, schedulerTool, promptGeneratorTool, stateTransitionTool, profileSaveTool)
-	intakeModule := NewIntakeModule(stateManager, genaiClient, msgService, intakeBotPromptFile, stateTransitionTool, profileSaveTool, schedulerTool)
+	intakeModule := NewIntakeModule(stateManager, genaiClient, msgService, intakeBotPromptFile, stateTransitionTool, profileSaveTool, schedulerTool, promptGeneratorTool)
 	feedbackModule := NewFeedbackModuleWithTimeouts(stateManager, genaiClient, feedbackTrackerPromptFile, timer, msgService, feedbackInitialTimeout, feedbackFollowupDelay, stateTransitionTool, profileSaveTool, schedulerTool)
 
 	return &ConversationFlow{

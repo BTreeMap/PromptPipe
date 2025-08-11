@@ -27,10 +27,11 @@ type IntakeModule struct {
 	stateTransitionTool *StateTransitionTool // Tool for transitioning back to coordinator
 	profileSaveTool     *ProfileSaveTool     // Tool for saving user profiles
 	schedulerTool       *SchedulerTool       // Tool for scheduling prompts
+	promptGeneratorTool *PromptGeneratorTool // Tool for generating personalized habit prompts
 }
 
 // NewIntakeModule creates a new intake module instance.
-func NewIntakeModule(stateManager StateManager, genaiClient genai.ClientInterface, msgService MessagingService, systemPromptFile string, stateTransitionTool *StateTransitionTool, profileSaveTool *ProfileSaveTool, schedulerTool *SchedulerTool) *IntakeModule {
+func NewIntakeModule(stateManager StateManager, genaiClient genai.ClientInterface, msgService MessagingService, systemPromptFile string, stateTransitionTool *StateTransitionTool, profileSaveTool *ProfileSaveTool, schedulerTool *SchedulerTool, promptGeneratorTool *PromptGeneratorTool) *IntakeModule {
 	slog.Debug("IntakeModule.NewIntakeModule: creating intake module", "hasStateManager", stateManager != nil, "hasGenAI", genaiClient != nil, "hasMessaging", msgService != nil, "systemPromptFile", systemPromptFile)
 	return &IntakeModule{
 		stateManager:        stateManager,
@@ -40,6 +41,7 @@ func NewIntakeModule(stateManager StateManager, genaiClient genai.ClientInterfac
 		stateTransitionTool: stateTransitionTool,
 		profileSaveTool:     profileSaveTool,
 		schedulerTool:       schedulerTool,
+		promptGeneratorTool: promptGeneratorTool,
 	}
 }
 
@@ -102,6 +104,13 @@ func (im *IntakeModule) ExecuteIntakeBotWithHistoryAndConversation(ctx context.C
 		toolDef := im.schedulerTool.GetToolDefinition()
 		tools = append(tools, toolDef)
 		slog.Debug("IntakeModule.ExecuteIntakeBotWithHistory: added scheduler tool", "participantID", participantID)
+	}
+
+	// Add prompt generator tool - intake can generate prompts
+	if im.promptGeneratorTool != nil {
+		toolDef := im.promptGeneratorTool.GetToolDefinition()
+		tools = append(tools, toolDef)
+		slog.Debug("IntakeModule.ExecuteIntakeBotWithHistory: added prompt generator tool", "participantID", participantID)
 	}
 
 	// Log the exact tools being passed to LLM
@@ -400,6 +409,21 @@ func (im *IntakeModule) executeIntakeToolCallsAndUpdateContext(ctx context.Conte
 					result = fmt.Sprintf("❌ %s", schedulerResult.Message)
 				} else {
 					result = schedulerResult.Message
+				}
+			}
+			toolResults = append(toolResults, result)
+
+		case "generate_habit_prompt":
+			// Parse arguments
+			var args map[string]interface{}
+			if parseErr := json.Unmarshal(toolCall.Function.Arguments, &args); parseErr != nil {
+				slog.Error("IntakeModule: failed to parse prompt generator arguments", "error", parseErr, "participantID", participantID)
+				result = "❌ Failed to generate prompt: invalid arguments"
+			} else {
+				result, err = im.promptGeneratorTool.ExecutePromptGenerator(ctx, participantID, args)
+				if err != nil {
+					slog.Error("IntakeModule: prompt generator failed", "error", err, "participantID", participantID)
+					result = fmt.Sprintf("❌ Failed to generate prompt: %s", err.Error())
 				}
 			}
 			toolResults = append(toolResults, result)
