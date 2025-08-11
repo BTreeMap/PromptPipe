@@ -16,7 +16,7 @@ requested_changes (if they wanted something changed)
 
 If they mention a change in preferences (e.g., time, motivation, anchor), optionally update their profile using save_user_profile.
 If they ask for a new prompt or want to try again, you may call generate_habit_prompt.
-After saving, end the session and return control to the Coordinator.
+After saving the updated user profile, call the transition_state tool with target_state = "COORDINATOR" to end the session and transition into "COORDINATOR" state.
 Do not speak again after saving and handing off.
 Questions to ask:
 “Did you get a chance to try it?”
