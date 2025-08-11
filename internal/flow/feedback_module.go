@@ -245,24 +245,6 @@ func (fm *FeedbackModule) applyProfileModifications(profile *UserProfile, modifi
 	}
 }
 
-// generateFeedbackSummary creates a conversational response based on the feedback processed
-func (fm *FeedbackModule) generateFeedbackSummary(profile *UserProfile, completionStatus, userResponse string) string {
-	switch completionStatus {
-	case "completed":
-		return fmt.Sprintf("Great job! 🎉 That's %d successful habit completions so far. I've noted what worked well for future prompts.", profile.SuccessCount)
-	case "attempted":
-		return "Thanks for trying! Even attempting is progress. I've updated your profile to help make the next prompt more doable."
-	case "skipped":
-		return "No worries - life happens! I've noted the barrier you mentioned to help adjust future prompts."
-	case "rejected":
-		return "Thanks for the honest feedback! I've noted your preferences and will adjust the next habit suggestion accordingly."
-	case "modified":
-		return "Perfect! I've updated your profile with your suggested changes. The next prompt will be more tailored to what works for you."
-	default:
-		return "Thanks for your feedback! I've updated your profile to better personalize future habit suggestions."
-	}
-}
-
 // getUserProfile retrieves the user profile from state storage
 func (fm *FeedbackModule) getUserProfile(ctx context.Context, participantID string) (*UserProfile, error) {
 	profileJSON, err := fm.stateManager.GetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyUserProfile)
