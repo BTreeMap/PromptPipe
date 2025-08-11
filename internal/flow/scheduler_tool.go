@@ -28,16 +28,22 @@ type RandomScheduleInfo struct {
 
 // SchedulerTool provides LLM tool functionality for scheduling daily habit prompts.
 type SchedulerTool struct {
-	timer        models.Timer
-	msgService   MessagingService
-	genaiClient  genai.ClientInterface // For generating scheduled message content
-	stateManager StateManager          // For storing schedule metadata
+	timer           models.Timer
+	msgService      MessagingService
+	genaiClient     genai.ClientInterface  // For generating scheduled message content
+	stateManager    StateManager           // For storing schedule metadata
+	promptGenerator PromptGeneratorService // For generating habit prompts
 }
 
 // MessagingService defines the interface for messaging operations needed by the scheduler.
 type MessagingService interface {
 	ValidateAndCanonicalizeRecipient(recipient string) (string, error)
 	SendMessage(ctx context.Context, to, message string) error
+}
+
+// PromptGeneratorService defines the interface for prompt generation operations.
+type PromptGeneratorService interface {
+	ExecutePromptGenerator(ctx context.Context, participantID string, args map[string]interface{}) (string, error)
 }
 
 // NewSchedulerTool creates a new scheduler tool instance.
@@ -67,13 +73,24 @@ func NewSchedulerToolWithStateManager(timer models.Timer, msgService MessagingSe
 	}
 }
 
+// NewSchedulerToolComplete creates a new scheduler tool instance with all dependencies.
+func NewSchedulerToolComplete(timer models.Timer, msgService MessagingService, genaiClient genai.ClientInterface, stateManager StateManager, promptGenerator PromptGeneratorService) *SchedulerTool {
+	return &SchedulerTool{
+		timer:           timer,
+		msgService:      msgService,
+		genaiClient:     genaiClient,
+		stateManager:    stateManager,
+		promptGenerator: promptGenerator,
+	}
+}
+
 // GetToolDefinition returns the OpenAI tool definition for the scheduler.
 func (st *SchedulerTool) GetToolDefinition() openai.ChatCompletionToolParam {
 	return openai.ChatCompletionToolParam{
 		Type: "function",
 		Function: shared.FunctionDefinitionParam{
 			Name:        "scheduler",
-			Description: openai.String("Manage daily habit reminder schedules - create new schedules, list existing ones, or delete schedules"),
+			Description: openai.String("Manage daily habit reminder schedules - create new schedules, list existing ones, or delete schedules. The scheduler triggers the prompt generator tool to create personalized habit messages based on user profiles."),
 			Parameters: shared.FunctionParameters{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -94,7 +111,7 @@ func (st *SchedulerTool) GetToolDefinition() openai.ChatCompletionToolParam {
 					},
 					"timezone": map[string]interface{}{
 						"type":        "string",
-						"description": "Timezone for scheduling (e.g., 'America/Toronto', 'UTC'). Defaults to 'UTC' if not specified (for create action)",
+						"description": "Timezone for scheduling (e.g., 'America/Toronto', 'UTC'). Defaults to 'America/Toronto' if not specified (for create action)",
 					},
 					"random_start_time": map[string]interface{}{
 						"type":        "string",
@@ -105,18 +122,6 @@ func (st *SchedulerTool) GetToolDefinition() openai.ChatCompletionToolParam {
 						"type":        "string",
 						"pattern":     "^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$",
 						"description": "End time of random window in HH:MM format when type is 'random' (required for create with random type)",
-					},
-					"prompt_system_prompt": map[string]interface{}{
-						"type":        "string",
-						"description": "System prompt that defines the AI's role and behavior for daily messages (required for create action)",
-					},
-					"prompt_user_prompt": map[string]interface{}{
-						"type":        "string",
-						"description": "User prompt template that guides the content of daily messages (required for create action)",
-					},
-					"habit_description": map[string]interface{}{
-						"type":        "string",
-						"description": "Description of the user's chosen habit for personalization of messages (optional for create action)",
 					},
 					"schedule_id": map[string]interface{}{
 						"type":        "string",
@@ -279,16 +284,32 @@ func (st *SchedulerTool) executeRandomScheduledPrompt(ctx context.Context, promp
 	}
 }
 
-// executeScheduledPrompt executes a scheduled prompt by generating content and sending it.
+// executeScheduledPrompt executes a scheduled prompt by calling the prompt generator tool.
 func (st *SchedulerTool) executeScheduledPrompt(ctx context.Context, prompt models.Prompt) {
 	slog.Debug("SchedulerTool.executeScheduledPrompt: executing scheduled prompt", "to", prompt.To, "type", prompt.Type)
 
 	var message string
 	var err error
 
-	// Generate message content based on the prompt type
-	if st.genaiClient != nil && prompt.SystemPrompt != "" && prompt.UserPrompt != "" {
-		// Use GenAI to generate personalized message content
+	// Use prompt generator if available
+	if st.promptGenerator != nil {
+		// Call prompt generator with "scheduled" delivery mode
+		args := map[string]interface{}{
+			"delivery_mode": "scheduled",
+		}
+
+		// Extract participant ID from phone number (this would typically come from context or be stored)
+		// For now, we'll use the phone number as the participant ID
+		participantID := prompt.To
+
+		message, err = st.promptGenerator.ExecutePromptGenerator(ctx, participantID, args)
+		if err != nil {
+			slog.Error("SchedulerTool.executeScheduledPrompt: failed to generate content with prompt generator", "error", err, "to", prompt.To)
+			// Fallback to generic message
+			message = "Daily habit reminder - it's time for your healthy habit!"
+		}
+	} else if st.genaiClient != nil && prompt.SystemPrompt != "" && prompt.UserPrompt != "" {
+		// Legacy fallback: Use GenAI to generate personalized message content
 		message, err = st.genaiClient.GeneratePromptWithContext(ctx, prompt.SystemPrompt, prompt.UserPrompt)
 		if err != nil {
 			slog.Error("SchedulerTool.executeScheduledPrompt: failed to generate content", "error", err, "to", prompt.To)
@@ -344,13 +365,10 @@ func (st *SchedulerTool) executeCreateSchedule(ctx context.Context, participantI
 			}, nil
 		}
 
-		// Create the scheduled prompt
+		// Create the scheduled prompt (simplified - no system/user prompt needed)
 		prompt := models.Prompt{
-			To:           phoneNumber,
-			Type:         models.PromptTypeGenAI,
-			SystemPrompt: params.PromptSystemPrompt,
-			UserPrompt:   params.PromptUserPrompt,
-			Schedule:     schedule,
+			To:   phoneNumber,
+			Type: models.PromptTypeGenAI,
 		}
 
 		// Schedule the prompt using the timer
@@ -381,12 +399,10 @@ func (st *SchedulerTool) executeCreateSchedule(ctx context.Context, participantI
 			}, nil
 		}
 
-		// Create the scheduled prompt
+		// Create the scheduled prompt (simplified - no system/user prompt needed)
 		prompt := models.Prompt{
-			To:           phoneNumber,
-			Type:         models.PromptTypeGenAI,
-			SystemPrompt: params.PromptSystemPrompt,
-			UserPrompt:   params.PromptUserPrompt,
+			To:   phoneNumber,
+			Type: models.PromptTypeGenAI,
 		}
 
 		// Schedule the recurring timer at the start time that will create random one-time timers
@@ -421,15 +437,14 @@ func (st *SchedulerTool) executeCreateSchedule(ctx context.Context, participantI
 	// Store schedule metadata if state manager is available
 	if st.stateManager != nil {
 		scheduleInfo := models.ScheduleInfo{
-			ID:               scheduleID,
-			Type:             params.Type,
-			FixedTime:        params.FixedTime,
-			RandomStartTime:  params.RandomStartTime,
-			RandomEndTime:    params.RandomEndTime,
-			Timezone:         params.Timezone,
-			HabitDescription: params.HabitDescription,
-			CreatedAt:        time.Now(),
-			TimerID:          timerID,
+			ID:              scheduleID,
+			Type:            params.Type,
+			FixedTime:       params.FixedTime,
+			RandomStartTime: params.RandomStartTime,
+			RandomEndTime:   params.RandomEndTime,
+			Timezone:        params.Timezone,
+			CreatedAt:       time.Now(),
+			TimerID:         timerID,
 		}
 
 		if err := st.storeScheduleInfo(ctx, participantID, scheduleInfo); err != nil {
@@ -438,14 +453,19 @@ func (st *SchedulerTool) executeCreateSchedule(ctx context.Context, participantI
 		}
 	}
 
-	successMessage := fmt.Sprintf("✅ Perfect! I've scheduled your daily habit reminders to be sent %s. You'll receive personalized messages about: %s\n\nYour reminders are all set and will kick off tomorrow! Schedule ID: %s\n\nIf you'd like to try out a personalized message right now, just say the word.",
-		scheduleDescription, params.HabitDescription, scheduleID)
+	successMessage := fmt.Sprintf("✅ Perfect! I've scheduled your daily habit reminders to be sent %s. You'll receive personalized messages based on your profile.\n\nYour reminders are all set and will kick off tomorrow! Schedule ID: %s\n\nIf you'd like to try out a personalized message right now, just say the word.",
+		scheduleDescription, scheduleID)
 
 	slog.Info("SchedulerTool.executeCreateSchedule: schedule created successfully", "participantID", participantID, "timerID", timerID, "scheduleID", scheduleID, "schedule", scheduleDescription)
 
 	return &models.ToolResult{
 		Success: true,
 		Message: successMessage,
+		Data: map[string]interface{}{
+			"schedule_id": scheduleID,
+			"type":        params.Type,
+			"description": scheduleDescription,
+		},
 	}, nil
 }
 
@@ -494,12 +514,7 @@ func (st *SchedulerTool) executeListSchedules(ctx context.Context, participantID
 			timeDesc = fmt.Sprintf("daily between %s and %s (%s)", schedule.RandomStartTime, schedule.RandomEndTime, timezone)
 		}
 
-		habit := schedule.HabitDescription
-		if habit == "" {
-			habit = "habit reminder"
-		}
-
-		scheduleLines = append(scheduleLines, fmt.Sprintf("%d. **%s** - %s (ID: %s)", i+1, habit, timeDesc, schedule.ID))
+		scheduleLines = append(scheduleLines, fmt.Sprintf("%d. **Daily Habit Reminder** - %s (ID: %s)", i+1, timeDesc, schedule.ID))
 	}
 
 	message := fmt.Sprintf("📅 Your active schedules:\n\n%s\n\nTo remove a schedule, use the scheduler with the delete action and specify the schedule ID.", strings.Join(scheduleLines, "\n"))
@@ -507,7 +522,10 @@ func (st *SchedulerTool) executeListSchedules(ctx context.Context, participantID
 	return &models.ToolResult{
 		Success: true,
 		Message: message,
-		Data:    schedules,
+		Data: map[string]interface{}{
+			"schedules":    schedules,
+			"schedule_ids": extractScheduleIDs(schedules),
+		},
 	}, nil
 }
 
@@ -568,12 +586,7 @@ func (st *SchedulerTool) executeDeleteSchedule(ctx context.Context, participantI
 		}, nil
 	}
 
-	habit := scheduleToDelete.HabitDescription
-	if habit == "" {
-		habit = "habit reminder"
-	}
-
-	message := fmt.Sprintf("✅ Successfully deleted the schedule for '%s' (ID: %s). Your daily reminders for this habit have been stopped.", habit, scheduleID)
+	message := fmt.Sprintf("✅ Successfully deleted the daily habit reminder schedule (ID: %s). Your daily reminders have been stopped.", scheduleID)
 
 	slog.Info("SchedulerTool.executeDeleteSchedule: schedule deleted successfully", "participantID", participantID, "scheduleID", scheduleID, "timerID", scheduleToDelete.TimerID)
 
@@ -620,4 +633,13 @@ func (st *SchedulerTool) storeSchedules(ctx context.Context, participantID strin
 	}
 
 	return st.stateManager.SetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyScheduleRegistry, string(schedulesJSON))
+}
+
+// extractScheduleIDs extracts a list of schedule IDs from ScheduleInfo slice.
+func extractScheduleIDs(schedules []models.ScheduleInfo) []string {
+	ids := make([]string, len(schedules))
+	for i, schedule := range schedules {
+		ids[i] = schedule.ID
+	}
+	return ids
 }

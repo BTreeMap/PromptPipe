@@ -132,13 +132,10 @@ func TestSchedulerTool_ExecuteScheduler_CreateFixed(t *testing.T) {
 	participantID := "test-participant"
 
 	params := models.SchedulerToolParams{
-		Action:             models.SchedulerActionCreate,
-		Type:               models.SchedulerTypeFixed,
-		FixedTime:          "09:30",
-		Timezone:           "America/Toronto",
-		PromptSystemPrompt: "You are a helpful habit coach",
-		PromptUserPrompt:   "Time for your daily habit reminder!",
-		HabitDescription:   "5-minute morning meditation",
+		Action:    models.SchedulerActionCreate,
+		Type:      models.SchedulerTypeFixed,
+		FixedTime: "09:30",
+		Timezone:  "America/Toronto",
 	}
 
 	result, err := tool.ExecuteScheduler(ctx, participantID, params)
@@ -181,14 +178,11 @@ func TestSchedulerTool_ExecuteScheduler_CreateRandom(t *testing.T) {
 	participantID := "test-participant"
 
 	params := models.SchedulerToolParams{
-		Action:             models.SchedulerActionCreate,
-		Type:               models.SchedulerTypeRandom,
-		RandomStartTime:    "08:00",
-		RandomEndTime:      "10:00",
-		Timezone:           "UTC",
-		PromptSystemPrompt: "You are a helpful habit coach",
-		PromptUserPrompt:   "Time for your daily habit reminder!",
-		HabitDescription:   "1-minute stretching break",
+		Action:          models.SchedulerActionCreate,
+		Type:            models.SchedulerTypeRandom,
+		RandomStartTime: "08:00",
+		RandomEndTime:   "10:00",
+		Timezone:        "UTC",
 	}
 
 	result, err := tool.ExecuteScheduler(ctx, participantID, params)
@@ -249,23 +243,19 @@ func TestSchedulerToolParams_Validate(t *testing.T) {
 		{
 			name: "Valid create fixed params",
 			params: models.SchedulerToolParams{
-				Action:             models.SchedulerActionCreate,
-				Type:               models.SchedulerTypeFixed,
-				FixedTime:          "09:30",
-				PromptSystemPrompt: "System prompt",
-				PromptUserPrompt:   "User prompt",
+				Action:    models.SchedulerActionCreate,
+				Type:      models.SchedulerTypeFixed,
+				FixedTime: "09:30",
 			},
 			wantErr: false,
 		},
 		{
 			name: "Valid create random params",
 			params: models.SchedulerToolParams{
-				Action:             models.SchedulerActionCreate,
-				Type:               models.SchedulerTypeRandom,
-				RandomStartTime:    "08:00",
-				RandomEndTime:      "10:00",
-				PromptSystemPrompt: "System prompt",
-				PromptUserPrompt:   "User prompt",
+				Action:          models.SchedulerActionCreate,
+				Type:            models.SchedulerTypeRandom,
+				RandomStartTime: "08:00",
+				RandomEndTime:   "10:00",
 			},
 			wantErr: false,
 		},
@@ -287,10 +277,8 @@ func TestSchedulerToolParams_Validate(t *testing.T) {
 		{
 			name: "Missing action",
 			params: models.SchedulerToolParams{
-				Type:               models.SchedulerTypeFixed,
-				FixedTime:          "09:30",
-				PromptSystemPrompt: "System prompt",
-				PromptUserPrompt:   "User prompt",
+				Type:      models.SchedulerTypeFixed,
+				FixedTime: "09:30",
 			},
 			wantErr: true,
 		},
@@ -304,50 +292,24 @@ func TestSchedulerToolParams_Validate(t *testing.T) {
 		{
 			name: "Create missing type",
 			params: models.SchedulerToolParams{
-				Action:             models.SchedulerActionCreate,
-				PromptSystemPrompt: "System prompt",
-				PromptUserPrompt:   "User prompt",
+				Action: models.SchedulerActionCreate,
 			},
 			wantErr: true,
 		},
 		{
 			name: "Create fixed missing fixed_time",
 			params: models.SchedulerToolParams{
-				Action:             models.SchedulerActionCreate,
-				Type:               models.SchedulerTypeFixed,
-				PromptSystemPrompt: "System prompt",
-				PromptUserPrompt:   "User prompt",
+				Action: models.SchedulerActionCreate,
+				Type:   models.SchedulerTypeFixed,
 			},
 			wantErr: true,
 		},
 		{
 			name: "Create random missing start time",
 			params: models.SchedulerToolParams{
-				Action:             models.SchedulerActionCreate,
-				Type:               models.SchedulerTypeRandom,
-				RandomEndTime:      "10:00",
-				PromptSystemPrompt: "System prompt",
-				PromptUserPrompt:   "User prompt",
-			},
-			wantErr: true,
-		},
-		{
-			name: "Create missing system prompt",
-			params: models.SchedulerToolParams{
-				Action:           models.SchedulerActionCreate,
-				Type:             models.SchedulerTypeFixed,
-				FixedTime:        "09:30",
-				PromptUserPrompt: "User prompt",
-			},
-			wantErr: true,
-		},
-		{
-			name: "Create missing user prompt",
-			params: models.SchedulerToolParams{
-				Action:             models.SchedulerActionCreate,
-				Type:               models.SchedulerTypeFixed,
-				FixedTime:          "09:30",
-				PromptSystemPrompt: "System prompt",
+				Action:        models.SchedulerActionCreate,
+				Type:          models.SchedulerTypeRandom,
+				RandomEndTime: "10:00",
 			},
 			wantErr: true,
 		},
@@ -373,13 +335,10 @@ func TestSchedulerToolParams_Validate(t *testing.T) {
 func TestToolCall_ParseSchedulerParams(t *testing.T) {
 	// Test valid scheduler parameters
 	params := models.SchedulerToolParams{
-		Action:             models.SchedulerActionCreate,
-		Type:               models.SchedulerTypeFixed,
-		FixedTime:          "09:30",
-		Timezone:           "America/Toronto",
-		PromptSystemPrompt: "You are a helpful habit coach",
-		PromptUserPrompt:   "Time for your daily habit!",
-		HabitDescription:   "5-minute meditation",
+		Action:    models.SchedulerActionCreate,
+		Type:      models.SchedulerTypeFixed,
+		FixedTime: "09:30",
+		Timezone:  "America/Toronto",
 	}
 
 	paramsJSON, err := json.Marshal(params)
@@ -405,9 +364,6 @@ func TestToolCall_ParseSchedulerParams(t *testing.T) {
 	}
 	if parsed.FixedTime != params.FixedTime {
 		t.Errorf("Expected fixed_time %s, got %s", params.FixedTime, parsed.FixedTime)
-	}
-	if parsed.PromptSystemPrompt != params.PromptSystemPrompt {
-		t.Errorf("Expected system prompt %s, got %s", params.PromptSystemPrompt, parsed.PromptSystemPrompt)
 	}
 
 	// Test with wrong function name
@@ -455,13 +411,10 @@ func TestSchedulerTool_ExecuteScheduler_List(t *testing.T) {
 
 	// Create a schedule first
 	createParams := models.SchedulerToolParams{
-		Action:             models.SchedulerActionCreate,
-		Type:               models.SchedulerTypeFixed,
-		FixedTime:          "09:30",
-		Timezone:           "America/Toronto",
-		PromptSystemPrompt: "You are a helpful habit coach",
-		PromptUserPrompt:   "Time for your daily habit reminder!",
-		HabitDescription:   "morning meditation",
+		Action:    models.SchedulerActionCreate,
+		Type:      models.SchedulerTypeFixed,
+		FixedTime: "09:30",
+		Timezone:  "America/Toronto",
 	}
 
 	// Add phone number to context for create
@@ -483,10 +436,6 @@ func TestSchedulerTool_ExecuteScheduler_List(t *testing.T) {
 
 	if !strings.Contains(result.Message, "Your active schedules") {
 		t.Errorf("Expected schedules list message, got: %s", result.Message)
-	}
-
-	if !strings.Contains(result.Message, "morning meditation") {
-		t.Errorf("Expected habit description in message, got: %s", result.Message)
 	}
 }
 
@@ -520,13 +469,10 @@ func TestSchedulerTool_ExecuteScheduler_Delete(t *testing.T) {
 
 	// Create a schedule first
 	createParams := models.SchedulerToolParams{
-		Action:             models.SchedulerActionCreate,
-		Type:               models.SchedulerTypeFixed,
-		FixedTime:          "09:30",
-		Timezone:           "America/Toronto",
-		PromptSystemPrompt: "You are a helpful habit coach",
-		PromptUserPrompt:   "Time for your daily habit reminder!",
-		HabitDescription:   "morning meditation",
+		Action:    models.SchedulerActionCreate,
+		Type:      models.SchedulerTypeFixed,
+		FixedTime: "09:30",
+		Timezone:  "America/Toronto",
 	}
 
 	// Add phone number to context for create
