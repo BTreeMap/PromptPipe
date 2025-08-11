@@ -30,7 +30,7 @@ func TestDebugLogging(t *testing.T) {
 	client := &Client{
 		chat:        &mockChatService{resp: mockResp},
 		model:       "test-model",
-		temperature: 0.7,
+		temperature: 0.1,
 		maxTokens:   100,
 		debugMode:   true,
 		stateDir:    tempDir,
@@ -110,7 +110,7 @@ func TestDebugLoggingDisabled(t *testing.T) {
 	client := &Client{
 		chat:        &mockChatService{resp: mockResp},
 		model:       "test-model",
-		temperature: 0.7,
+		temperature: 0.1,
 		maxTokens:   100,
 		debugMode:   false, // Debug mode disabled
 		stateDir:    tempDir,

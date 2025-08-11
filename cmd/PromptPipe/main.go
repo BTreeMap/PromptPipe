@@ -130,6 +130,11 @@ type Config struct {
 	// Environment variable: PROMPTPIPE_DEBUG
 	DebugMode bool
 
+	// GenAITemperature controls the randomness of GenAI responses (0.0-1.0).
+	// Lower values (e.g., 0.1) produce more consistent responses.
+	// Environment variable: GENAI_TEMPERATURE
+	GenAITemperature float64
+
 	// IntakeBotPromptFile is the path to the intake bot system prompt file
 	// Environment variable: INTAKE_BOT_PROMPT_FILE
 	IntakeBotPromptFile string
@@ -167,13 +172,14 @@ type Flags struct {
 	openaiKey                 *string
 	apiAddr                   *string
 	defaultCron               *string
-	debug                     *bool   // Enable debug mode for API call logging
-	intakeBotPromptFile       *string // Path to intake bot system prompt file
-	promptGeneratorPromptFile *string // Path to prompt generator system prompt file
-	feedbackTrackerPromptFile *string // Path to feedback tracker system prompt file
-	chatHistoryLimit          *int    // Limit for number of history messages sent to bot tools
-	feedbackInitialTimeout    *string // Timeout for initial feedback response
-	feedbackFollowupDelay     *string // Delay before follow-up feedback session
+	debug                     *bool    // Enable debug mode for API call logging
+	intakeBotPromptFile       *string  // Path to intake bot system prompt file
+	promptGeneratorPromptFile *string  // Path to prompt generator system prompt file
+	feedbackTrackerPromptFile *string  // Path to feedback tracker system prompt file
+	chatHistoryLimit          *int     // Limit for number of history messages sent to bot tools
+	feedbackInitialTimeout    *string  // Timeout for initial feedback response
+	feedbackFollowupDelay     *string  // Delay before follow-up feedback session
+	genaiTemperature          *float64 // GenAI temperature for response consistency
 }
 
 // initializeLogger sets up structured logging with debug level
@@ -212,6 +218,7 @@ func loadEnvironmentConfig() Config {
 		APIAddr:                   os.Getenv("API_ADDR"),
 		DefaultCron:               os.Getenv("DEFAULT_SCHEDULE"),
 		DebugMode:                 parseBoolEnv("PROMPTPIPE_DEBUG", false),
+		GenAITemperature:          parseFloatEnv("GENAI_TEMPERATURE", 0.1),
 		IntakeBotPromptFile:       getEnvWithDefault("INTAKE_BOT_PROMPT_FILE", "prompts/intake_bot_system.txt"),
 		PromptGeneratorPromptFile: getEnvWithDefault("PROMPT_GENERATOR_PROMPT_FILE", "prompts/prompt_generator_system.txt"),
 		FeedbackTrackerPromptFile: getEnvWithDefault("FEEDBACK_TRACKER_PROMPT_FILE", "prompts/feedback_tracker_system.txt"),
@@ -281,6 +288,7 @@ func parseCommandLineFlags(config Config) Flags {
 		chatHistoryLimit:          flag.Int("chat-history-limit", config.ChatHistoryLimit, "limit for number of history messages sent to bot tools: -1=no limit, 0=no history, positive=limit to last N messages (overrides $CHAT_HISTORY_LIMIT)"),
 		feedbackInitialTimeout:    flag.String("feedback-initial-timeout", config.FeedbackInitialTimeout, "timeout for initial feedback response, e.g., '15m' (overrides $FEEDBACK_INITIAL_TIMEOUT)"),
 		feedbackFollowupDelay:     flag.String("feedback-followup-delay", config.FeedbackFollowupDelay, "delay before follow-up feedback session, e.g., '3h' (overrides $FEEDBACK_FOLLOWUP_DELAY)"),
+		genaiTemperature:          flag.Float64("genai-temperature", config.GenAITemperature, "GenAI temperature for response consistency, 0.0-1.0 (lower=more consistent) (overrides $GENAI_TEMPERATURE)"),
 	}
 
 	flag.Parse()
@@ -402,6 +410,9 @@ func buildGenAIOptions(flags Flags) []genai.Option {
 	if *flags.openaiKey != "" {
 		genaiOpts = append(genaiOpts, genai.WithAPIKey(*flags.openaiKey))
 	}
+	if *flags.genaiTemperature >= 0.0 && *flags.genaiTemperature <= 1.0 {
+		genaiOpts = append(genaiOpts, genai.WithTemperature(*flags.genaiTemperature))
+	}
 	if *flags.debug {
 		genaiOpts = append(genaiOpts, genai.WithDebugMode(true))
 		genaiOpts = append(genaiOpts, genai.WithStateDir(*flags.stateDir))
@@ -482,4 +493,27 @@ func parseIntEnv(key string, defaultValue int) int {
 	}
 
 	return intVal
+}
+
+// parseFloatEnv parses a float environment variable with a default value.
+// It accepts float values between 0.0 and 1.0 for temperature settings.
+func parseFloatEnv(key string, defaultValue float64) float64 {
+	val := os.Getenv(key)
+	if val == "" {
+		return defaultValue
+	}
+
+	floatVal, err := strconv.ParseFloat(val, 64)
+	if err != nil {
+		slog.Warn("Invalid float value for environment variable", "key", key, "value", val, "defaulting_to", defaultValue)
+		return defaultValue
+	}
+
+	// Validate temperature range for GenAI settings
+	if key == "GENAI_TEMPERATURE" && (floatVal < 0.0 || floatVal > 1.0) {
+		slog.Warn("Temperature value out of range (0.0-1.0)", "key", key, "value", floatVal, "defaulting_to", defaultValue)
+		return defaultValue
+	}
+
+	return floatVal
 }
