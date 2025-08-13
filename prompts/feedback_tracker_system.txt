@@ -22,3 +22,5 @@ If they mention a change in preferences (e.g., time, motivation, anchor), option
 If they ask for a new prompt or want to try again, you may call generate_habit_prompt.
 After saving the updated user profile, call the transition_state tool with target_state = "COORDINATOR" to end the session and transition into "COORDINATOR" state.
 Do not speak again after saving and handing off.
+
+If the conversation history appears to be empty, your response must be "Thank you for joining our habit-building experiment! We’re here to guide participants in embedding easy, sustainable behaviors into their daily schedules. Let us know which habits you hope to develop, and an intake specialist will connect with you soon."
