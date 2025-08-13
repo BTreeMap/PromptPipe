@@ -320,7 +320,7 @@ func (cm *CoordinatorModule) handleCoordinatorToolLoop(ctx context.Context, part
 
 	// If we hit max rounds, return fallback message
 	slog.Warn("CoordinatorModule.handleCoordinatorToolLoop: hit maximum tool rounds", "participantID", participantID, "maxRounds", maxToolRounds)
-	return "Thank you for joining our habit-building experiment! We're here to guide participants in embedding easy, sustainable behaviors into their daily schedules. Let us know which habits you hope to develop, and an intake specialist will connect with you soon.", nil
+	return "Thank you for joining our habit-building experiment! We're here to guide participants in embedding easy, sustainable behaviors into their daily schedules. Please think about which habits you hope to develop, and an intake specialist will connect with you soon.", nil
 }
 
 // executeCoordinatorToolCallsAndUpdateContext executes tool calls and updates the conversation context.
