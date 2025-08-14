@@ -561,9 +561,18 @@ func (st *SchedulerTool) executeDeleteSchedule(ctx context.Context, participantI
 	}
 
 	if scheduleToDelete == nil {
+		// Check if the provided ID looks like a time (common mistake)
+		if strings.Contains(scheduleID, ":") && len(scheduleID) <= 5 {
+			return &models.ToolResult{
+				Success: false,
+				Message: fmt.Sprintf("⚠️ It looks like you used a time ('%s') instead of a Schedule ID. Schedule IDs are unique identifiers like 'sched_abc123'. Please use the scheduler 'list' action first to see your active schedules and their proper Schedule IDs.", scheduleID),
+				Error:   "Invalid schedule ID format - time used instead of schedule ID",
+			}, nil
+		}
+
 		return &models.ToolResult{
 			Success: false,
-			Message: fmt.Sprintf("Schedule with ID '%s' not found", scheduleID),
+			Message: fmt.Sprintf("Schedule with ID '%s' not found. Use the scheduler 'list' action to see your active schedules and their Schedule IDs.", scheduleID),
 			Error:   "Schedule not found",
 		}, nil
 	}
