@@ -155,14 +155,14 @@ func TestSchedulerTool_ExecuteScheduler_CreateFixed(t *testing.T) {
 	if len(timer.scheduledCalls) != 1 {
 		t.Errorf("Expected 1 scheduled call, got %d", len(timer.scheduledCalls))
 	} else {
-		// Should schedule at 9:30 AM (minute=30, hour=9)
+		// Should schedule preparation notification at 9:20 AM (10 minutes before target 9:30)
 		schedule := timer.scheduledCalls[0].Schedule
 		if schedule == nil {
 			t.Error("Expected non-nil schedule")
 		} else if schedule.Hour == nil || *schedule.Hour != 9 {
 			t.Errorf("Expected hour=9, got %v", schedule.Hour)
-		} else if schedule.Minute == nil || *schedule.Minute != 30 {
-			t.Errorf("Expected minute=30, got %v", schedule.Minute)
+		} else if schedule.Minute == nil || *schedule.Minute != 20 {
+			t.Errorf("Expected minute=20 (preparation time), got %v", schedule.Minute)
 		}
 	}
 }
