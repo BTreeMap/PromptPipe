@@ -177,7 +177,7 @@ func (st *SchedulerTool) ExecuteScheduler(ctx context.Context, participantID str
 // For random type: uses random_start_time as target
 func (st *SchedulerTool) determineTargetTime(params models.SchedulerToolParams) (time.Time, error) {
 	var timeStr string
-	
+
 	switch params.Type {
 	case models.SchedulerTypeFixed:
 		timeStr = params.FixedTime
@@ -199,14 +199,14 @@ func (st *SchedulerTool) determineTargetTime(params models.SchedulerToolParams) 
 // Returns true if current time is before (target time - prep time)
 func (st *SchedulerTool) shouldScheduleToday(targetTime time.Time) bool {
 	now := time.Now()
-	
+
 	// Create today's target time in current timezone
-	todayTarget := time.Date(now.Year(), now.Month(), now.Day(), 
+	todayTarget := time.Date(now.Year(), now.Month(), now.Day(),
 		targetTime.Hour(), targetTime.Minute(), 0, 0, now.Location())
-	
+
 	// Calculate notification time (target - prep time)
 	notificationTime := todayTarget.Add(-time.Duration(st.prepTimeMinutes) * time.Minute)
-	
+
 	// Schedule for today if notification time is still in the future
 	return now.Before(notificationTime)
 }
@@ -216,7 +216,7 @@ func (st *SchedulerTool) shouldScheduleToday(targetTime time.Time) bool {
 func (st *SchedulerTool) buildSchedule(targetTime time.Time, timezone string) (*models.Schedule, time.Duration, error) {
 	// Calculate notification time (target - prep time)
 	notificationTime := targetTime.Add(-time.Duration(st.prepTimeMinutes) * time.Minute)
-	
+
 	hour := notificationTime.Hour()
 	minute := notificationTime.Minute()
 
@@ -237,7 +237,7 @@ func (st *SchedulerTool) buildSchedule(targetTime time.Time, timezone string) (*
 		todayNotification := time.Date(now.Year(), now.Month(), now.Day(),
 			hour, minute, 0, 0, now.Location())
 		delay = todayNotification.Sub(now)
-		
+
 		// Ensure delay is positive
 		if delay < 0 {
 			delay = 0
@@ -384,10 +384,10 @@ func (st *SchedulerTool) executeCreateSchedule(ctx context.Context, participantI
 
 	// Build schedule description
 	if params.Type == models.SchedulerTypeFixed {
-		scheduleDescription = fmt.Sprintf("daily at %s (%s) with preparation message %d minutes before", 
+		scheduleDescription = fmt.Sprintf("daily at %s (%s) with preparation message %d minutes before",
 			params.FixedTime, timezone, st.prepTimeMinutes)
 	} else {
-		scheduleDescription = fmt.Sprintf("daily preparation message at %s (%s) for habit window %s-%s", 
+		scheduleDescription = fmt.Sprintf("daily preparation message at %s (%s) for habit window %s-%s",
 			params.RandomStartTime, timezone, params.RandomStartTime, params.RandomEndTime)
 	}
 
@@ -417,15 +417,15 @@ func (st *SchedulerTool) executeCreateSchedule(ctx context.Context, participantI
 	var timeExplanation string
 	if params.Type == models.SchedulerTypeFixed {
 		prepTime := targetTime.Add(-time.Duration(st.prepTimeMinutes) * time.Minute)
-		timeExplanation = fmt.Sprintf("Your %s habit reminder is now scheduled! You'll receive preparation messages at %s (%d minutes before your %s habit time) to help you mentally prepare.", 
+		timeExplanation = fmt.Sprintf("Your %s habit reminder is now scheduled! You'll receive preparation messages at %s (%d minutes before your %s habit time) to help you mentally prepare.",
 			params.FixedTime, prepTime.Format("15:04"), st.prepTimeMinutes, params.FixedTime)
 	} else {
 		prepTime := targetTime.Add(-time.Duration(st.prepTimeMinutes) * time.Minute)
-		timeExplanation = fmt.Sprintf("Your habit reminder is now scheduled! You'll receive preparation messages at %s (%d minutes before your %s-%s habit window) to help you mentally prepare.", 
+		timeExplanation = fmt.Sprintf("Your habit reminder is now scheduled! You'll receive preparation messages at %s (%d minutes before your %s-%s habit window) to help you mentally prepare.",
 			prepTime.Format("15:04"), st.prepTimeMinutes, params.RandomStartTime, params.RandomEndTime)
 	}
 
-	successMessage := fmt.Sprintf("✅ Perfect! %s\n\n%s\n\nSchedule ID: %s\n\nYour reminders will start %s!",
+	successMessage := fmt.Sprintf("✅ Perfect! %s\n\n%s\n\n🆔 **Schedule ID: %s** (save this for future reference)\n\nYour reminders will start %s!",
 		timeExplanation,
 		scheduleDescription,
 		scheduleID,
@@ -436,10 +436,10 @@ func (st *SchedulerTool) executeCreateSchedule(ctx context.Context, participantI
 			return "tomorrow"
 		}())
 
-	slog.Info("SchedulerTool.executeCreateSchedule: schedule created successfully", 
-		"participantID", participantID, 
-		"timerID", timerID, 
-		"scheduleID", scheduleID, 
+	slog.Info("SchedulerTool.executeCreateSchedule: schedule created successfully",
+		"participantID", participantID,
+		"timerID", timerID,
+		"scheduleID", scheduleID,
 		"schedule", scheduleDescription,
 		"prepTimeMinutes", st.prepTimeMinutes)
 
@@ -448,10 +448,10 @@ func (st *SchedulerTool) executeCreateSchedule(ctx context.Context, participantI
 		Message: successMessage,
 		Data: map[string]interface{}{
 			"schedule_id":       scheduleID,
-			"type":             params.Type,
-			"description":      scheduleDescription,
+			"type":              params.Type,
+			"description":       scheduleDescription,
 			"prep_time_minutes": st.prepTimeMinutes,
-			"starts_today":     st.shouldScheduleToday(targetTime),
+			"starts_today":      st.shouldScheduleToday(targetTime),
 		},
 	}, nil
 }
@@ -492,7 +492,7 @@ func (st *SchedulerTool) executeListSchedules(ctx context.Context, participantID
 			if timezone == "" {
 				timezone = "UTC"
 			}
-			timeDesc = fmt.Sprintf("daily preparation at %s (%s) for %s habit", 
+			timeDesc = fmt.Sprintf("daily preparation at %s (%s) for %s habit",
 				func() string {
 					t, _ := time.Parse("15:04", schedule.FixedTime)
 					prep := t.Add(-time.Duration(st.prepTimeMinutes) * time.Minute)
@@ -503,7 +503,7 @@ func (st *SchedulerTool) executeListSchedules(ctx context.Context, participantID
 			if timezone == "" {
 				timezone = "UTC"
 			}
-			timeDesc = fmt.Sprintf("daily preparation at %s (%s) for %s-%s habit window", 
+			timeDesc = fmt.Sprintf("daily preparation at %s (%s) for %s-%s habit window",
 				func() string {
 					t, _ := time.Parse("15:04", schedule.RandomStartTime)
 					prep := t.Add(-time.Duration(st.prepTimeMinutes) * time.Minute)
@@ -511,10 +511,10 @@ func (st *SchedulerTool) executeListSchedules(ctx context.Context, participantID
 				}(), timezone, schedule.RandomStartTime, schedule.RandomEndTime)
 		}
 
-		scheduleLines = append(scheduleLines, fmt.Sprintf("%d. **Daily Habit Reminder** - %s (ID: %s)", i+1, timeDesc, schedule.ID))
+		scheduleLines = append(scheduleLines, fmt.Sprintf("%d. **Daily Habit Reminder** - %s\n   🆔 Schedule ID: **%s**", i+1, timeDesc, schedule.ID))
 	}
 
-	message := fmt.Sprintf("📅 Your active schedules:\n\n%s\n\nAll reminders include %d-minute preparation messages to help you mentally prepare. To remove a schedule, use the scheduler with the delete action and specify the schedule ID.", 
+	message := fmt.Sprintf("📅 Your active schedules:\n\n%s\n\n💡 **Important**: To delete a schedule, use the scheduler tool with action='delete' and the exact Schedule ID shown above.\n\nAll reminders include %d-minute preparation messages to help you mentally prepare.",
 		strings.Join(scheduleLines, "\n"), st.prepTimeMinutes)
 
 	return &models.ToolResult{
