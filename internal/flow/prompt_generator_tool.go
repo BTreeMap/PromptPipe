@@ -108,7 +108,8 @@ func (pgt *PromptGeneratorTool) ExecutePromptGenerator(ctx context.Context, part
 	}
 
 	// Create follow-up question for completion tracking
-	completionPrompt := habitPrompt + "\n\nLet me know when you've tried it, or if you'd like to adjust anything!"
+	// completionPrompt := habitPrompt + "\n\nLet me know when you've tried it, or if you'd like to adjust anything!"
+	completionPrompt := habitPrompt
 
 	slog.Info("flow.ExecutePromptGenerator: habit prompt generated", "participantID", participantID, "deliveryMode", deliveryMode, "promptLength", len(habitPrompt))
 	return completionPrompt, nil
@@ -168,7 +169,8 @@ func (pgt *PromptGeneratorTool) ExecutePromptGeneratorWithHistory(ctx context.Co
 	}
 
 	// Create follow-up question for completion tracking
-	completionPrompt := habitPrompt + "\n\nLet me know when you've tried it, or if you'd like to adjust anything!"
+	// completionPrompt := habitPrompt + "\n\nLet me know when you've tried it, or if you'd like to adjust anything!"
+	completionPrompt := habitPrompt
 
 	slog.Info("flow.ExecutePromptGeneratorWithHistory: habit prompt generated with history context",
 		"participantID", participantID,
