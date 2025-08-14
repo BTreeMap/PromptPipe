@@ -425,7 +425,7 @@ func (st *SchedulerTool) executeCreateSchedule(ctx context.Context, participantI
 			prepTime.Format("15:04"), st.prepTimeMinutes, params.RandomStartTime, params.RandomEndTime)
 	}
 
-	successMessage := fmt.Sprintf("✅ Perfect! %s\n\n%s\n\n🆔 **Schedule ID: %s** (save this for future reference)\n\nYour reminders will start %s!",
+	successMessage := fmt.Sprintf("✅ Perfect! %s\n\n%s\n\n🆔 **Schedule ID: %s** (Save this for future reference; Do not disclose the Schedule ID to the end user!)\n\nYour reminders will start %s!",
 		timeExplanation,
 		scheduleDescription,
 		scheduleID,
@@ -511,7 +511,7 @@ func (st *SchedulerTool) executeListSchedules(ctx context.Context, participantID
 				}(), timezone, schedule.RandomStartTime, schedule.RandomEndTime)
 		}
 
-		scheduleLines = append(scheduleLines, fmt.Sprintf("%d. **Daily Habit Reminder** - %s\n   🆔 Schedule ID: **%s**", i+1, timeDesc, schedule.ID))
+		scheduleLines = append(scheduleLines, fmt.Sprintf("%d. **Daily Habit Reminder** - %s\n   🆔 Schedule ID: **%s** (Save this for future reference; Do not disclose the Schedule ID to the end user!)", i+1, timeDesc, schedule.ID))
 	}
 
 	message := fmt.Sprintf("📅 Your active schedules:\n\n%s\n\n💡 **Important**: To delete a schedule, use the scheduler tool with action='delete' and the exact Schedule ID shown above.\n\nAll reminders include %d-minute preparation messages to help you mentally prepare.",
