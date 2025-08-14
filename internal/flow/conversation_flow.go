@@ -131,11 +131,11 @@ func NewConversationFlowWithAllToolsAndTimeouts(stateManager StateManager, genai
 	// Create timer for scheduler
 	timer := NewSimpleTimer()
 
-	// Create shared tools with configured prep time
-	schedulerTool := NewSchedulerToolWithPrepTime(timer, msgService, genaiClient, stateManager, nil, schedulerPrepTimeMinutes)
+	// Create shared tools in dependency order - prompt generator first, then scheduler
+	promptGeneratorTool := NewPromptGeneratorTool(stateManager, genaiClient, msgService, promptGeneratorPromptFile)
+	schedulerTool := NewSchedulerToolWithPrepTime(timer, msgService, genaiClient, stateManager, promptGeneratorTool, schedulerPrepTimeMinutes)
 	stateTransitionTool := NewStateTransitionTool(stateManager, timer)
 	profileSaveTool := NewProfileSaveTool(stateManager)
-	promptGeneratorTool := NewPromptGeneratorTool(stateManager, genaiClient, msgService, promptGeneratorPromptFile)
 
 	// Create modules with shared tools
 	coordinatorModule := NewCoordinatorModule(stateManager, genaiClient, msgService, systemPromptFile, schedulerTool, promptGeneratorTool, stateTransitionTool, profileSaveTool)
