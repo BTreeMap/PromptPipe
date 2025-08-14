@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"math/rand"
 	"strings"
 	"time"
 
@@ -16,15 +17,22 @@ import (
 	"github.com/openai/openai-go/shared"
 )
 
+// RandomScheduleInfo holds information for random scheduling between start and end times
+type RandomScheduleInfo struct {
+	StartSchedule *models.Schedule // Schedule for the start of the random window
+	EndSchedule   *models.Schedule // Schedule for the end of the random window
+	StartTime     time.Time        // Parsed start time (used for calculations)
+	EndTime       time.Time        // Parsed end time (used for calculations)
+	Timezone      string           // Timezone for the schedule
+}
+
 // SchedulerTool provides LLM tool functionality for scheduling daily habit prompts.
-// This unified implementation uses a preparation time approach for both fixed and random scheduling.
 type SchedulerTool struct {
 	timer           models.Timer
 	msgService      MessagingService
 	genaiClient     genai.ClientInterface  // For generating scheduled message content
 	stateManager    StateManager           // For storing schedule metadata
 	promptGenerator PromptGeneratorService // For generating habit prompts
-	prepTimeMinutes int                    // Preparation time in minutes (default 10)
 }
 
 // MessagingService defines the interface for messaging operations needed by the scheduler.
@@ -38,33 +46,30 @@ type PromptGeneratorService interface {
 	ExecutePromptGenerator(ctx context.Context, participantID string, args map[string]interface{}) (string, error)
 }
 
-// NewSchedulerTool creates a new scheduler tool instance with default 10-minute preparation time.
+// NewSchedulerTool creates a new scheduler tool instance.
 func NewSchedulerTool(timer models.Timer, msgService MessagingService) *SchedulerTool {
 	return &SchedulerTool{
-		timer:           timer,
-		msgService:      msgService,
-		prepTimeMinutes: 10, // Default 10 minutes preparation time
+		timer:      timer,
+		msgService: msgService,
 	}
 }
 
 // NewSchedulerToolWithGenAI creates a new scheduler tool instance with GenAI support.
 func NewSchedulerToolWithGenAI(timer models.Timer, msgService MessagingService, genaiClient genai.ClientInterface) *SchedulerTool {
 	return &SchedulerTool{
-		timer:           timer,
-		msgService:      msgService,
-		genaiClient:     genaiClient,
-		prepTimeMinutes: 10, // Default 10 minutes preparation time
+		timer:       timer,
+		msgService:  msgService,
+		genaiClient: genaiClient,
 	}
 }
 
 // NewSchedulerToolWithStateManager creates a new scheduler tool instance with state management.
 func NewSchedulerToolWithStateManager(timer models.Timer, msgService MessagingService, genaiClient genai.ClientInterface, stateManager StateManager) *SchedulerTool {
 	return &SchedulerTool{
-		timer:           timer,
-		msgService:      msgService,
-		genaiClient:     genaiClient,
-		stateManager:    stateManager,
-		prepTimeMinutes: 10, // Default 10 minutes preparation time
+		timer:        timer,
+		msgService:   msgService,
+		genaiClient:  genaiClient,
+		stateManager: stateManager,
 	}
 }
 
@@ -76,19 +81,6 @@ func NewSchedulerToolComplete(timer models.Timer, msgService MessagingService, g
 		genaiClient:     genaiClient,
 		stateManager:    stateManager,
 		promptGenerator: promptGenerator,
-		prepTimeMinutes: 10, // Default 10 minutes preparation time
-	}
-}
-
-// NewSchedulerToolWithPrepTime creates a new scheduler tool instance with custom preparation time.
-func NewSchedulerToolWithPrepTime(timer models.Timer, msgService MessagingService, genaiClient genai.ClientInterface, stateManager StateManager, promptGenerator PromptGeneratorService, prepTimeMinutes int) *SchedulerTool {
-	return &SchedulerTool{
-		timer:           timer,
-		msgService:      msgService,
-		genaiClient:     genaiClient,
-		stateManager:    stateManager,
-		promptGenerator: promptGenerator,
-		prepTimeMinutes: prepTimeMinutes,
 	}
 }
 
@@ -98,7 +90,7 @@ func (st *SchedulerTool) GetToolDefinition() openai.ChatCompletionToolParam {
 		Type: "function",
 		Function: shared.FunctionDefinitionParam{
 			Name:        "scheduler",
-			Description: openai.String(fmt.Sprintf("Manage daily habit reminder schedules. The scheduler sends preparation notifications %d minutes before the scheduled time to help users mentally prepare for their habit.", st.prepTimeMinutes)),
+			Description: openai.String("Manage daily habit reminder schedules - create new schedules, list existing ones, or delete schedules. The scheduler triggers the prompt generator tool to create personalized habit messages based on user profiles."),
 			Parameters: shared.FunctionParameters{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -172,79 +164,124 @@ func (st *SchedulerTool) ExecuteScheduler(ctx context.Context, participantID str
 	}
 }
 
-// determineTargetTime extracts the target habit time from parameters.
-// For fixed type: uses fixed_time
-// For random type: uses random_start_time as target
-func (st *SchedulerTool) determineTargetTime(params models.SchedulerToolParams) (time.Time, error) {
-	var timeStr string
-	
-	switch params.Type {
-	case models.SchedulerTypeFixed:
-		timeStr = params.FixedTime
-	case models.SchedulerTypeRandom:
-		timeStr = params.RandomStartTime
-	default:
-		return time.Time{}, fmt.Errorf("invalid scheduler type: %s", params.Type)
-	}
-
-	targetTime, err := time.Parse("15:04", timeStr)
+// buildFixedSchedule converts a fixed time to a Schedule.
+func (st *SchedulerTool) buildFixedSchedule(fixedTime, timezone string) (*models.Schedule, error) {
+	// Parse the time
+	t, err := time.Parse("15:04", fixedTime)
 	if err != nil {
-		return time.Time{}, fmt.Errorf("invalid time format: %w", err)
+		return nil, fmt.Errorf("invalid time format: %w", err)
 	}
 
-	return targetTime, nil
-}
-
-// shouldScheduleToday determines if we should schedule for today or tomorrow.
-// Returns true if current time is before (target time - prep time)
-func (st *SchedulerTool) shouldScheduleToday(targetTime time.Time) bool {
-	now := time.Now()
-	
-	// Create today's target time in current timezone
-	todayTarget := time.Date(now.Year(), now.Month(), now.Day(), 
-		targetTime.Hour(), targetTime.Minute(), 0, 0, now.Location())
-	
-	// Calculate notification time (target - prep time)
-	notificationTime := todayTarget.Add(-time.Duration(st.prepTimeMinutes) * time.Minute)
-	
-	// Schedule for today if notification time is still in the future
-	return now.Before(notificationTime)
-}
-
-// buildSchedule creates a unified schedule for both fixed and random types.
-// Handles same-day scheduling with delays and creates recurring schedules for daily execution.
-func (st *SchedulerTool) buildSchedule(targetTime time.Time, timezone string) (*models.Schedule, time.Duration, error) {
-	// Calculate notification time (target - prep time)
-	notificationTime := targetTime.Add(-time.Duration(st.prepTimeMinutes) * time.Minute)
-	
-	hour := notificationTime.Hour()
-	minute := notificationTime.Minute()
+	// Create schedule for daily execution at the specified time
+	hour := t.Hour()
+	minute := t.Minute()
 
 	schedule := &models.Schedule{
 		Hour:   &hour,
 		Minute: &minute,
 	}
 
-	// Set timezone
+	// Set timezone if provided
 	if timezone != "" {
 		schedule.Timezone = timezone
 	}
 
-	// Calculate delay for same-day scheduling
-	var delay time.Duration
-	if st.shouldScheduleToday(targetTime) {
-		now := time.Now()
-		todayNotification := time.Date(now.Year(), now.Month(), now.Day(),
-			hour, minute, 0, 0, now.Location())
-		delay = todayNotification.Sub(now)
-		
-		// Ensure delay is positive
-		if delay < 0 {
-			delay = 0
-		}
+	return schedule, nil
+}
+
+// buildRandomScheduleInfo creates a RandomScheduleInfo for random timing.
+// This implementation creates schedules for both start and end times of the interval
+// to be used for proper random scheduling.
+func (st *SchedulerTool) buildRandomScheduleInfo(startTime, endTime, timezone string) (*RandomScheduleInfo, error) {
+	// Parse start and end times
+	start, err := time.Parse("15:04", startTime)
+	if err != nil {
+		return nil, fmt.Errorf("invalid start time format: %w", err)
 	}
 
-	return schedule, delay, nil
+	end, err := time.Parse("15:04", endTime)
+	if err != nil {
+		return nil, fmt.Errorf("invalid end time format: %w", err)
+	}
+
+	if !end.After(start) {
+		return nil, fmt.Errorf("end time must be after start time")
+	}
+
+	// Create schedules for both start and end times
+	startHour := start.Hour()
+	startMinute := start.Minute()
+	startSchedule := &models.Schedule{
+		Hour:   &startHour,
+		Minute: &startMinute,
+	}
+
+	endHour := end.Hour()
+	endMinute := end.Minute()
+	endSchedule := &models.Schedule{
+		Hour:   &endHour,
+		Minute: &endMinute,
+	}
+
+	// Set timezone if provided
+	if timezone != "" {
+		startSchedule.Timezone = timezone
+		endSchedule.Timezone = timezone
+	}
+
+	return &RandomScheduleInfo{
+		StartSchedule: startSchedule,
+		EndSchedule:   endSchedule,
+		StartTime:     start,
+		EndTime:       end,
+		Timezone:      timezone,
+	}, nil
+}
+
+// executeRandomScheduledPrompt handles the random scheduling logic.
+// This method is called by the recurring timer at the start time and schedules
+// a one-time timer at a random time within the specified interval.
+func (st *SchedulerTool) executeRandomScheduledPrompt(ctx context.Context, prompt models.Prompt, randomInfo *RandomScheduleInfo) {
+	slog.Debug("SchedulerTool.executeScheduledPrompt: executing random scheduled prompt", "to", prompt.To, "startTime", randomInfo.StartTime.Format("15:04"), "endTime", randomInfo.EndTime.Format("15:04"))
+
+	// Calculate random delay from start time to end time
+	startMinutes := randomInfo.StartTime.Hour()*60 + randomInfo.StartTime.Minute()
+	endMinutes := randomInfo.EndTime.Hour()*60 + randomInfo.EndTime.Minute()
+
+	if endMinutes <= startMinutes {
+		// Handle case where end time is the next day (e.g., 23:00 to 01:00)
+		endMinutes += 24 * 60
+	}
+
+	// Generate random minutes within the interval
+	intervalMinutes := endMinutes - startMinutes
+	if intervalMinutes <= 0 {
+		slog.Error("SchedulerTool.executeScheduledPrompt: invalid time interval for random scheduling", "startMinutes", startMinutes, "endMinutes", endMinutes)
+		// Fallback to immediate execution
+		st.executeScheduledPrompt(ctx, prompt)
+		return
+	}
+
+	// Generate random offset within the interval using math/rand
+	randomDelayMinutes := rand.Intn(intervalMinutes)
+	randomDelay := time.Duration(randomDelayMinutes) * time.Minute
+
+	slog.Info("SchedulerTool.executeScheduledPrompt: scheduling random prompt",
+		"to", prompt.To,
+		"intervalMinutes", intervalMinutes,
+		"randomDelayMinutes", randomDelayMinutes,
+		"delay", randomDelay)
+
+	// Schedule a one-time timer for the random time
+	_, err := st.timer.ScheduleAfter(randomDelay, func() {
+		st.executeScheduledPrompt(ctx, prompt)
+	})
+
+	if err != nil {
+		slog.Error("SchedulerTool.executeScheduledPrompt: failed to schedule random timer", "error", err, "to", prompt.To)
+		// Fallback to immediate execution
+		st.executeScheduledPrompt(ctx, prompt)
+	}
 }
 
 // executeScheduledPrompt executes a scheduled prompt by calling the prompt generator tool.
@@ -297,7 +334,7 @@ func (st *SchedulerTool) executeScheduledPrompt(ctx context.Context, prompt mode
 	slog.Info("SchedulerTool.executeScheduledPrompt: message sent successfully", "to", prompt.To, "messageLength", len(message))
 }
 
-// executeCreateSchedule creates a new schedule using the unified approach.
+// executeCreateSchedule creates a new schedule.
 func (st *SchedulerTool) executeCreateSchedule(ctx context.Context, participantID string, params models.SchedulerToolParams) (*models.ToolResult, error) {
 	// Get the participant's phone number from participantID
 	phoneNumber, hasPhone := GetPhoneNumberFromContext(ctx)
@@ -313,86 +350,85 @@ func (st *SchedulerTool) executeCreateSchedule(ctx context.Context, participantI
 		}, nil
 	}
 
-	// Determine target time using unified approach
-	targetTime, err := st.determineTargetTime(params)
-	if err != nil {
-		return &models.ToolResult{
-			Success: false,
-			Message: "Failed to parse target time",
-			Error:   err.Error(),
-		}, nil
-	}
-
-	// Set default timezone
-	timezone := params.Timezone
-	if timezone == "" {
-		if params.Type == models.SchedulerTypeFixed {
-			timezone = "America/Toronto"
-		} else {
-			timezone = "UTC"
-		}
-	}
-
-	// Build unified schedule
-	schedule, delay, err := st.buildSchedule(targetTime, timezone)
-	if err != nil {
-		return &models.ToolResult{
-			Success: false,
-			Message: "Failed to create schedule",
-			Error:   err.Error(),
-		}, nil
-	}
-
-	// Create the scheduled prompt
-	prompt := models.Prompt{
-		To:   phoneNumber,
-		Type: models.PromptTypeGenAI,
-	}
-
+	// Handle scheduling based on type
 	var timerID string
 	var scheduleDescription string
 
-	// Handle same-day scheduling vs recurring scheduling
-	if st.shouldScheduleToday(targetTime) {
-		// Same-day scheduling: schedule immediate delayed timer + recurring schedule
-		if delay > 0 {
-			// Schedule immediate delayed execution for today
-			_, err = st.timer.ScheduleAfter(delay, func() {
-				st.executeScheduledPrompt(ctx, prompt)
-			})
-			if err != nil {
-				slog.Warn("SchedulerTool.executeCreateSchedule: failed to schedule same-day timer", "error", err)
-			} else {
-				slog.Info("SchedulerTool.executeCreateSchedule: same-day timer scheduled", "delay", delay)
-			}
+	switch params.Type {
+	case models.SchedulerTypeFixed:
+		schedule, err := st.buildFixedSchedule(params.FixedTime, params.Timezone)
+		if err != nil {
+			return &models.ToolResult{
+				Success: false,
+				Message: "Failed to create fixed schedule",
+				Error:   err.Error(),
+			}, nil
 		}
 
-		// Also set up recurring schedule starting tomorrow
-		timerID, err = st.timer.ScheduleWithSchedule(schedule, func() {
-			st.executeScheduledPrompt(ctx, prompt)
-		})
-	} else {
-		// Next-day scheduling: just create recurring schedule
-		timerID, err = st.timer.ScheduleWithSchedule(schedule, func() {
-			st.executeScheduledPrompt(ctx, prompt)
-		})
-	}
+		// Create the scheduled prompt (simplified - no system/user prompt needed)
+		prompt := models.Prompt{
+			To:   phoneNumber,
+			Type: models.PromptTypeGenAI,
+		}
 
-	if err != nil {
+		// Schedule the prompt using the timer
+		timerID, err = st.timer.ScheduleWithSchedule(schedule, func() {
+			st.executeScheduledPrompt(ctx, prompt)
+		})
+		if err != nil {
+			return &models.ToolResult{
+				Success: false,
+				Message: "Failed to schedule prompt",
+				Error:   err.Error(),
+			}, nil
+		}
+
+		timezone := params.Timezone
+		if timezone == "" {
+			timezone = "America/Toronto" // Default timezone if not specified
+		}
+		scheduleDescription = fmt.Sprintf("daily at %s (%s)", params.FixedTime, timezone)
+
+	case models.SchedulerTypeRandom:
+		randomInfo, err := st.buildRandomScheduleInfo(params.RandomStartTime, params.RandomEndTime, params.Timezone)
+		if err != nil {
+			return &models.ToolResult{
+				Success: false,
+				Message: "Failed to create random schedule",
+				Error:   err.Error(),
+			}, nil
+		}
+
+		// Create the scheduled prompt (simplified - no system/user prompt needed)
+		prompt := models.Prompt{
+			To:   phoneNumber,
+			Type: models.PromptTypeGenAI,
+		}
+
+		// Schedule the recurring timer at the start time that will create random one-time timers
+		timerID, err = st.timer.ScheduleWithSchedule(randomInfo.StartSchedule, func() {
+			st.executeRandomScheduledPrompt(ctx, prompt, randomInfo)
+		})
+		if err != nil {
+			return &models.ToolResult{
+				Success: false,
+				Message: "Failed to schedule random prompt",
+				Error:   err.Error(),
+			}, nil
+		}
+
+		timezone := params.Timezone
+		if timezone == "" {
+			timezone = "UTC"
+		}
+		scheduleDescription = fmt.Sprintf("daily between %s and %s (%s)", params.RandomStartTime, params.RandomEndTime, timezone)
+
+	default:
 		return &models.ToolResult{
 			Success: false,
-			Message: "Failed to schedule prompt",
-			Error:   err.Error(),
+			Message: "Invalid scheduler type",
+			Error:   fmt.Sprintf("unsupported scheduler type: %s", params.Type),
 		}, nil
-	}
-
-	// Build schedule description
-	if params.Type == models.SchedulerTypeFixed {
-		scheduleDescription = fmt.Sprintf("daily at %s (%s) with preparation message %d minutes before", 
-			params.FixedTime, timezone, st.prepTimeMinutes)
-	} else {
-		scheduleDescription = fmt.Sprintf("daily preparation message at %s (%s) for habit window %s-%s", 
-			params.RandomStartTime, timezone, params.RandomStartTime, params.RandomEndTime)
 	}
 
 	// Generate a unique schedule ID
@@ -406,7 +442,7 @@ func (st *SchedulerTool) executeCreateSchedule(ctx context.Context, participantI
 			FixedTime:       params.FixedTime,
 			RandomStartTime: params.RandomStartTime,
 			RandomEndTime:   params.RandomEndTime,
-			Timezone:        timezone,
+			Timezone:        params.Timezone,
 			CreatedAt:       time.Now(),
 			TimerID:         timerID,
 		}
@@ -417,45 +453,18 @@ func (st *SchedulerTool) executeCreateSchedule(ctx context.Context, participantI
 		}
 	}
 
-	// Create success message with preparation time explanation
-	var timeExplanation string
-	if params.Type == models.SchedulerTypeFixed {
-		prepTime := targetTime.Add(-time.Duration(st.prepTimeMinutes) * time.Minute)
-		timeExplanation = fmt.Sprintf("Your %s habit reminder is now scheduled! You'll receive preparation messages at %s (%d minutes before your %s habit time) to help you mentally prepare.", 
-			params.FixedTime, prepTime.Format("15:04"), st.prepTimeMinutes, params.FixedTime)
-	} else {
-		prepTime := targetTime.Add(-time.Duration(st.prepTimeMinutes) * time.Minute)
-		timeExplanation = fmt.Sprintf("Your habit reminder is now scheduled! You'll receive preparation messages at %s (%d minutes before your %s-%s habit window) to help you mentally prepare.", 
-			prepTime.Format("15:04"), st.prepTimeMinutes, params.RandomStartTime, params.RandomEndTime)
-	}
+	successMessage := fmt.Sprintf("✅ Perfect! I've scheduled your daily habit reminders to be sent %s. You'll receive personalized messages based on your profile.\n\nYour reminders are all set and will kick off tomorrow! Schedule ID: %s\n\nIf you'd like to try out a personalized message right now, just say the word.",
+		scheduleDescription, scheduleID)
 
-	successMessage := fmt.Sprintf("✅ Perfect! %s\n\n%s\n\nSchedule ID: %s\n\nYour reminders will start %s!",
-		timeExplanation,
-		scheduleDescription,
-		scheduleID,
-		func() string {
-			if st.shouldScheduleToday(targetTime) {
-				return "today"
-			}
-			return "tomorrow"
-		}())
-
-	slog.Info("SchedulerTool.executeCreateSchedule: schedule created successfully", 
-		"participantID", participantID, 
-		"timerID", timerID, 
-		"scheduleID", scheduleID, 
-		"schedule", scheduleDescription,
-		"prepTimeMinutes", st.prepTimeMinutes)
+	slog.Info("SchedulerTool.executeCreateSchedule: schedule created successfully", "participantID", participantID, "timerID", timerID, "scheduleID", scheduleID, "schedule", scheduleDescription)
 
 	return &models.ToolResult{
 		Success: true,
 		Message: successMessage,
 		Data: map[string]interface{}{
-			"schedule_id":       scheduleID,
-			"type":             params.Type,
-			"description":      scheduleDescription,
-			"prep_time_minutes": st.prepTimeMinutes,
-			"starts_today":     st.shouldScheduleToday(targetTime),
+			"schedule_id": scheduleID,
+			"type":        params.Type,
+			"description": scheduleDescription,
 		},
 	}, nil
 }
@@ -496,38 +505,26 @@ func (st *SchedulerTool) executeListSchedules(ctx context.Context, participantID
 			if timezone == "" {
 				timezone = "UTC"
 			}
-			timeDesc = fmt.Sprintf("daily preparation at %s (%s) for %s habit", 
-				func() string {
-					t, _ := time.Parse("15:04", schedule.FixedTime)
-					prep := t.Add(-time.Duration(st.prepTimeMinutes) * time.Minute)
-					return prep.Format("15:04")
-				}(), timezone, schedule.FixedTime)
+			timeDesc = fmt.Sprintf("daily at %s (%s)", schedule.FixedTime, timezone)
 		} else {
 			timezone := schedule.Timezone
 			if timezone == "" {
 				timezone = "UTC"
 			}
-			timeDesc = fmt.Sprintf("daily preparation at %s (%s) for %s-%s habit window", 
-				func() string {
-					t, _ := time.Parse("15:04", schedule.RandomStartTime)
-					prep := t.Add(-time.Duration(st.prepTimeMinutes) * time.Minute)
-					return prep.Format("15:04")
-				}(), timezone, schedule.RandomStartTime, schedule.RandomEndTime)
+			timeDesc = fmt.Sprintf("daily between %s and %s (%s)", schedule.RandomStartTime, schedule.RandomEndTime, timezone)
 		}
 
 		scheduleLines = append(scheduleLines, fmt.Sprintf("%d. **Daily Habit Reminder** - %s (ID: %s)", i+1, timeDesc, schedule.ID))
 	}
 
-	message := fmt.Sprintf("📅 Your active schedules:\n\n%s\n\nAll reminders include %d-minute preparation messages to help you mentally prepare. To remove a schedule, use the scheduler with the delete action and specify the schedule ID.", 
-		strings.Join(scheduleLines, "\n"), st.prepTimeMinutes)
+	message := fmt.Sprintf("📅 Your active schedules:\n\n%s\n\nTo remove a schedule, use the scheduler with the delete action and specify the schedule ID.", strings.Join(scheduleLines, "\n"))
 
 	return &models.ToolResult{
 		Success: true,
 		Message: message,
 		Data: map[string]interface{}{
-			"schedules":         schedules,
-			"schedule_ids":      extractScheduleIDs(schedules),
-			"prep_time_minutes": st.prepTimeMinutes,
+			"schedules":    schedules,
+			"schedule_ids": extractScheduleIDs(schedules),
 		},
 	}, nil
 }
@@ -589,7 +586,7 @@ func (st *SchedulerTool) executeDeleteSchedule(ctx context.Context, participantI
 		}, nil
 	}
 
-	message := fmt.Sprintf("✅ Successfully deleted the daily habit reminder schedule (ID: %s). Your preparation messages and daily reminders have been stopped.", scheduleID)
+	message := fmt.Sprintf("✅ Successfully deleted the daily habit reminder schedule (ID: %s). Your daily reminders have been stopped.", scheduleID)
 
 	slog.Info("SchedulerTool.executeDeleteSchedule: schedule deleted successfully", "participantID", participantID, "scheduleID", scheduleID, "timerID", scheduleToDelete.TimerID)
 
