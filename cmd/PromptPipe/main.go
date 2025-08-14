@@ -159,6 +159,10 @@ type Config struct {
 	// FeedbackFollowupDelay is the delay before follow-up feedback session (e.g., "3h" for 3 hours)
 	// Environment variable: FEEDBACK_FOLLOWUP_DELAY
 	FeedbackFollowupDelay string
+
+	// SchedulerPrepTimeMinutes is the preparation time in minutes before scheduled habit reminders
+	// Environment variable: SCHEDULER_PREP_TIME_MINUTES
+	SchedulerPrepTimeMinutes int
 }
 
 // Flags holds command line flag values for database and other configuration.
@@ -180,6 +184,7 @@ type Flags struct {
 	feedbackInitialTimeout    *string  // Timeout for initial feedback response
 	feedbackFollowupDelay     *string  // Delay before follow-up feedback session
 	genaiTemperature          *float64 // GenAI temperature for response consistency
+	schedulerPrepTimeMinutes  *int     // Preparation time in minutes before scheduled habit reminders
 }
 
 // initializeLogger sets up structured logging with debug level
@@ -225,6 +230,7 @@ func loadEnvironmentConfig() Config {
 		ChatHistoryLimit:          parseIntEnv("CHAT_HISTORY_LIMIT", -1),
 		FeedbackInitialTimeout:    getEnvWithDefault("FEEDBACK_INITIAL_TIMEOUT", "15m"),
 		FeedbackFollowupDelay:     getEnvWithDefault("FEEDBACK_FOLLOWUP_DELAY", "3h"),
+		SchedulerPrepTimeMinutes:  parseIntEnv("SCHEDULER_PREP_TIME_MINUTES", 10),
 	}
 
 	// Set default state directory if not specified
@@ -289,6 +295,7 @@ func parseCommandLineFlags(config Config) Flags {
 		feedbackInitialTimeout:    flag.String("feedback-initial-timeout", config.FeedbackInitialTimeout, "timeout for initial feedback response, e.g., '15m' (overrides $FEEDBACK_INITIAL_TIMEOUT)"),
 		feedbackFollowupDelay:     flag.String("feedback-followup-delay", config.FeedbackFollowupDelay, "delay before follow-up feedback session, e.g., '3h' (overrides $FEEDBACK_FOLLOWUP_DELAY)"),
 		genaiTemperature:          flag.Float64("genai-temperature", config.GenAITemperature, "GenAI temperature for response consistency, 0.0-1.0 (lower=more consistent) (overrides $GENAI_TEMPERATURE)"),
+		schedulerPrepTimeMinutes:  flag.Int("scheduler-prep-time-minutes", config.SchedulerPrepTimeMinutes, "preparation time in minutes before scheduled habit reminders (overrides $SCHEDULER_PREP_TIME_MINUTES)"),
 	}
 
 	flag.Parse()
@@ -448,6 +455,8 @@ func buildAPIOptions(flags Flags) []api.Option {
 	if *flags.feedbackFollowupDelay != "" {
 		apiOpts = append(apiOpts, api.WithFeedbackFollowupDelay(*flags.feedbackFollowupDelay))
 	}
+	// Always pass the scheduler prep time since it has a meaningful default
+	apiOpts = append(apiOpts, api.WithSchedulerPrepTimeMinutes(*flags.schedulerPrepTimeMinutes))
 	return apiOpts
 }
 

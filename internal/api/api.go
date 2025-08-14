@@ -59,6 +59,7 @@ type Server struct {
 	feedbackInitialTimeout    string // timeout for initial feedback response
 	feedbackFollowupDelay     string // delay before follow-up feedback session
 	debugMode                 bool   // enable debug mode for user-facing debug messages
+	schedulerPrepTimeMinutes  int    // preparation time in minutes before scheduled habit reminders
 }
 
 // NewServer creates a new API server instance with the provided dependencies.
@@ -87,6 +88,7 @@ type Opts struct {
 	FeedbackInitialTimeout    string           // timeout for initial feedback response
 	FeedbackFollowupDelay     string           // delay before follow-up feedback session
 	DebugMode                 bool             // enable debug mode for user-facing debug messages
+	SchedulerPrepTimeMinutes  int              // preparation time in minutes before scheduled habit reminders
 }
 
 // Option defines a configuration option for the API server.
@@ -170,6 +172,13 @@ func WithDebugMode(enabled bool) Option {
 	}
 }
 
+// WithSchedulerPrepTimeMinutes sets the preparation time in minutes before scheduled habit reminders.
+func WithSchedulerPrepTimeMinutes(minutes int) Option {
+	return func(o *Opts) {
+		o.SchedulerPrepTimeMinutes = minutes
+	}
+}
+
 // Run starts the API server and initializes dependencies, applying module options.
 // It returns an error if initialization fails.
 func Run(waOpts []whatsapp.Option, storeOpts []store.Option, genaiOpts []genai.Option, apiOpts []Option) error {
@@ -207,7 +216,7 @@ func createAndConfigureServer(waOpts []whatsapp.Option, storeOpts []store.Option
 	server.feedbackInitialTimeout = apiCfg.FeedbackInitialTimeout
 	server.feedbackFollowupDelay = apiCfg.FeedbackFollowupDelay
 	server.debugMode = apiCfg.DebugMode
-	server.feedbackFollowupDelay = apiCfg.FeedbackFollowupDelay
+	server.schedulerPrepTimeMinutes = apiCfg.SchedulerPrepTimeMinutes
 
 	// Determine server address with priority: CLI options > default
 	addr := apiCfg.Addr
@@ -388,6 +397,7 @@ func (s *Server) initializeConversationFlow() error {
 		s.feedbackTrackerPromptFile,
 		s.feedbackInitialTimeout,
 		s.feedbackFollowupDelay,
+		s.schedulerPrepTimeMinutes,
 	)
 
 	// Set the chat history limit
