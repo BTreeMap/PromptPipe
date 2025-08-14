@@ -248,8 +248,8 @@ func (st *SchedulerTool) buildSchedule(targetTime time.Time, timezone string) (*
 }
 
 // executeScheduledPrompt executes a scheduled prompt by calling the prompt generator tool.
-func (st *SchedulerTool) executeScheduledPrompt(ctx context.Context, prompt models.Prompt) {
-	slog.Debug("SchedulerTool.executeScheduledPrompt: executing scheduled prompt", "to", prompt.To, "type", prompt.Type)
+func (st *SchedulerTool) executeScheduledPrompt(ctx context.Context, participantID string, prompt models.Prompt) {
+	slog.Debug("SchedulerTool.executeScheduledPrompt: executing scheduled prompt", "participantID", participantID, "to", prompt.To, "type", prompt.Type)
 
 	var message string
 	var err error
@@ -260,10 +260,6 @@ func (st *SchedulerTool) executeScheduledPrompt(ctx context.Context, prompt mode
 		args := map[string]interface{}{
 			"delivery_mode": "scheduled",
 		}
-
-		// Extract participant ID from phone number (this would typically come from context or be stored)
-		// For now, we'll use the phone number as the participant ID
-		participantID := prompt.To
 
 		message, err = st.promptGenerator.ExecutePromptGenerator(ctx, participantID, args)
 		if err != nil {
@@ -358,7 +354,7 @@ func (st *SchedulerTool) executeCreateSchedule(ctx context.Context, participantI
 		if delay > 0 {
 			// Schedule immediate delayed execution for today
 			_, err = st.timer.ScheduleAfter(delay, func() {
-				st.executeScheduledPrompt(ctx, prompt)
+				st.executeScheduledPrompt(ctx, participantID, prompt)
 			})
 			if err != nil {
 				slog.Warn("SchedulerTool.executeCreateSchedule: failed to schedule same-day timer", "error", err)
@@ -369,12 +365,12 @@ func (st *SchedulerTool) executeCreateSchedule(ctx context.Context, participantI
 
 		// Also set up recurring schedule starting tomorrow
 		timerID, err = st.timer.ScheduleWithSchedule(schedule, func() {
-			st.executeScheduledPrompt(ctx, prompt)
+			st.executeScheduledPrompt(ctx, participantID, prompt)
 		})
 	} else {
 		// Next-day scheduling: just create recurring schedule
 		timerID, err = st.timer.ScheduleWithSchedule(schedule, func() {
-			st.executeScheduledPrompt(ctx, prompt)
+			st.executeScheduledPrompt(ctx, participantID, prompt)
 		})
 	}
 
