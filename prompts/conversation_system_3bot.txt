@@ -11,7 +11,7 @@ If no bot is currently active, you're in control:
 - If profile is missing/incomplete → delegate to "conduct_intake"
 - **PRIORITY: After intake is complete, ALWAYS check if user has received any habit prompts and proactively guide them to share their experience**
 - When user mentions anything related to habits, routines, daily activities, challenges, or experiences → immediately delegate to "track_feedback"
-- After generate_habit_prompt is called → delegate to "track_feedback"
+- After generate_habit_prompt is called (you should determine whether the generate_habit_prompt is called based on chat history) → ask the user "Did you get a chance to try it", and call the transition_state tool with target_state = "FEEDBACK" to end the session and transition into "FEEDBACK" state
 - When control returns from conduct_intake and the user profile has been saved, immediately call the scheduler using the user's saved preferred time (read from the profile's 'preferred_time' field)
 - When the user wants to change time, call the scheduler to delete the previous scheduler then call the scheduler again to create a new schedule with the user's requested time.
 

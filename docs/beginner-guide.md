@@ -84,6 +84,9 @@ CHAT_HISTORY_LIMIT="-1"                            # Message history limit (-1 =
 INTAKE_BOT_PROMPT_FILE="prompts/intake_bot_system.txt"
 PROMPT_GENERATOR_PROMPT_FILE="prompts/prompt_generator_system.txt"
 FEEDBACK_TRACKER_PROMPT_FILE="prompts/feedback_tracker_system.txt"
+FEEDBACK_INITIAL_TIMEOUT="15m"                     # Timeout for initial feedback (e.g., "15m")
+FEEDBACK_FOLLOWUP_DELAY="3h"                       # Delay for followup feedback (e.g., "3h")
+SCHEDULER_PREP_TIME_MINUTES="5"                    # Prep time for scheduled reminders (in minutes)
 ```
 
 #### Step 2: Directory Setup
@@ -300,6 +303,8 @@ PromptPipe/
 - `GET /receipts` - Retrieve delivery status
 - `POST /conversation/participants` - Manage participants
 - `GET /timers` - View active schedules
+- `GET /stats` - View application statistics
+- `POST /response` - Manually submit a participant response
 
 **How it contributes**: Acts as the primary interface for external systems to interact with PromptPipe
 
@@ -411,6 +416,7 @@ flow_states (
     flow_type TEXT NOT NULL,       -- "conversation", "intervention", etc.
     current_state TEXT NOT NULL,   -- Current state in flow
     state_data TEXT,               -- JSON blob with conversation history/data
+    last_prompted_at DATETIME,     -- Timestamp of the last prompt sent
     created_at DATETIME,
     updated_at DATETIME,
     UNIQUE(participant_id, flow_type)
