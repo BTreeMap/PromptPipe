@@ -8,6 +8,8 @@
 *.so
 *.dylib
 PromptPipe
+!cmd/PromptPipe
+!cmd/PromptPipe/**
 
 # Test binary, built with `go test -c`
 *.test
