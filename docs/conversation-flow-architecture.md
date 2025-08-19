@@ -205,8 +205,8 @@ sequenceDiagram
     STT->>TMR: Schedule after delay
     TMR-->>STT: timerID
     STT->>SM: Set DataKeyStateTransitionTimerID=timerID
-    TMR-->>STT: On fire -> executeImmediateTransition()
-    STT->>SM: Set DataKeyConversationState=target; Clear timerID
+  TMR-->>STT: On fire triggers executeImmediateTransition()
+  STT->>SM: Set DataKeyConversationState=target (clear timerID)
   end
   CF-->>User: Reply from MOD
   Note over CF,MOD: Next message will be routed to the new module per state
@@ -217,6 +217,115 @@ Common handoffs:
 - Coordinator → Intake: When the model determines profile info is needed; Intake collects and saves via ProfileSaveTool, then transitions back.
 - Coordinator/Intake → Feedback: After a prompt is sent and the user reports an outcome (or when the model decides to gather outcomes), Feedback tracks results and updates profile.
 - Feedback → Coordinator: After processing feedback or after a timeout/follow-up window, return to Coordinator.
+
+## Dynamic architecture overview (end-to-end)
+
+The following sequence shows a typical dynamic arc across modules, tools, timers, and messaging: Coordinator bootstraps, hands off to Intake for profile building, returns to Coordinator to generate/schedule prompts, then hands to Feedback to process outcomes, finally returning to Coordinator.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant User
+  participant WA as WhatsApp
+  participant RH as ResponseHandler
+  participant CF as ConversationFlow
+  participant SM as StateManager
+  participant CM as Coordinator
+  participant IM as Intake
+  participant FM as Feedback
+  participant GA as GenAI
+  participant PST as ProfileSaveTool
+  participant PGT as PromptGeneratorTool
+  participant SCH as SchedulerTool
+  participant STT as StateTransitionTool
+  participant TMR as Timer
+  participant MSG as MessagingService
+
+  Note over CF,SM: DataKeyConversationState defaults to COORDINATOR if empty
+
+  User->>WA: Message
+  WA->>RH: Event
+  RH->>CF: ProcessResponse(participantID,text)
+  CF->>SM: GetCurrentState + GetStateData(conversationState, history)
+  CF->>CM: Dispatch (COORDINATOR)
+
+  CM->>GA: GenerateWithTools(history + system prompts)
+  GA-->>CM: Tool call: save_user_profile(...)
+  CM->>PST: save_user_profile(args)
+  PST->>SM: SetStateData(userProfile)
+  PST-->>CM: ok
+
+  alt Profile incomplete
+    CM->>STT: transition_state(target=INTAKE)
+    STT->>SM: SetStateData(conversationState=INTAKE)
+  else Profile sufficient
+    CM-->>CF: Return assistant text
+  end
+  CF->>SM: Save updated conversationHistory
+  CF-->>RH: Assistant text
+  RH-->>User: Send reply
+
+  %% Next user message routes to Intake
+  User->>WA: Follow-up
+  WA->>RH: Event
+  RH->>CF: ProcessResponse
+  CF->>SM: Read conversationState = INTAKE
+  CF->>IM: ExecuteIntakeBot
+  IM->>GA: GenerateWithTools
+  GA-->>IM: Tool call: save_user_profile(...)
+  IM->>PST: save_user_profile(args)
+  PST->>SM: Update userProfile
+  IM-->>STT: transition_state(target=COORDINATOR)
+  STT->>SM: Set conversationState=COORDINATOR
+  IM-->>CF: Assistant text (e.g., confirmation)
+  CF->>SM: Save history
+  CF-->>RH: Reply
+  RH-->>User: Send reply
+
+  %% Coordinator generates and schedules prompts
+  CF->>CM: Dispatch (COORDINATOR)
+  CM->>PGT: ExecutePromptGenerator
+  PGT->>GA: Generate personalized prompt
+  GA-->>PGT: Prompt text
+  PGT-->>CM: Prompt text
+  CM-->>CF: Assistant prompt text
+  CF-->>RH: Reply to user
+  RH-->>User: Send prompt
+
+  CM->>SCH: scheduler(action=create, ...)
+  SCH->>TMR: Schedule prep & recurring timers
+  SCH->>SM: Save schedule metadata (scheduleRegistry)
+  SCH-->>CM: Confirmation
+  CM->>STT: transition_state(target=FEEDBACK[, delay_minutes])
+  alt delayed
+    STT->>TMR: Schedule delayed transition
+    TMR-->>STT: timerID
+    STT->>SM: Set stateTransitionTimerID
+  TMR-->>STT: On fire triggers executeImmediateTransition
+  STT->>SM: Set conversationState=FEEDBACK (clear timerID)
+  else immediate
+    STT->>SM: Set conversationState=FEEDBACK
+  end
+
+  %% User reports outcome -> Feedback module processes
+  User->>WA: Outcome / feedback
+  WA->>RH: Event
+  RH->>CF: ProcessResponse
+  CF->>SM: Read conversationState = FEEDBACK
+  CF->>FM: ExecuteFeedback
+  FM->>GA: GenerateWithTools
+  GA-->>FM: Tool call(s): save_user_profile / scheduler
+  FM->>PST: save_user_profile(args)
+  PST->>SM: Update profile (success counts, barriers, tweaks)
+  FM->>STT: transition_state(target=COORDINATOR)
+  STT->>SM: Set conversationState=COORDINATOR
+  FM-->>CF: Assistant text (personalized feedback)
+  CF->>SM: Save history
+  CF-->>RH: Reply
+  RH-->>User: Send reply
+
+  Note over SCH,TMR: Timers continue to fire sending scheduled prompts via MessagingService
+```
 
 ## Module responsibilities (3-bot model)
 
