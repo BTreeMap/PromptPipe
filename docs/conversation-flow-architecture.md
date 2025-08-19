@@ -159,6 +159,65 @@ sequenceDiagram
   RH-->>User: Send reply
 ```
 
+## State transitions and handoffs
+
+A module handoff is driven by the StateTransitionTool writing `DataKeyConversationState` to one of `COORDINATOR`, `INTAKE`, or `FEEDBACK`. The default when empty is `COORDINATOR`. Delayed handoffs are scheduled via a timer and stored under `stateTransitionTimerID`.
+
+```mermaid
+stateDiagram-v2
+    [*] --> COORDINATOR: Enrollment / no sub-state
+    COORDINATOR --> INTAKE: transition_state(INTAKE)\n(reason: profile collection)
+    INTAKE --> COORDINATOR: transition_state(COORDINATOR)\n(reason: profile sufficient or pause)
+    COORDINATOR --> FEEDBACK: transition_state(FEEDBACK)\n(trigger: after sending prompt or user reports outcome)
+    INTAKE --> FEEDBACK: transition_state(FEEDBACK)\n(trigger: immediate feedback on a starter prompt)
+    FEEDBACK --> COORDINATOR: transition_state(COORDINATOR)\n(reason: feedback processed / timeout)
+
+    note right of COORDINATOR: Can call tools (save profile, generate prompt, scheduler)\nCan schedule delayed transitions (minutes)
+    note right of INTAKE: Builds userProfile via ProfileSaveTool\nMay schedule prompts; exits via transition_state
+    note right of FEEDBACK: Tracks outcomes; may schedule follow-ups\nUses timers for initial/ follow-up windows
+```
+
+Transition mechanics (from code):
+
+- Setter: StateTransitionTool executes `SetStateData(DataKeyConversationState, target)`; for delayed transitions it schedules a timer and stores `stateTransitionTimerID`, then performs the transition on callback and clears the ID.
+- Router: `ConversationFlow.processConversationMessage()` reads `DataKeyConversationState` and dispatches to Coordinator/Intake/Feedback handlers. Unknown or empty defaults to Coordinator.
+- Cancellation: When scheduling a new delayed transition, any existing `stateTransitionTimerID` is canceled before setting a new one.
+- Persistence: History (`conversationHistory`) and `userProfile` remain intact across transitions. Only the sub-state changes.
+
+### Handoff lifecycle (sequence)
+
+```mermaid
+sequenceDiagram
+  participant User
+  participant CF as ConversationFlow
+  participant MOD as Current Module
+  participant STT as StateTransitionTool
+  participant SM as StateManager
+  participant TMR as Timer
+
+  User->>CF: Message arrives
+  CF->>SM: Read DataKeyConversationState
+  CF->>MOD: Invoke handler for current sub-state
+  MOD-->>STT: transition_state(target=INTAKE/FEEDBACK/COORDINATOR[, delay])
+  alt immediate transition
+    STT->>SM: Set DataKeyConversationState=target
+  else delayed transition
+    STT->>TMR: Schedule after delay
+    TMR-->>STT: timerID
+    STT->>SM: Set DataKeyStateTransitionTimerID=timerID
+    TMR-->>STT: On fire -> executeImmediateTransition()
+    STT->>SM: Set DataKeyConversationState=target; Clear timerID
+  end
+  CF-->>User: Reply from MOD
+  Note over CF,MOD: Next message will be routed to the new module per state
+```
+
+Common handoffs:
+
+- Coordinator → Intake: When the model determines profile info is needed; Intake collects and saves via ProfileSaveTool, then transitions back.
+- Coordinator/Intake → Feedback: After a prompt is sent and the user reports an outcome (or when the model decides to gather outcomes), Feedback tracks results and updates profile.
+- Feedback → Coordinator: After processing feedback or after a timeout/follow-up window, return to Coordinator.
+
 ## Module responsibilities (3-bot model)
 
 - Coordinator
