@@ -46,7 +46,7 @@ flowchart LR
   end
 
   subgraph Messaging Layer
-    WA[WhatsApp client (whatsmeow)] --> RH[ResponseHandler]
+    WA["WhatsApp client (whatsmeow)"] --> RH[ResponseHandler]
   end
 
   subgraph Conversation Flow
