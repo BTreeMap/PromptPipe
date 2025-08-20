@@ -135,6 +135,10 @@ type Config struct {
 	// Environment variable: GENAI_TEMPERATURE
 	GenAITemperature float64
 
+	// GenAIModel selects the OpenAI model for GenAI chat completions.
+	// Environment variable: GENAI_MODEL
+	GenAIModel string
+
 	// IntakeBotPromptFile is the path to the intake bot system prompt file
 	// Environment variable: INTAKE_BOT_PROMPT_FILE
 	IntakeBotPromptFile string
@@ -184,6 +188,7 @@ type Flags struct {
 	feedbackInitialTimeout    *string  // Timeout for initial feedback response
 	feedbackFollowupDelay     *string  // Delay before follow-up feedback session
 	genaiTemperature          *float64 // GenAI temperature for response consistency
+	genaiModel                *string  // GenAI model for chat completions
 	schedulerPrepTimeMinutes  *int     // Preparation time in minutes before scheduled habit reminders
 }
 
@@ -224,6 +229,7 @@ func loadEnvironmentConfig() Config {
 		DefaultCron:               os.Getenv("DEFAULT_SCHEDULE"),
 		DebugMode:                 parseBoolEnv("PROMPTPIPE_DEBUG", false),
 		GenAITemperature:          parseFloatEnv("GENAI_TEMPERATURE", 0.1),
+		GenAIModel:                getEnvWithDefault("GENAI_MODEL", string(genai.DefaultModel)),
 		IntakeBotPromptFile:       getEnvWithDefault("INTAKE_BOT_PROMPT_FILE", "prompts/intake_bot_system.txt"),
 		PromptGeneratorPromptFile: getEnvWithDefault("PROMPT_GENERATOR_PROMPT_FILE", "prompts/prompt_generator_system.txt"),
 		FeedbackTrackerPromptFile: getEnvWithDefault("FEEDBACK_TRACKER_PROMPT_FILE", "prompts/feedback_tracker_system.txt"),
@@ -270,7 +276,8 @@ func loadEnvironmentConfig() Config {
 		"OPENAI_API_KEY_SET", config.OpenAIKey != "",
 		"API_ADDR", config.APIAddr,
 		"DEFAULT_SCHEDULE", config.DefaultCron,
-		"PROMPTPIPE_DEBUG", config.DebugMode)
+		"PROMPTPIPE_DEBUG", config.DebugMode,
+		"GENAI_MODEL", config.GenAIModel)
 
 	return config
 }
@@ -295,6 +302,7 @@ func parseCommandLineFlags(config Config) Flags {
 		feedbackInitialTimeout:    flag.String("feedback-initial-timeout", config.FeedbackInitialTimeout, "timeout for initial feedback response, e.g., '15m' (overrides $FEEDBACK_INITIAL_TIMEOUT)"),
 		feedbackFollowupDelay:     flag.String("feedback-followup-delay", config.FeedbackFollowupDelay, "delay before follow-up feedback session, e.g., '3h' (overrides $FEEDBACK_FOLLOWUP_DELAY)"),
 		genaiTemperature:          flag.Float64("genai-temperature", config.GenAITemperature, "GenAI temperature for response consistency, 0.0-1.0 (lower=more consistent) (overrides $GENAI_TEMPERATURE)"),
+		genaiModel:                flag.String("genai-model", config.GenAIModel, "GenAI model for chat completions (overrides $GENAI_MODEL)"),
 		schedulerPrepTimeMinutes:  flag.Int("scheduler-prep-time-minutes", config.SchedulerPrepTimeMinutes, "preparation time in minutes before scheduled habit reminders (overrides $SCHEDULER_PREP_TIME_MINUTES)"),
 	}
 
@@ -316,6 +324,8 @@ func parseCommandLineFlags(config Config) Flags {
 		"chatHistoryLimit", *flags.chatHistoryLimit,
 		"feedbackInitialTimeout", *flags.feedbackInitialTimeout,
 		"feedbackFollowupDelay", *flags.feedbackFollowupDelay)
+	// Log parsed GenAI model separately for clarity
+	slog.Debug("GenAI model selection", "genaiModel", *flags.genaiModel)
 
 	// Update database DSNs if not explicitly set but state directory has changed
 	if *flags.whatsappDBDSN == config.WhatsAppDBDSN && config.WhatsAppDBDSN == "file:"+filepath.Join(config.StateDir, DefaultWhatsAppDBFileName)+"?_foreign_keys=on" && *flags.stateDir != config.StateDir {
@@ -419,6 +429,9 @@ func buildGenAIOptions(flags Flags) []genai.Option {
 	}
 	if *flags.genaiTemperature >= 0.0 && *flags.genaiTemperature <= 1.0 {
 		genaiOpts = append(genaiOpts, genai.WithTemperature(*flags.genaiTemperature))
+	}
+	if *flags.genaiModel != "" {
+		genaiOpts = append(genaiOpts, genai.WithModel(*flags.genaiModel))
 	}
 	if *flags.debug {
 		genaiOpts = append(genaiOpts, genai.WithDebugMode(true))

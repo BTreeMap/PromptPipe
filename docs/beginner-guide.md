@@ -74,6 +74,7 @@ DEFAULT_SCHEDULE="0 9 * * *"                       # Default cron (9 AM daily)
 
 # Optional: AI Features
 OPENAI_API_KEY="your_openai_api_key_here"          # For conversation features
+GENAI_MODEL="gpt-4o-mini"                          # Override default model (default: gpt-4o-mini)
 
 # Optional: Debug and Logging
 PROMPTPIPE_DEBUG="false"                           # Enable debug mode
@@ -366,6 +367,7 @@ PromptPipe/
 - Tool calling support for function integration
 - Conversation history management
 - Temperature and parameter control
+- Model selection via env var (GENAI_MODEL) or CLI flag (--genai-model)
 
 **How it contributes**: Enables intelligent, context-aware responses and tool-augmented AI conversations
 
@@ -615,7 +617,7 @@ Hello! This is a test message from PromptPipe.
 
 **WhatsApp Message Received:**
 
-```
+```text
 Hello! This is a test message from PromptPipe.
 ```
 
