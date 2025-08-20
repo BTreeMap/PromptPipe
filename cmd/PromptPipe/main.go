@@ -86,6 +86,12 @@ func main() {
 	genaiOpts := buildGenAIOptions(flags)
 	apiOpts := buildAPIOptions(flags)
 
+	// Set global default GenAI model so any client constructed without explicit model uses this
+	if *flags.genaiModel != "" {
+		genai.DefaultModel = *flags.genaiModel
+		slog.Debug("Global GenAI DefaultModel overridden", "DefaultModel", genai.DefaultModel)
+	}
+
 	// Start the service
 	slog.Info("Bootstrapping PromptPipe with configured modules")
 	slog.Debug("Module options counts", "whatsapp", len(waOpts), "store", len(storeOpts), "genai", len(genaiOpts), "api", len(apiOpts))

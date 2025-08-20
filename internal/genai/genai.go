@@ -16,11 +16,12 @@ import (
 	"github.com/openai/openai-go/option"
 )
 
+// DefaultModel is the default OpenAI model used for chat completions
+// It's a variable so callers (e.g., main) can override the default globally.
+var DefaultModel = string(openai.ChatModelGPT4oMini)
+
 // Default configuration constants
 const (
-	// DefaultModel is the default OpenAI model used for chat completions
-	// Kept as a string to make env/CLI overrides straightforward
-	DefaultModel = string(openai.ChatModelGPT4oMini)
 	// DefaultTemperature is the default temperature setting for chat completions
 	DefaultTemperature = 0.1
 	// DefaultMaxTokens is the default maximum tokens for chat completions
