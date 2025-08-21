@@ -52,7 +52,9 @@ var _ Coordinator = (*StaticCoordinatorModule)(nil)
 // LoadSystemPrompt is a no-op for the static coordinator (kept for interface parity).
 func (sc *StaticCoordinatorModule) LoadSystemPrompt() error { return nil }
 
-// ProcessMessageWithHistory implements deterministic routing.
+// ProcessMessageWithHistory implements a deterministic state machine:
+// - If profile is incomplete -> transition to INTAKE and prompt for missing fields
+// - If profile is complete -> generate a prompt and transition to FEEDBACK
 func (sc *StaticCoordinatorModule) ProcessMessageWithHistory(ctx context.Context, participantID, userMessage string, chatHistory []openai.ChatCompletionMessageParamUnion, conversationHistory *ConversationHistory) (string, error) {
 	if sc.stateManager == nil {
 		return "", fmt.Errorf("state manager not initialized")
@@ -63,106 +65,49 @@ func (sc *StaticCoordinatorModule) ProcessMessageWithHistory(ctx context.Context
 		conversationHistory.Messages = append(conversationHistory.Messages, ConversationMessage{Role: "user", Content: userMessage, Timestamp: time.Now()})
 	}
 
-	// Decide next action via rules
-	stateStr, err := sc.stateManager.GetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyConversationState)
-	if err != nil {
-		slog.Warn("StaticCoordinator: failed to get conversation state, defaulting to COORDINATOR", "error", err, "participantID", participantID)
-		stateStr = string(models.StateCoordinator)
-	}
-	current := models.StateType(stateStr)
-	if current == "" {
-		current = models.StateCoordinator
-	}
+	// Check profile completeness to drive the deterministic flow
+	complete, missingFields := sc.isProfileComplete(ctx, participantID)
 
-	// High-level rules:
-	// 1) If user mentions profile info keywords and profile incomplete -> transition to INTAKE.
-	// 2) If user asks for schedule/list/delete and scheduler is available -> call scheduler.
-	// 3) If profile exists and complete and user asks for a prompt -> generate prompt.
-	// 4) If responding to a prompt (feedback-like words) -> transition to FEEDBACK.
-	// 5) Otherwise, provide a deterministic coordinator reply and keep state.
-
-	// Rule helpers
-	lower := strings.ToLower(userMessage)
-	has := func(kw ...string) bool {
-		for _, k := range kw {
-			if strings.Contains(lower, k) {
-				return true
-			}
-		}
-		return false
-	}
-
-	// Profile completeness check
-	profileStatus := sc.getProfileStatus(ctx, participantID)
-	profileComplete := strings.Contains(profileStatus, "profile is complete")
-
-	// 1) Intake routing if user is supplying profile-like data and profile incomplete
-	if !profileComplete && has("my goal", "i want", "habit", "domain", "time", "anchor", "motivation", "prefer") {
+	if !complete {
+		// Transition to INTAKE and prompt for required info
 		if sc.stateTransitionTool != nil {
-			_, _ = sc.stateTransitionTool.ExecuteStateTransition(ctx, participantID, map[string]interface{}{"target_state": "INTAKE", "reason": "collect profile"})
+			_, _ = sc.stateTransitionTool.ExecuteStateTransition(ctx, participantID, map[string]interface{}{"target_state": "INTAKE", "reason": "collect profile (static flow)"})
 		} else {
 			_ = sc.stateManager.SetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyConversationState, string(models.StateIntake))
 		}
-		return "Got it! I'll connect you with our intake specialist to set up your profile.", nil
+
+		// Deterministic intake kick-off message
+		need := "habit domain, motivation, preferred time, and a natural anchor"
+		if len(missingFields) > 0 {
+			need = strings.Join(missingFields, ", ")
+		}
+		return fmt.Sprintf("Let's set up your profile. Please share your %s.", need), nil
 	}
 
-	// 2) Scheduler intents
-	if sc.schedulerTool != nil {
-		// create schedule
-		if has("schedule", "reminder") && (has("daily", "every day") || has("at ")) {
-			// naive parse: look for time like HH:MM within message
-			timeStr := extractTimeLike(lower)
-			if timeStr != "" {
-				params := models.SchedulerToolParams{Action: models.SchedulerActionCreate, Type: models.SchedulerTypeFixed, FixedTime: timeStr}
-				res, _ := sc.schedulerTool.ExecuteScheduler(ctx, participantID, params)
-				if res != nil && res.Message != "" {
-					return res.Message, nil
-				}
-				return "I tried to set up your daily reminder.", nil
-			}
-		}
-		// list
-		if has("list", "my schedules", "what's scheduled") {
-			params := models.SchedulerToolParams{Action: models.SchedulerActionList}
-			res, _ := sc.schedulerTool.ExecuteScheduler(ctx, participantID, params)
-			if res != nil && res.Message != "" {
-				return res.Message, nil
-			}
-		}
-		// delete by id
-		if has("delete", "remove") && has("sched_") {
-			id := extractScheduleID(lower)
-			if id != "" {
-				params := models.SchedulerToolParams{Action: models.SchedulerActionDelete, ScheduleID: id}
-				res, _ := sc.schedulerTool.ExecuteScheduler(ctx, participantID, params)
-				if res != nil && res.Message != "" {
-					return res.Message, nil
-				}
-			}
-		}
-	}
-
-	// 3) Prompt generation when profile complete and user asks for a prompt
-	if profileComplete && sc.promptGeneratorTool != nil && has("prompt", "habit idea", "give me a", "what should i do") {
-		msg, err := sc.promptGeneratorTool.ExecutePromptGenerator(ctx, participantID, map[string]interface{}{"delivery_mode": "immediate"})
-		if err == nil && msg != "" {
-			return msg, nil
-		}
-		return "Here's a simple habit to try today: take a 2-minute mindful breathing break after your coffee.", nil
-	}
-
-	// 4) Feedback-like responses -> transition to FEEDBACK
-	if has("i did it", "done", "completed", "couldn't", "barrier", "did not", "tweak") {
-		if sc.stateTransitionTool != nil {
-			_, _ = sc.stateTransitionTool.ExecuteStateTransition(ctx, participantID, map[string]interface{}{"target_state": "FEEDBACK", "reason": "collect feedback"})
+	// Profile is complete -> generate a prompt now and transition to FEEDBACK
+	var prompt string
+	var err error
+	if sc.promptGeneratorTool != nil {
+		// Prefer history-aware generation if chatHistory provided
+		if len(chatHistory) > 0 {
+			prompt, err = sc.promptGeneratorTool.ExecutePromptGeneratorWithHistory(ctx, participantID, map[string]interface{}{"delivery_mode": "immediate"}, chatHistory)
 		} else {
-			_ = sc.stateManager.SetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyConversationState, string(models.StateFeedback))
+			prompt, err = sc.promptGeneratorTool.ExecutePromptGenerator(ctx, participantID, map[string]interface{}{"delivery_mode": "immediate"})
 		}
-		return "Thanks! Let's log your feedback.", nil
 	}
 
-	// Default coordinator reply
-	return sc.defaultCoordinatorReply(ctx, participantID, profileComplete)
+	if err != nil || prompt == "" {
+		prompt = "After your next coffee, try a 1-minute stretch — it helps you reset and feel better."
+	}
+
+	// Transition to FEEDBACK to await the user's outcome
+	if sc.stateTransitionTool != nil {
+		_, _ = sc.stateTransitionTool.ExecuteStateTransition(ctx, participantID, map[string]interface{}{"target_state": "FEEDBACK", "reason": "await feedback (static flow)"})
+	} else {
+		_ = sc.stateManager.SetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyConversationState, string(models.StateFeedback))
+	}
+
+	return prompt, nil
 }
 
 // getProfileStatus mirrors the coordinator's profile status helper (simplified here)
@@ -226,4 +171,30 @@ func extractScheduleID(s string) string {
 		}
 	}
 	return ""
+}
+
+// isProfileComplete checks required fields and returns completeness and missing list in user-friendly order
+func (sc *StaticCoordinatorModule) isProfileComplete(ctx context.Context, participantID string) (bool, []string) {
+	profileJSON, err := sc.stateManager.GetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyUserProfile)
+	if err != nil || profileJSON == "" {
+		return false, []string{"habit domain", "motivation", "preferred time", "habit anchor"}
+	}
+	var p UserProfile
+	if err := json.Unmarshal([]byte(profileJSON), &p); err != nil {
+		return false, []string{"habit domain", "motivation", "preferred time", "habit anchor"}
+	}
+	missing := []string{}
+	if p.HabitDomain == "" {
+		missing = append(missing, "habit domain")
+	}
+	if p.MotivationalFrame == "" {
+		missing = append(missing, "motivation")
+	}
+	if p.PreferredTime == "" {
+		missing = append(missing, "preferred time")
+	}
+	if p.PromptAnchor == "" {
+		missing = append(missing, "habit anchor")
+	}
+	return len(missing) == 0, missing
 }
