@@ -27,6 +27,7 @@ Core runtime components used by the Conversation Flow:
   - ProfileSaveTool: `internal/flow/profile_save_tool.go`
   - Timer: `internal/flow/timer.go`
 - GenAI client: `internal/genai/genai.go`
+  - Supports structured thinking+content generation (`GenerateThinkingWithMessages`, `GenerateThinkingWithTools`) always-on for agents
 - Messaging service + response handler: `internal/messaging/`
 - Store backends: `internal/store/`
 - Prompts: `prompts/` (system templates for the coordinator, intake bot, and feedback tracker)
@@ -349,6 +350,7 @@ All modules:
 - Load module-specific system prompts from files (see `prompts/`)
 - Use the same `GenAI` client and tool schema
 - Respect history limits (see `CHAT_HISTORY_LIMIT` handling inside flow)
+- Emit structured reasoning ("thinking") internally; when debug mode is enabled, reasoning is sent as separate developer-only messages. There is no toggle to disable reasoning generation to avoid prompt schema drift.
 
 ## Tools and side-effects
 

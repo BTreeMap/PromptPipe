@@ -50,6 +50,7 @@ PromptPipe is a Go-based messaging service that delivers adaptive-intervention p
 - **Pluggable messaging drivers**: Easily switch between WhatsApp, Twilio, or other providers without changing core logic.
 - **Send dynamic payloads**: text, media, and template messages with custom variables.
 - **GenAI-enhanced content**: Use OpenAI to generate message content dynamically.
+- **Structured reasoning**: Agent modules always request JSON `{thinking, content}`; thinking is surfaced only in debug mode for developers (no toggle to avoid schema drift).
 - **Branch flows**: Present selectable branch options to participants.
 - **Custom flows**: Plug in your own `Generator` implementations for fully customized message-generation logic.
 - **Receipt tracking**: Capture sent, delivered, and read events.
@@ -70,7 +71,7 @@ make build
 go build -o PromptPipe cmd/PromptPipe/main.go
 ```
 
-## Configuration
+## Additional Configuration Details
 
 PromptPipe uses two separate databases to clearly separate concerns:
 
@@ -357,7 +358,7 @@ export PROMPTPIPE_STATE_DIR="/custom/state/dir"
 ./promptpipe
 ```
 
-## Environment Variables
+## Additional Environment Variables
 
 | Variable               | Description                                 |
 |------------------------|---------------------------------------------|

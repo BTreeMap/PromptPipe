@@ -86,10 +86,33 @@ Each debug log file contains a JSON object with the following fields:
   - `GeneratePromptWithContext` - Simple system/user prompt generation
   - `GenerateWithMessages` - Multi-message conversation generation
   - `GenerateWithTools` - Generation with tool/function calling capability
+  - `GenerateThinkingWithMessages` - Structured JSON output separating internal thinking and user-facing content
+  - `GenerateThinkingWithTools` - Structured thinking + content while enabling tool/function calls
 - **model**: The OpenAI model used for the generation
 - **params**: Complete parameters sent to the OpenAI API
 - **response**: Complete response received from the OpenAI API
 - **error**: Error message if the API call failed, otherwise `null`
+
+## Structured Thinking Capture
+
+When debug mode is active, the system surfaces the model's internal reasoning ("thinking") for agent modules (Coordinator, Intake, Feedback, Prompt Generator) without altering user-facing replies. This is accomplished via new GenAI methods that instruct the model to emit JSON of the form:
+
+```json
+{"thinking": "brief reasoning", "content": "final user reply"}
+```
+
+Key properties:
+
+- Always enabled (no toggle) to maintain consistent prompting schemas and avoid drift between debug and non-debug operation.
+- The thinking field is only delivered to developers via separate debug messages (prefixed with 🐛) and never sent to end users directly.
+- Tool-enabled generations embed the same JSON content while still returning native tool call objects.
+- If JSON parsing fails, the raw content is treated as the user reply and thinking is left empty (non-fatal fallback).
+
+Displayed debug example (WhatsApp/SMS):
+
+```text
+🐛 DEBUG: Coordinator thinking (round 2): Deciding to call save_user_profile because motivation missing; will gather motivation next.
+```
 
 ## Use Cases
 
@@ -181,3 +204,4 @@ export PROMPTPIPE_DEBUG=false
 - Debug directory is created automatically with permissions 0755
 - Failed debug logging operations are logged as warnings but don't affect API functionality
 - Debug logging has minimal performance impact on API calls
+- Structured thinking is appended as an extra system instruction; maintaining it permanently avoids prompt divergence, so there is intentionally no runtime toggle to disable it.
