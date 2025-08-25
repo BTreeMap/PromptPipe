@@ -146,13 +146,16 @@ func (cm *CoordinatorModule) ProcessMessageWithHistory(ctx context.Context, part
 	}
 
 	if len(tools) == 0 {
-		// No tools available, use standard generation
-		response, err := cm.genaiClient.GenerateWithMessages(ctx, messages)
+		// No tools available, use structured thinking generation for better debugging
+		thinkingResp, err := cm.genaiClient.GenerateThinkingWithMessages(ctx, messages)
 		if err != nil {
-			slog.Error("CoordinatorModule.ProcessMessageWithHistory: GenAI generation failed", "error", err, "participantID", participantID)
+			slog.Error("CoordinatorModule.ProcessMessageWithHistory: thinking generation failed", "error", err, "participantID", participantID)
 			return "", fmt.Errorf("failed to generate response: %w", err)
 		}
-		return response, nil
+		if thinkingResp.Thinking != "" {
+			SendDebugMessageIfEnabled(ctx, participantID, cm.msgService, fmt.Sprintf("Coordinator thinking: %s", thinkingResp.Thinking))
+		}
+		return thinkingResp.Content, nil
 	}
 
 	// Log the exact tools being passed to LLM
@@ -272,34 +275,39 @@ func (cm *CoordinatorModule) handleCoordinatorToolLoop(ctx context.Context, part
 		slog.Debug("CoordinatorModule.handleCoordinatorToolLoop: round start", "participantID", participantID, "round", round, "messageCount", len(currentMessages))
 
 		// Generate response with tools
-		toolResponse, err := cm.genaiClient.GenerateWithTools(ctx, currentMessages, tools)
+		thinkingToolResp, err := cm.genaiClient.GenerateThinkingWithTools(ctx, currentMessages, tools)
 		if err != nil {
 			slog.Error("CoordinatorModule.handleCoordinatorToolLoop: tool generation failed", "error", err, "participantID", participantID, "round", round)
 			return "", fmt.Errorf("failed to generate response with tools: %w", err)
 		}
 
+		// Send thinking debug if available
+		if thinkingToolResp.Thinking != "" {
+			SendDebugMessageIfEnabled(ctx, participantID, cm.msgService, fmt.Sprintf("Coordinator thinking (round %d): %s", round, thinkingToolResp.Thinking))
+		}
+
 		slog.Debug("CoordinatorModule.handleCoordinatorToolLoop: received tool response",
 			"participantID", participantID,
 			"round", round,
-			"hasContent", toolResponse.Content != "",
-			"contentLength", len(toolResponse.Content),
-			"toolCallCount", len(toolResponse.ToolCalls))
+			"hasContent", thinkingToolResp.Content != "",
+			"contentLength", len(thinkingToolResp.Content),
+			"toolCallCount", len(thinkingToolResp.ToolCalls))
 
 		// Check if the AI wants to call tools
-		if len(toolResponse.ToolCalls) > 0 {
-			slog.Info("CoordinatorModule.handleCoordinatorToolLoop: processing tool calls", "participantID", participantID, "round", round, "toolCallCount", len(toolResponse.ToolCalls))
+		if len(thinkingToolResp.ToolCalls) > 0 {
+			slog.Info("CoordinatorModule.handleCoordinatorToolLoop: processing tool calls", "participantID", participantID, "round", round, "toolCallCount", len(thinkingToolResp.ToolCalls))
 
 			// Execute tools and update conversation context
-			updatedMessages, err := cm.executeCoordinatorToolCallsAndUpdateContext(ctx, participantID, toolResponse, currentMessages, tools, conversationHistory)
+			updatedMessages, err := cm.executeCoordinatorToolCallsAndUpdateContext(ctx, participantID, &genai.ToolCallResponse{Content: thinkingToolResp.Content, ToolCalls: thinkingToolResp.ToolCalls}, currentMessages, tools, conversationHistory)
 			if err != nil {
 				return "", err
 			}
 			currentMessages = updatedMessages
 
 			// If we have content, this is the final response
-			if toolResponse.Content != "" {
-				slog.Info("CoordinatorModule.handleCoordinatorToolLoop: tool round completed with user message", "participantID", participantID, "round", round, "responseLength", len(toolResponse.Content))
-				return toolResponse.Content, nil
+			if thinkingToolResp.Content != "" {
+				slog.Info("CoordinatorModule.handleCoordinatorToolLoop: tool round completed with user message", "participantID", participantID, "round", round, "responseLength", len(thinkingToolResp.Content))
+				return thinkingToolResp.Content, nil
 			}
 
 			// No content yet, continue to next round
@@ -308,9 +316,9 @@ func (cm *CoordinatorModule) handleCoordinatorToolLoop(ctx context.Context, part
 		}
 
 		// No tool calls - check if we have content
-		if toolResponse.Content != "" {
-			slog.Info("CoordinatorModule.handleCoordinatorToolLoop: final response without tool calls", "participantID", participantID, "round", round, "responseLength", len(toolResponse.Content))
-			return toolResponse.Content, nil
+		if thinkingToolResp.Content != "" {
+			slog.Info("CoordinatorModule.handleCoordinatorToolLoop: final response without tool calls", "participantID", participantID, "round", round, "responseLength", len(thinkingToolResp.Content))
+			return thinkingToolResp.Content, nil
 		}
 
 		// No tool calls and no content - this shouldn't happen, but handle it

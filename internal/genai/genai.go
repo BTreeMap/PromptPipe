@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/BTreeMap/PromptPipe/internal/util"
@@ -40,6 +41,18 @@ type ClientInterface interface {
 	GeneratePromptWithContext(ctx context.Context, system, user string) (string, error)
 	GenerateWithMessages(ctx context.Context, messages []openai.ChatCompletionMessageParamUnion) (string, error)
 	GenerateWithTools(ctx context.Context, messages []openai.ChatCompletionMessageParamUnion, tools []openai.ChatCompletionToolParam) (*ToolCallResponse, error)
+	// GenerateThinkingWithMessages returns a structured response containing an internal "thinking" field
+	// (model reasoning / chain-of-thought style summary) and a user-facing content field. The model
+	// is prompted to emit JSON with keys: thinking, content. If parsing fails, the raw content is
+	// returned as Content and Thinking is empty. Implementations should never error purely due to
+	// JSON parse failure; they only error on transport/service issues.
+	GenerateThinkingWithMessages(ctx context.Context, messages []openai.ChatCompletionMessageParamUnion) (*ThinkingResponse, error)
+	// GenerateThinkingWithTools combines tool calling with structured thinking/content response.
+	// The assistant is instructed to always place a JSON object {"thinking":"...","content":"..."}
+	// in its message content even when issuing tool calls. Tool calls are returned separately via
+	// OpenAI's tool call mechanism. RawContent preserves the exact content string (JSON) for
+	// conversation continuity, while Content is the parsed user-facing portion.
+	GenerateThinkingWithTools(ctx context.Context, messages []openai.ChatCompletionMessageParamUnion, tools []openai.ChatCompletionToolParam) (*ThinkingToolCallResponse, error)
 }
 
 // ChatService defines minimal interface for chat completions.
@@ -292,6 +305,20 @@ type ToolCallResponse struct {
 	ToolCalls []ToolCall `json:"tool_calls,omitempty"`
 }
 
+// ThinkingResponse represents a structured response separating model reasoning from user-facing content.
+type ThinkingResponse struct {
+	Thinking string `json:"thinking"`
+	Content  string `json:"content"`
+}
+
+// ThinkingToolCallResponse is like ToolCallResponse but includes model thinking and raw content.
+type ThinkingToolCallResponse struct {
+	Thinking   string     `json:"thinking"`
+	Content    string     `json:"content"`
+	RawContent string     `json:"raw_content"`
+	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
+}
+
 // ToolCall represents a tool/function call made by the LLM.
 type ToolCall struct {
 	ID       string       `json:"id"`
@@ -351,5 +378,106 @@ func (c *Client) GenerateWithTools(ctx context.Context, messages []openai.ChatCo
 	}
 
 	slog.Debug("GenerateWithTools succeeded", "contentLength", len(result.Content), "toolCallCount", len(result.ToolCalls))
+	return result, nil
+}
+
+// GenerateThinkingWithMessages requests a structured response (thinking + content) from the model.
+// This is implemented using an in-band JSON pattern until native structured outputs are available
+// in the SDK for arbitrary schemas. The last user/system message context is appended with lightweight
+// instructions that the assistant MUST respond ONLY with a compact JSON object {"thinking": "...", "content": "..."}.
+// The returned Thinking segment is intended strictly for debug mode display and should not be sent
+// to end users unless explicitly enabled.
+func (c *Client) GenerateThinkingWithMessages(ctx context.Context, messages []openai.ChatCompletionMessageParamUnion) (*ThinkingResponse, error) {
+	slog.Debug("GenerateThinkingWithMessages invoked", "messageCount", len(messages), "model", c.model)
+
+	// Append a system instruction to coerce JSON shape (non-destructive, we don't mutate caller slice)
+	augmented := make([]openai.ChatCompletionMessageParamUnion, 0, len(messages)+1)
+	augmented = append(augmented, messages...)
+	augmented = append(augmented, openai.SystemMessage("You are to produce a structured JSON response ONLY. Format strictly as {\"thinking\": string, \"content\": string}. 'thinking' = brief internal reasoning (max 120 words, no sensitive data). 'content' = final user-facing reply. Do not wrap in markdown. Do not add extra keys."))
+
+	params := openai.ChatCompletionNewParams{
+		Model:       c.model,
+		Messages:    augmented,
+		Temperature: openai.Float(c.temperature),
+		MaxTokens:   openai.Int(int64(c.maxTokens)),
+	}
+
+	resp, err := c.chat.Create(ctx, params)
+	c.logAPICall("GenerateThinkingWithMessages", params, resp, err)
+	if err != nil {
+		slog.Error("GenAI GenerateThinkingWithMessages failed", "error", err, "model", c.model)
+		return nil, fmt.Errorf("failed to create chat completion: %w", err)
+	}
+	if len(resp.Choices) == 0 {
+		slog.Warn("GenerateThinkingWithMessages no choices returned", "model", c.model)
+		return nil, ErrNoChoicesReturned
+	}
+	raw := strings.TrimSpace(resp.Choices[0].Message.Content)
+
+	tr := &ThinkingResponse{}
+	if err := json.Unmarshal([]byte(raw), tr); err != nil || (tr.Thinking == "" && tr.Content == "") {
+		// Fallback: treat entire output as content
+		slog.Warn("GenerateThinkingWithMessages: JSON parse failed, using raw content fallback", "error", err)
+		tr.Thinking = ""
+		tr.Content = raw
+	}
+	return tr, nil
+}
+
+// GenerateThinkingWithTools performs a chat completion with tools while asking the model to
+// wrap its assistant message content in JSON {"thinking":"...","content":"..."}. This allows
+// us to surface internal reasoning in debug mode while still leveraging native tool call outputs.
+func (c *Client) GenerateThinkingWithTools(ctx context.Context, messages []openai.ChatCompletionMessageParamUnion, tools []openai.ChatCompletionToolParam) (*ThinkingToolCallResponse, error) {
+	slog.Debug("GenerateThinkingWithTools invoked", "messageCount", len(messages), "toolCount", len(tools), "model", c.model)
+
+	augmented := make([]openai.ChatCompletionMessageParamUnion, 0, len(messages)+1)
+	augmented = append(augmented, messages...)
+	augmented = append(augmented, openai.SystemMessage("Always respond with a JSON object {\"thinking\": string, \"content\": string}. If you decide to call tools, still provide this JSON: 'thinking' = concise reasoning (<=120 words), 'content' = user-facing reply (may be empty until tools executed). No extra text, no markdown."))
+
+	params := openai.ChatCompletionNewParams{
+		Model:       c.model,
+		Messages:    augmented,
+		Tools:       tools,
+		Temperature: openai.Float(c.temperature),
+		MaxTokens:   openai.Int(int64(c.maxTokens)),
+	}
+
+	resp, err := c.chat.Create(ctx, params)
+	c.logAPICall("GenerateThinkingWithTools", params, resp, err)
+	if err != nil {
+		slog.Error("GenAI GenerateThinkingWithTools failed", "error", err, "model", c.model)
+		return nil, fmt.Errorf("failed to create chat completion with tools: %w", err)
+	}
+	if len(resp.Choices) == 0 {
+		slog.Warn("GenerateThinkingWithTools no choices returned", "model", c.model)
+		return nil, ErrNoChoicesReturned
+	}
+	choice := resp.Choices[0]
+	raw := strings.TrimSpace(choice.Message.Content)
+	result := &ThinkingToolCallResponse{RawContent: raw}
+
+	// Parse thinking/content JSON if possible
+	var temp ThinkingResponse
+	if err := json.Unmarshal([]byte(raw), &temp); err == nil {
+		result.Thinking = temp.Thinking
+		result.Content = temp.Content
+	} else {
+		// Fallback: treat raw as user-facing content
+		slog.Warn("GenerateThinkingWithTools: JSON parse failed, using raw content fallback", "error", err)
+		result.Content = raw
+	}
+
+	// Extract tool calls
+	for _, tc := range choice.Message.ToolCalls {
+		result.ToolCalls = append(result.ToolCalls, ToolCall{
+			ID:   tc.ID,
+			Type: string(tc.Type),
+			Function: FunctionCall{
+				Name:      tc.Function.Name,
+				Arguments: json.RawMessage(tc.Function.Arguments),
+			},
+		})
+	}
+
 	return result, nil
 }

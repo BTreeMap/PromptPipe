@@ -67,3 +67,23 @@ func (m *MockGenAIClientWithTools) GenerateWithTools(ctx context.Context, messag
 		}, nil
 	}
 }
+
+func (m *MockGenAIClientWithTools) GenerateThinkingWithMessages(ctx context.Context, messages []openai.ChatCompletionMessageParamUnion) (*genai.ThinkingResponse, error) {
+	// Return deterministic thinking + content for tests
+	return &genai.ThinkingResponse{Thinking: "test thinking", Content: "Basic response without tools"}, nil
+}
+
+func (m *MockGenAIClientWithTools) GenerateThinkingWithTools(ctx context.Context, messages []openai.ChatCompletionMessageParamUnion, tools []openai.ChatCompletionToolParam) (*genai.ThinkingToolCallResponse, error) {
+	// Mirror existing behavior: optionally return tool calls
+	if m.shouldCallTools {
+		return &genai.ThinkingToolCallResponse{
+			Thinking:   "tool thinking",
+			Content:    "",
+			RawContent: "{\"thinking\":\"tool thinking\",\"content\":\"\"}",
+			ToolCalls: []genai.ToolCall{{
+				ID: m.toolCallID, Type: "function", Function: genai.FunctionCall{Name: m.toolName, Arguments: json.RawMessage(m.toolCallArgs)},
+			}},
+		}, nil
+	}
+	return &genai.ThinkingToolCallResponse{Thinking: "no tool thinking", Content: "Regular response", RawContent: "{\"thinking\":\"no tool thinking\",\"content\":\"Regular response\"}"}, nil
+}

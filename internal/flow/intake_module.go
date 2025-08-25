@@ -124,22 +124,27 @@ func (im *IntakeModule) ExecuteIntakeBotWithHistoryAndConversation(ctx context.C
 		"toolNames", toolNames,
 		"messageCount", len(messages))
 
-	// Generate response using LLM with tools
-	response, err := im.genaiClient.GenerateWithTools(ctx, messages, tools)
+	// Generate response using LLM with tools (thinking enabled)
+	thinkingResp, err := im.genaiClient.GenerateThinkingWithTools(ctx, messages, tools)
 	if err != nil {
-		slog.Error("flow.ExecuteIntakeBotWithHistory: GenAI generation failed", "error", err, "participantID", participantID, "toolNames", toolNames)
+		slog.Error("flow.ExecuteIntakeBotWithHistory: GenAI thinking generation failed", "error", err, "participantID", participantID, "toolNames", toolNames)
 		return "", fmt.Errorf("failed to generate intake response: %w", err)
+	}
+	if thinkingResp.Thinking != "" {
+		SendDebugMessageIfEnabled(ctx, participantID, im.msgService, fmt.Sprintf("Intake thinking (round 1): %s", thinkingResp.Thinking))
 	}
 
 	// Check if there are tool calls to handle
-	if len(response.ToolCalls) > 0 {
-		slog.Info("IntakeModule.ExecuteIntakeBotWithHistory: processing tool calls", "participantID", participantID, "toolCallCount", len(response.ToolCalls))
-		return im.handleIntakeToolLoop(ctx, participantID, response, messages, tools, conversationHistory)
+	if len(thinkingResp.ToolCalls) > 0 {
+		slog.Info("IntakeModule.ExecuteIntakeBotWithHistory: processing tool calls", "participantID", participantID, "toolCallCount", len(thinkingResp.ToolCalls))
+		// Convert to generic tool response for existing execution logic
+		initial := &genai.ToolCallResponse{Content: thinkingResp.Content, ToolCalls: thinkingResp.ToolCalls}
+		return im.handleIntakeToolLoop(ctx, participantID, thinkingResp, initial, messages, tools, conversationHistory, 1)
 	}
 
 	// No tool calls, return direct response
-	slog.Info("flow.ExecuteIntakeBotWithHistory: intake response generated", "participantID", participantID, "responseLength", len(response.Content))
-	return response.Content, nil
+	slog.Info("flow.ExecuteIntakeBotWithHistory: intake response generated", "participantID", participantID, "responseLength", len(thinkingResp.Content))
+	return thinkingResp.Content, nil
 }
 
 // LoadSystemPrompt loads the system prompt from the configured file.
@@ -254,13 +259,18 @@ func (im *IntakeModule) buildIntakeContext(profile *UserProfile) string {
 
 // handleIntakeToolLoop manages the tool call loop for the intake module.
 // It continues calling the LLM until a user-facing message is generated.
-func (im *IntakeModule) handleIntakeToolLoop(ctx context.Context, participantID string, initialResponse *genai.ToolCallResponse, messages []openai.ChatCompletionMessageParamUnion, tools []openai.ChatCompletionToolParam, conversationHistory *ConversationHistory) (string, error) {
+func (im *IntakeModule) handleIntakeToolLoop(ctx context.Context, participantID string, initialThinkingResp *genai.ThinkingToolCallResponse, initialToolResp *genai.ToolCallResponse, messages []openai.ChatCompletionMessageParamUnion, tools []openai.ChatCompletionToolParam, conversationHistory *ConversationHistory, startingRound int) (string, error) {
 	const maxToolRounds = 10 // Prevent infinite loops
 	currentMessages := messages
-	currentResponse := initialResponse
+	currentThinking := initialThinkingResp
+	currentResponse := initialToolResp
 
-	for round := 1; round <= maxToolRounds; round++ {
+	for round := startingRound; round <= maxToolRounds; round++ {
 		slog.Debug("IntakeModule.handleIntakeToolLoop: round start", "participantID", participantID, "round", round, "messageCount", len(currentMessages))
+
+		if currentThinking != nil && currentThinking.Thinking != "" {
+			SendDebugMessageIfEnabled(ctx, participantID, im.msgService, fmt.Sprintf("Intake thinking (round %d): %s", round, currentThinking.Thinking))
+		}
 
 		// Process tool calls if any
 		if len(currentResponse.ToolCalls) > 0 {
@@ -293,12 +303,14 @@ func (im *IntakeModule) handleIntakeToolLoop(ctx context.Context, participantID 
 			return "I'm here to help you build better habits. What would you like to work on?", nil
 		}
 
-		// Generate next response with tools
-		toolResponse, err := im.genaiClient.GenerateWithTools(ctx, currentMessages, tools)
+		// Generate next response with tools (thinking enabled)
+		thinkingResp, err := im.genaiClient.GenerateThinkingWithTools(ctx, currentMessages, tools)
 		if err != nil {
-			slog.Error("IntakeModule.handleIntakeToolLoop: tool generation failed", "error", err, "participantID", participantID, "round", round)
+			slog.Error("IntakeModule.handleIntakeToolLoop: tool thinking generation failed", "error", err, "participantID", participantID, "round", round)
 			return "", fmt.Errorf("failed to generate response with tools: %w", err)
 		}
+		currentThinking = thinkingResp
+		toolResponse := &genai.ToolCallResponse{Content: thinkingResp.Content, ToolCalls: thinkingResp.ToolCalls}
 
 		slog.Debug("IntakeModule.handleIntakeToolLoop: received tool response",
 			"participantID", participantID,

@@ -224,13 +224,13 @@ func (pgt *PromptGeneratorTool) generatePersonalizedPromptWithHistory(ctx contex
 	// Add the current request
 	messages = append(messages, openai.UserMessage(userPrompt))
 
-	response, err := pgt.genaiClient.GenerateWithMessages(ctx, messages)
+	thinkingResp, err := pgt.genaiClient.GenerateThinkingWithMessages(ctx, messages)
 	if err != nil {
 		return "", fmt.Errorf("failed to generate habit prompt: %w", err)
 	}
 
 	// Clean up the response (remove any system messages or formatting)
-	habitPrompt := strings.TrimSpace(response)
+	habitPrompt := strings.TrimSpace(thinkingResp.Content)
 	habitPrompt = strings.Trim(habitPrompt, "\"'")
 
 	return habitPrompt, nil

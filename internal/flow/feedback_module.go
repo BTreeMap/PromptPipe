@@ -367,21 +367,25 @@ func (fm *FeedbackModule) generatePersonalizedFeedback(ctx context.Context, part
 		"toolNames", toolNames,
 		"messageCount", len(messages))
 
-	// Generate response using LLM with tools
-	response, err := fm.genaiClient.GenerateWithTools(ctx, messages, tools)
+	// Generate response using LLM with tools (thinking enabled)
+	thinkingResp, err := fm.genaiClient.GenerateThinkingWithTools(ctx, messages, tools)
 	if err != nil {
-		slog.Error("flow.generatePersonalizedFeedback: GenAI generation failed", "error", err, "participantID", participantID, "toolNames", toolNames)
+		slog.Error("flow.generatePersonalizedFeedback: GenAI thinking generation failed", "error", err, "participantID", participantID, "toolNames", toolNames)
 		return "", fmt.Errorf("failed to generate personalized feedback: %w", err)
+	}
+	if thinkingResp.Thinking != "" {
+		SendDebugMessageIfEnabled(ctx, participantID, fm.msgService, fmt.Sprintf("Feedback thinking (round 1): %s", thinkingResp.Thinking))
 	}
 
 	// Check if there are tool calls to handle
-	if len(response.ToolCalls) > 0 {
-		slog.Info("FeedbackModule.generatePersonalizedFeedback: processing tool calls", "participantID", participantID, "toolCallCount", len(response.ToolCalls))
-		return fm.handleFeedbackToolLoop(ctx, participantID, response, messages, tools)
+	if len(thinkingResp.ToolCalls) > 0 {
+		slog.Info("FeedbackModule.generatePersonalizedFeedback: processing tool calls", "participantID", participantID, "toolCallCount", len(thinkingResp.ToolCalls))
+		initial := &genai.ToolCallResponse{Content: thinkingResp.Content, ToolCalls: thinkingResp.ToolCalls}
+		return fm.handleFeedbackToolLoop(ctx, participantID, thinkingResp, initial, messages, tools, 1)
 	}
 
 	// No tool calls, return direct response
-	return response.Content, nil
+	return thinkingResp.Content, nil
 }
 
 // buildFeedbackContext creates context for the GenAI about the feedback situation
@@ -597,13 +601,18 @@ func (fm *FeedbackModule) CancelPendingFeedback(ctx context.Context, participant
 
 // handleFeedbackToolLoop manages the tool call loop for the feedback module.
 // It continues calling the LLM until a user-facing message is generated.
-func (fm *FeedbackModule) handleFeedbackToolLoop(ctx context.Context, participantID string, initialResponse *genai.ToolCallResponse, messages []openai.ChatCompletionMessageParamUnion, tools []openai.ChatCompletionToolParam) (string, error) {
+func (fm *FeedbackModule) handleFeedbackToolLoop(ctx context.Context, participantID string, initialThinkingResp *genai.ThinkingToolCallResponse, initialToolResp *genai.ToolCallResponse, messages []openai.ChatCompletionMessageParamUnion, tools []openai.ChatCompletionToolParam, startingRound int) (string, error) {
 	const maxToolRounds = 10 // Prevent infinite loops
 	currentMessages := messages
-	currentResponse := initialResponse
+	currentThinking := initialThinkingResp
+	currentResponse := initialToolResp
 
-	for round := 1; round <= maxToolRounds; round++ {
+	for round := startingRound; round <= maxToolRounds; round++ {
 		slog.Debug("FeedbackModule.handleFeedbackToolLoop: round start", "participantID", participantID, "round", round, "messageCount", len(currentMessages))
+
+		if currentThinking != nil && currentThinking.Thinking != "" {
+			SendDebugMessageIfEnabled(ctx, participantID, fm.msgService, fmt.Sprintf("Feedback thinking (round %d): %s", round, currentThinking.Thinking))
+		}
 
 		// Process tool calls if any
 		if len(currentResponse.ToolCalls) > 0 {
@@ -636,12 +645,14 @@ func (fm *FeedbackModule) handleFeedbackToolLoop(ctx context.Context, participan
 			return "Thank you for your feedback! I'm here to help you build better habits.", nil
 		}
 
-		// Generate next response with tools
-		toolResponse, err := fm.genaiClient.GenerateWithTools(ctx, currentMessages, tools)
+		// Generate next response with tools (thinking enabled)
+		thinkingResp, err := fm.genaiClient.GenerateThinkingWithTools(ctx, currentMessages, tools)
 		if err != nil {
-			slog.Error("FeedbackModule.handleFeedbackToolLoop: tool generation failed", "error", err, "participantID", participantID, "round", round)
+			slog.Error("FeedbackModule.handleFeedbackToolLoop: tool thinking generation failed", "error", err, "participantID", participantID, "round", round)
 			return "", fmt.Errorf("failed to generate response with tools: %w", err)
 		}
+		currentThinking = thinkingResp
+		toolResponse := &genai.ToolCallResponse{Content: thinkingResp.Content, ToolCalls: thinkingResp.ToolCalls}
 
 		slog.Debug("FeedbackModule.handleFeedbackToolLoop: received tool response",
 			"participantID", participantID,
