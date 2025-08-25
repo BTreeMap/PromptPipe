@@ -151,19 +151,37 @@ func TestSchedulerTool_ExecuteScheduler_CreateFixed(t *testing.T) {
 		t.Error("Expected non-empty success message")
 	}
 
-	// Check that a schedule was created
-	if len(timer.scheduledCalls) != 1 {
-		t.Errorf("Expected 1 scheduled call, got %d", len(timer.scheduledCalls))
-	} else {
-		// Should schedule preparation notification at 9:20 AM (10 minutes before target 9:30)
-		schedule := timer.scheduledCalls[0].Schedule
-		if schedule == nil {
-			t.Error("Expected non-nil schedule")
-		} else if schedule.Hour == nil || *schedule.Hour != 9 {
-			t.Errorf("Expected hour=9, got %v", schedule.Hour)
-		} else if schedule.Minute == nil || *schedule.Minute != 20 {
-			t.Errorf("Expected minute=20 (preparation time), got %v", schedule.Minute)
+	// New behavior: if the prep notification for today hasn't passed yet, we schedule TWO things:
+	// 1. A same-day one-off delayed timer (ScheduleAfter with Delay set)
+	// 2. The recurring daily schedule (ScheduleWithSchedule with Schedule set)
+	// Depending on current clock when the test runs, #1 may or may not be present. We must always
+	// have exactly one recurring schedule, and optionally one delayed call.
+	recurringCount := 0
+	var recurringSchedule *models.Schedule
+	delayCount := 0
+	for _, c := range timer.scheduledCalls {
+		if c.Schedule != nil {
+			recurringCount++
+			recurringSchedule = c.Schedule
 		}
+		if c.Delay != nil {
+			delayCount++
+		}
+	}
+	if recurringCount != 1 {
+		t.Errorf("Expected exactly 1 recurring schedule, got %d (total calls %d)", recurringCount, len(timer.scheduledCalls))
+	}
+	if recurringSchedule != nil { // Validate prep time hour/minute
+		if recurringSchedule.Hour == nil || *recurringSchedule.Hour != 9 {
+			t.Errorf("Expected recurring schedule hour=9, got %v", recurringSchedule.Hour)
+		}
+		if recurringSchedule.Minute == nil || *recurringSchedule.Minute != 20 {
+			t.Errorf("Expected recurring schedule minute=20 (prep time), got %v", recurringSchedule.Minute)
+		}
+	}
+	// Allow delayCount to be 0 or 1; just ensure no more than 1
+	if delayCount > 1 {
+		t.Errorf("Expected at most 1 same-day delay timer, got %d", delayCount)
 	}
 }
 
@@ -198,9 +216,33 @@ func TestSchedulerTool_ExecuteScheduler_CreateRandom(t *testing.T) {
 		t.Error("Expected non-empty success message")
 	}
 
-	// Check that a cron job was scheduled
-	if len(timer.scheduledCalls) != 1 {
-		t.Errorf("Expected 1 scheduled call, got %d", len(timer.scheduledCalls))
+	// Similar dual-scheduling behavior applies here. Validate exactly one recurring schedule.
+	recurringCount := 0
+	var recurringSchedule *models.Schedule
+	delayCount := 0
+	for _, c := range timer.scheduledCalls {
+		if c.Schedule != nil {
+			recurringCount++
+			recurringSchedule = c.Schedule
+		}
+		if c.Delay != nil {
+			delayCount++
+		}
+	}
+	if recurringCount != 1 {
+		t.Errorf("Expected exactly 1 recurring schedule, got %d (total calls %d)", recurringCount, len(timer.scheduledCalls))
+	}
+	if delayCount > 1 {
+		t.Errorf("Expected at most 1 same-day delay timer, got %d", delayCount)
+	}
+	// For random window start 08:00, prep notification should be at 07:50
+	if recurringSchedule != nil {
+		if recurringSchedule.Hour == nil || *recurringSchedule.Hour != 7 {
+			t.Errorf("Expected recurring schedule hour=7 (prep for 08:00), got %v", recurringSchedule.Hour)
+		}
+		if recurringSchedule.Minute == nil || *recurringSchedule.Minute != 50 {
+			t.Errorf("Expected recurring schedule minute=50 (prep time), got %v", recurringSchedule.Minute)
+		}
 	}
 }
 
