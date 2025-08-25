@@ -15,7 +15,7 @@ func (m *mockChatServiceThinking) Create(ctx context.Context, params openai.Chat
 }
 
 func TestGenerateThinkingWithMessages_Success(t *testing.T) {
-	client := &Client{chat: &mockChatServiceThinking{}, model: "test-model", temperature: 0.1, maxTokens: 100}
+	client := &Client{chat: &mockChatServiceThinking{}, model: "test-model", temperature: 0.1, maxCompletionTokens: 100}
 	resp, err := client.GenerateThinkingWithMessages(context.Background(), []openai.ChatCompletionMessageParamUnion{openai.UserMessage("hi")})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -33,7 +33,7 @@ func (m *mockChatServiceThinkingInvalid) Create(ctx context.Context, params open
 }
 
 func TestGenerateThinkingWithMessages_Fallback(t *testing.T) {
-	client := &Client{chat: &mockChatServiceThinkingInvalid{}, model: "test-model", temperature: 0.1, maxTokens: 100}
+	client := &Client{chat: &mockChatServiceThinkingInvalid{}, model: "test-model", temperature: 0.1, maxCompletionTokens: 100}
 	resp, err := client.GenerateThinkingWithMessages(context.Background(), []openai.ChatCompletionMessageParamUnion{openai.UserMessage("hi")})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

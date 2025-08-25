@@ -25,8 +25,8 @@ var DefaultModel = string(openai.ChatModelGPT4oMini)
 const (
 	// DefaultTemperature is the default temperature setting for chat completions
 	DefaultTemperature = 0.1
-	// DefaultMaxTokens is the default maximum tokens for chat completions
-	DefaultMaxTokens = 1000
+	// DefaultMaxCompletionTokens is the default maximum completion tokens for chat completions
+	DefaultMaxCompletionTokens = 1000
 )
 
 // Error variables for better error handling
@@ -66,7 +66,7 @@ type Client struct {
 	chat        ChatService
 	model       string
 	temperature float64
-	maxTokens   int
+	maxCompletionTokens int
 	debugMode   bool   // Enable debug mode for API call logging
 	stateDir    string // State directory for debug log files
 }
@@ -89,12 +89,14 @@ func (w *chatServiceWrapper) Create(ctx context.Context, body openai.ChatComplet
 // Opts holds configuration options for the GenAI client, including API key override.
 // API key can be overridden via command-line options or environment variable.
 type Opts struct {
-	APIKey      string  // overrides OPENAI_API_KEY
-	Model       string  // overrides default model
-	Temperature float64 // overrides default temperature
-	MaxTokens   int     // overrides default max tokens
-	DebugMode   bool    // Enable debug mode for API call logging
-	StateDir    string  // State directory for debug log files
+	APIKey               string  // overrides OPENAI_API_KEY
+	Model                string  // overrides default model
+	Temperature          float64 // overrides default temperature
+	MaxCompletionTokens  int     // overrides default max completion tokens
+	// Deprecated: MaxTokens kept for backward compatibility; use MaxCompletionTokens
+	MaxTokens            int
+	DebugMode            bool   // Enable debug mode for API call logging
+	StateDir             string // State directory for debug log files
 }
 
 // Option defines a configuration option for the GenAI client.
@@ -121,11 +123,14 @@ func WithTemperature(temp float64) Option {
 	}
 }
 
-// WithMaxTokens overrides the max tokens used by the GenAI client.
-func WithMaxTokens(tokens int) Option {
-	return func(o *Opts) {
-		o.MaxTokens = tokens
-	}
+// WithMaxTokens overrides the max completion tokens (deprecated name kept for compatibility).
+func WithMaxTokens(tokens int) Option { //nolint:revive // keep deprecated helper
+	return func(o *Opts) { o.MaxCompletionTokens = tokens }
+}
+
+// WithMaxCompletionTokens overrides the max completion tokens used by the GenAI client.
+func WithMaxCompletionTokens(tokens int) Option {
+	return func(o *Opts) { o.MaxCompletionTokens = tokens }
 }
 
 // WithDebugMode enables debug mode for API call logging.
@@ -146,11 +151,11 @@ func WithStateDir(stateDir string) Option {
 func NewClient(opts ...Option) (*Client, error) {
 	// Apply options with defaults
 	cfg := Opts{
-		Model:       DefaultModel,
-		Temperature: DefaultTemperature,
-		MaxTokens:   DefaultMaxTokens,
-		DebugMode:   false,
-		StateDir:    "",
+		Model:               DefaultModel,
+		Temperature:         DefaultTemperature,
+		MaxCompletionTokens: DefaultMaxCompletionTokens,
+		DebugMode:           false,
+		StateDir:            "",
 	}
 	for _, opt := range opts {
 		opt(&cfg)
@@ -163,16 +168,21 @@ func NewClient(opts ...Option) (*Client, error) {
 	}
 	// Initialize OpenAI client with API key
 	cli := openai.NewClient(option.WithAPIKey(apiKey))
+    // Prefer MaxCompletionTokens; fallback to (deprecated) MaxTokens if set and new value not overridden
+    if cfg.MaxCompletionTokens == 0 && cfg.MaxTokens > 0 {
+        cfg.MaxCompletionTokens = cfg.MaxTokens
+    }
+
 	client := &Client{
-		chat:        &chatServiceWrapper{newFunc: cli.Chat.Completions.New},
-		model:       cfg.Model,
-		temperature: cfg.Temperature,
-		maxTokens:   cfg.MaxTokens,
-		debugMode:   cfg.DebugMode,
-		stateDir:    cfg.StateDir,
+		chat:               &chatServiceWrapper{newFunc: cli.Chat.Completions.New},
+		model:              cfg.Model,
+		temperature:        cfg.Temperature,
+		maxCompletionTokens: cfg.MaxCompletionTokens,
+		debugMode:          cfg.DebugMode,
+		stateDir:           cfg.StateDir,
 	}
 
-	slog.Debug("Client.NewClient: client created successfully", "model", cfg.Model, "temperature", cfg.Temperature, "maxTokens", cfg.MaxTokens, "debugMode", cfg.DebugMode)
+	slog.Debug("Client.NewClient: client created successfully", "model", cfg.Model, "temperature", cfg.Temperature, "maxCompletionTokens", cfg.MaxCompletionTokens, "debugMode", cfg.DebugMode)
 	return client, nil
 }
 
@@ -243,7 +253,7 @@ func (c *Client) GeneratePromptWithContext(ctx context.Context, system, user str
 			openai.UserMessage(user),
 		},
 		Temperature: openai.Float(c.temperature),
-		MaxTokens:   openai.Int(int64(c.maxTokens)),
+		MaxCompletionTokens: openai.Int(int64(c.maxCompletionTokens)),
 	}
 
 	resp, err := c.chat.Create(ctx, params)
@@ -276,7 +286,7 @@ func (c *Client) GenerateWithMessages(ctx context.Context, messages []openai.Cha
 		Model:       c.model,
 		Messages:    messages,
 		Temperature: openai.Float(c.temperature),
-		MaxTokens:   openai.Int(int64(c.maxTokens)),
+		MaxCompletionTokens: openai.Int(int64(c.maxCompletionTokens)),
 	}
 
 	resp, err := c.chat.Create(ctx, params)
@@ -342,7 +352,7 @@ func (c *Client) GenerateWithTools(ctx context.Context, messages []openai.ChatCo
 		Messages:    messages,
 		Tools:       tools,
 		Temperature: openai.Float(c.temperature),
-		MaxTokens:   openai.Int(int64(c.maxTokens)),
+		MaxCompletionTokens: openai.Int(int64(c.maxCompletionTokens)),
 	}
 
 	resp, err := c.chat.Create(ctx, params)
@@ -399,7 +409,7 @@ func (c *Client) GenerateThinkingWithMessages(ctx context.Context, messages []op
 		Model:       c.model,
 		Messages:    augmented,
 		Temperature: openai.Float(c.temperature),
-		MaxTokens:   openai.Int(int64(c.maxTokens)),
+		MaxCompletionTokens: openai.Int(int64(c.maxCompletionTokens)),
 	}
 
 	resp, err := c.chat.Create(ctx, params)
@@ -439,7 +449,7 @@ func (c *Client) GenerateThinkingWithTools(ctx context.Context, messages []opena
 		Messages:    augmented,
 		Tools:       tools,
 		Temperature: openai.Float(c.temperature),
-		MaxTokens:   openai.Int(int64(c.maxTokens)),
+		MaxCompletionTokens: openai.Int(int64(c.maxCompletionTokens)),
 	}
 
 	resp, err := c.chat.Create(ctx, params)
