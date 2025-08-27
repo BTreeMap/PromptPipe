@@ -19,9 +19,9 @@ import (
 )
 
 const (
-	DefaultStateDir            = "/var/lib/promptpipe"
-	DefaultAppDBFileName       = "state.db"       // default SQLite database filename for application data
-	DefaultWhatsAppDBFileName  = "whatsmeow.db"  // default SQLite database filename for WhatsApp/whatsmeow data
+	DefaultStateDir           = "/var/lib/promptpipe"
+	DefaultAppDBFileName      = "state.db"     // default SQLite database filename for application data
+	DefaultWhatsAppDBFileName = "whatsmeow.db" // default SQLite database filename for WhatsApp/whatsmeow data
 )
 
 func main() {
@@ -169,29 +169,34 @@ type Config struct {
 	// SchedulerPrepTimeMinutes is the preparation time in minutes before scheduled habit reminders
 	// Environment variable: SCHEDULER_PREP_TIME_MINUTES
 	SchedulerPrepTimeMinutes int
+
+	// AutoFeedbackAfterPromptEnabled enables auto feedback enforcement after a scheduled prompt if no response within threshold
+	// Environment variable: AUTO_FEEDBACK_AFTER_PROMPT_ENABLED
+	AutoFeedbackAfterPromptEnabled bool
 }
 
 // Flags holds command line flag values for database and other configuration.
 // This provides clear separation between WhatsApp and application database settings.
 type Flags struct {
-	qrOutput                  *string
-	numeric                   *bool
-	stateDir                  *string
-	whatsappDBDSN             *string // WhatsApp/whatsmeow database connection string
-	appDBDSN                  *string // Application database connection string
-	openaiKey                 *string
-	apiAddr                   *string
-	defaultCron               *string
-	debug                     *bool    // Enable debug mode for API call logging
-	intakeBotPromptFile       *string  // Path to intake bot system prompt file
-	promptGeneratorPromptFile *string  // Path to prompt generator system prompt file
-	feedbackTrackerPromptFile *string  // Path to feedback tracker system prompt file
-	chatHistoryLimit          *int     // Limit for number of history messages sent to bot tools
-	feedbackInitialTimeout    *string  // Timeout for initial feedback response
-	feedbackFollowupDelay     *string  // Delay before follow-up feedback session
-	genaiTemperature          *float64 // GenAI temperature for response consistency
-	genaiModel                *string  // GenAI model for chat completions
-	schedulerPrepTimeMinutes  *int     // Preparation time in minutes before scheduled habit reminders
+	qrOutput                       *string
+	numeric                        *bool
+	stateDir                       *string
+	whatsappDBDSN                  *string // WhatsApp/whatsmeow database connection string
+	appDBDSN                       *string // Application database connection string
+	openaiKey                      *string
+	apiAddr                        *string
+	defaultCron                    *string
+	debug                          *bool    // Enable debug mode for API call logging
+	intakeBotPromptFile            *string  // Path to intake bot system prompt file
+	promptGeneratorPromptFile      *string  // Path to prompt generator system prompt file
+	feedbackTrackerPromptFile      *string  // Path to feedback tracker system prompt file
+	chatHistoryLimit               *int     // Limit for number of history messages sent to bot tools
+	feedbackInitialTimeout         *string  // Timeout for initial feedback response
+	feedbackFollowupDelay          *string  // Delay before follow-up feedback session
+	genaiTemperature               *float64 // GenAI temperature for response consistency
+	genaiModel                     *string  // GenAI model for chat completions
+	schedulerPrepTimeMinutes       *int     // Preparation time in minutes before scheduled habit reminders
+	autoFeedbackAfterPromptEnabled *bool    // Enable auto feedback enforcement after scheduled prompts
 }
 
 // initializeLogger sets up structured logging with debug level
@@ -223,22 +228,23 @@ func loadEnvironmentConfig() Config {
 	loadEnvFile()
 
 	config := Config{
-		WhatsAppDBDSN:             os.Getenv("WHATSAPP_DB_DSN"),
-		ApplicationDBDSN:          os.Getenv("DATABASE_DSN"),
-		StateDir:                  os.Getenv("PROMPTPIPE_STATE_DIR"),
-		OpenAIKey:                 os.Getenv("OPENAI_API_KEY"),
-		APIAddr:                   os.Getenv("API_ADDR"),
-		DefaultCron:               os.Getenv("DEFAULT_SCHEDULE"),
-		DebugMode:                 pputil.ParseBoolEnv("PROMPTPIPE_DEBUG", false),
-		GenAITemperature:          pputil.ParseFloatEnv("GENAI_TEMPERATURE", 0.1),
-		GenAIModel:                pputil.GetEnvWithDefault("GENAI_MODEL", string(genai.DefaultModel)),
-		IntakeBotPromptFile:       pputil.GetEnvWithDefault("INTAKE_BOT_PROMPT_FILE", "prompts/intake_bot_system.txt"),
-		PromptGeneratorPromptFile: pputil.GetEnvWithDefault("PROMPT_GENERATOR_PROMPT_FILE", "prompts/prompt_generator_system.txt"),
-		FeedbackTrackerPromptFile: pputil.GetEnvWithDefault("FEEDBACK_TRACKER_PROMPT_FILE", "prompts/feedback_tracker_system.txt"),
-		ChatHistoryLimit:          pputil.ParseIntEnv("CHAT_HISTORY_LIMIT", -1),
-		FeedbackInitialTimeout:    pputil.GetEnvWithDefault("FEEDBACK_INITIAL_TIMEOUT", "15m"),
-		FeedbackFollowupDelay:     pputil.GetEnvWithDefault("FEEDBACK_FOLLOWUP_DELAY", "3h"),
-		SchedulerPrepTimeMinutes:  pputil.ParseIntEnv("SCHEDULER_PREP_TIME_MINUTES", 10),
+		WhatsAppDBDSN:                  os.Getenv("WHATSAPP_DB_DSN"),
+		ApplicationDBDSN:               os.Getenv("DATABASE_DSN"),
+		StateDir:                       os.Getenv("PROMPTPIPE_STATE_DIR"),
+		OpenAIKey:                      os.Getenv("OPENAI_API_KEY"),
+		APIAddr:                        os.Getenv("API_ADDR"),
+		DefaultCron:                    os.Getenv("DEFAULT_SCHEDULE"),
+		DebugMode:                      pputil.ParseBoolEnv("PROMPTPIPE_DEBUG", false),
+		GenAITemperature:               pputil.ParseFloatEnv("GENAI_TEMPERATURE", 0.1),
+		GenAIModel:                     pputil.GetEnvWithDefault("GENAI_MODEL", string(genai.DefaultModel)),
+		IntakeBotPromptFile:            pputil.GetEnvWithDefault("INTAKE_BOT_PROMPT_FILE", "prompts/intake_bot_system.txt"),
+		PromptGeneratorPromptFile:      pputil.GetEnvWithDefault("PROMPT_GENERATOR_PROMPT_FILE", "prompts/prompt_generator_system.txt"),
+		FeedbackTrackerPromptFile:      pputil.GetEnvWithDefault("FEEDBACK_TRACKER_PROMPT_FILE", "prompts/feedback_tracker_system.txt"),
+		ChatHistoryLimit:               pputil.ParseIntEnv("CHAT_HISTORY_LIMIT", -1),
+		FeedbackInitialTimeout:         pputil.GetEnvWithDefault("FEEDBACK_INITIAL_TIMEOUT", "15m"),
+		FeedbackFollowupDelay:          pputil.GetEnvWithDefault("FEEDBACK_FOLLOWUP_DELAY", "3h"),
+		SchedulerPrepTimeMinutes:       pputil.ParseIntEnv("SCHEDULER_PREP_TIME_MINUTES", 10),
+		AutoFeedbackAfterPromptEnabled: pputil.ParseBoolEnv("AUTO_FEEDBACK_AFTER_PROMPT_ENABLED", true),
 	}
 
 	// Set default state directory if not specified
@@ -288,24 +294,25 @@ func loadEnvironmentConfig() Config {
 // This provides clear separation between WhatsApp and application database configuration.
 func parseCommandLineFlags(config Config) Flags {
 	flags := Flags{
-		qrOutput:                  flag.String("qr-output", "", "path to write login QR code"),
-		numeric:                   flag.Bool("numeric-code", false, "use numeric login code instead of QR code"),
-		stateDir:                  flag.String("state-dir", config.StateDir, "state directory for PromptPipe data (overrides $PROMPTPIPE_STATE_DIR)"),
-		whatsappDBDSN:             flag.String("whatsapp-db-dsn", config.WhatsAppDBDSN, "WhatsApp/whatsmeow database connection string (overrides $WHATSAPP_DB_DSN)"),
-		appDBDSN:                  flag.String("app-db-dsn", config.ApplicationDBDSN, "application database connection string for receipts/responses/flow state (overrides $DATABASE_DSN or $DATABASE_URL)"),
-		openaiKey:                 flag.String("openai-api-key", config.OpenAIKey, "OpenAI API key (overrides $OPENAI_API_KEY)"),
-		apiAddr:                   flag.String("api-addr", config.APIAddr, "API server address (overrides $API_ADDR)"),
-		defaultCron:               flag.String("default-cron", config.DefaultCron, "default cron schedule for prompts (overrides $DEFAULT_SCHEDULE)"),
-		debug:                     flag.Bool("debug", config.DebugMode, "enable debug mode for API call logging (overrides $PROMPTPIPE_DEBUG)"),
-		intakeBotPromptFile:       flag.String("intake-bot-prompt-file", config.IntakeBotPromptFile, "path to intake bot system prompt file (overrides $INTAKE_BOT_PROMPT_FILE)"),
-		promptGeneratorPromptFile: flag.String("prompt-generator-prompt-file", config.PromptGeneratorPromptFile, "path to prompt generator system prompt file (overrides $PROMPT_GENERATOR_PROMPT_FILE)"),
-		feedbackTrackerPromptFile: flag.String("feedback-tracker-prompt-file", config.FeedbackTrackerPromptFile, "path to feedback tracker system prompt file (overrides $FEEDBACK_TRACKER_PROMPT_FILE)"),
-		chatHistoryLimit:          flag.Int("chat-history-limit", config.ChatHistoryLimit, "limit for number of history messages sent to bot tools: -1=no limit, 0=no history, positive=limit to last N messages (overrides $CHAT_HISTORY_LIMIT)"),
-		feedbackInitialTimeout:    flag.String("feedback-initial-timeout", config.FeedbackInitialTimeout, "timeout for initial feedback response, e.g., '15m' (overrides $FEEDBACK_INITIAL_TIMEOUT)"),
-		feedbackFollowupDelay:     flag.String("feedback-followup-delay", config.FeedbackFollowupDelay, "delay before follow-up feedback session, e.g., '3h' (overrides $FEEDBACK_FOLLOWUP_DELAY)"),
-		genaiTemperature:          flag.Float64("genai-temperature", config.GenAITemperature, "GenAI temperature for response consistency, 0.0-1.0 (lower=more consistent) (overrides $GENAI_TEMPERATURE)"),
-		genaiModel:                flag.String("genai-model", config.GenAIModel, "GenAI model for chat completions (overrides $GENAI_MODEL)"),
-		schedulerPrepTimeMinutes:  flag.Int("scheduler-prep-time-minutes", config.SchedulerPrepTimeMinutes, "preparation time in minutes before scheduled habit reminders (overrides $SCHEDULER_PREP_TIME_MINUTES)"),
+		qrOutput:                       flag.String("qr-output", "", "path to write login QR code"),
+		numeric:                        flag.Bool("numeric-code", false, "use numeric login code instead of QR code"),
+		stateDir:                       flag.String("state-dir", config.StateDir, "state directory for PromptPipe data (overrides $PROMPTPIPE_STATE_DIR)"),
+		whatsappDBDSN:                  flag.String("whatsapp-db-dsn", config.WhatsAppDBDSN, "WhatsApp/whatsmeow database connection string (overrides $WHATSAPP_DB_DSN)"),
+		appDBDSN:                       flag.String("app-db-dsn", config.ApplicationDBDSN, "application database connection string for receipts/responses/flow state (overrides $DATABASE_DSN or $DATABASE_URL)"),
+		openaiKey:                      flag.String("openai-api-key", config.OpenAIKey, "OpenAI API key (overrides $OPENAI_API_KEY)"),
+		apiAddr:                        flag.String("api-addr", config.APIAddr, "API server address (overrides $API_ADDR)"),
+		defaultCron:                    flag.String("default-cron", config.DefaultCron, "default cron schedule for prompts (overrides $DEFAULT_SCHEDULE)"),
+		debug:                          flag.Bool("debug", config.DebugMode, "enable debug mode for API call logging (overrides $PROMPTPIPE_DEBUG)"),
+		intakeBotPromptFile:            flag.String("intake-bot-prompt-file", config.IntakeBotPromptFile, "path to intake bot system prompt file (overrides $INTAKE_BOT_PROMPT_FILE)"),
+		promptGeneratorPromptFile:      flag.String("prompt-generator-prompt-file", config.PromptGeneratorPromptFile, "path to prompt generator system prompt file (overrides $PROMPT_GENERATOR_PROMPT_FILE)"),
+		feedbackTrackerPromptFile:      flag.String("feedback-tracker-prompt-file", config.FeedbackTrackerPromptFile, "path to feedback tracker system prompt file (overrides $FEEDBACK_TRACKER_PROMPT_FILE)"),
+		chatHistoryLimit:               flag.Int("chat-history-limit", config.ChatHistoryLimit, "limit for number of history messages sent to bot tools: -1=no limit, 0=no history, positive=limit to last N messages (overrides $CHAT_HISTORY_LIMIT)"),
+		feedbackInitialTimeout:         flag.String("feedback-initial-timeout", config.FeedbackInitialTimeout, "timeout for initial feedback response, e.g., '15m' (overrides $FEEDBACK_INITIAL_TIMEOUT)"),
+		feedbackFollowupDelay:          flag.String("feedback-followup-delay", config.FeedbackFollowupDelay, "delay before follow-up feedback session, e.g., '3h' (overrides $FEEDBACK_FOLLOWUP_DELAY)"),
+		genaiTemperature:               flag.Float64("genai-temperature", config.GenAITemperature, "GenAI temperature for response consistency, 0.0-1.0 (lower=more consistent) (overrides $GENAI_TEMPERATURE)"),
+		genaiModel:                     flag.String("genai-model", config.GenAIModel, "GenAI model for chat completions (overrides $GENAI_MODEL)"),
+		schedulerPrepTimeMinutes:       flag.Int("scheduler-prep-time-minutes", config.SchedulerPrepTimeMinutes, "preparation time in minutes before scheduled habit reminders (overrides $SCHEDULER_PREP_TIME_MINUTES)"),
+		autoFeedbackAfterPromptEnabled: flag.Bool("auto-feedback-after-prompt-enabled", config.AutoFeedbackAfterPromptEnabled, "enable auto feedback session enforcement after scheduled prompt inactivity (overrides $AUTO_FEEDBACK_AFTER_PROMPT_ENABLED)"),
 	}
 
 	flag.Parse()
@@ -326,6 +333,7 @@ func parseCommandLineFlags(config Config) Flags {
 		"chatHistoryLimit", *flags.chatHistoryLimit,
 		"feedbackInitialTimeout", *flags.feedbackInitialTimeout,
 		"feedbackFollowupDelay", *flags.feedbackFollowupDelay)
+	slog.Debug("Auto-feedback flag", "autoFeedbackAfterPromptEnabled", *flags.autoFeedbackAfterPromptEnabled)
 	// Log parsed GenAI model separately for clarity
 	slog.Debug("GenAI model selection", "genaiModel", *flags.genaiModel)
 
@@ -472,6 +480,8 @@ func buildAPIOptions(flags Flags) []api.Option {
 	}
 	// Always pass the scheduler prep time since it has a meaningful default
 	apiOpts = append(apiOpts, api.WithSchedulerPrepTimeMinutes(*flags.schedulerPrepTimeMinutes))
+	// Always pass auto feedback flag (defaults true)
+	apiOpts = append(apiOpts, api.WithAutoFeedbackAfterPromptEnabled(*flags.autoFeedbackAfterPromptEnabled))
 	return apiOpts
 }
 

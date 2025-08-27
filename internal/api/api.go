@@ -46,20 +46,21 @@ const (
 
 // Server holds all dependencies for the API server.
 type Server struct {
-	msgService                messaging.Service
-	respHandler               *messaging.ResponseHandler
-	st                        store.Store
-	timer                     models.Timer
-	defaultSchedule           *models.Schedule
-	gaClient                  *genai.Client
-	intakeBotPromptFile       string // path to intake bot system prompt file
-	promptGeneratorPromptFile string // path to prompt generator system prompt file
-	feedbackTrackerPromptFile string // path to feedback tracker system prompt file
-	chatHistoryLimit          int    // limit for number of history messages sent to bot tools
-	feedbackInitialTimeout    string // timeout for initial feedback response
-	feedbackFollowupDelay     string // delay before follow-up feedback session
-	debugMode                 bool   // enable debug mode for user-facing debug messages
-	schedulerPrepTimeMinutes  int    // preparation time in minutes before scheduled habit reminders
+	msgService                     messaging.Service
+	respHandler                    *messaging.ResponseHandler
+	st                             store.Store
+	timer                          models.Timer
+	defaultSchedule                *models.Schedule
+	gaClient                       *genai.Client
+	intakeBotPromptFile            string // path to intake bot system prompt file
+	promptGeneratorPromptFile      string // path to prompt generator system prompt file
+	feedbackTrackerPromptFile      string // path to feedback tracker system prompt file
+	chatHistoryLimit               int    // limit for number of history messages sent to bot tools
+	feedbackInitialTimeout         string // timeout for initial feedback response
+	feedbackFollowupDelay          string // delay before follow-up feedback session
+	debugMode                      bool   // enable debug mode for user-facing debug messages
+	schedulerPrepTimeMinutes       int    // preparation time in minutes before scheduled habit reminders
+	autoFeedbackAfterPromptEnabled bool   // enable auto feedback session enforcement after scheduled prompt inactivity
 }
 
 // NewServer creates a new API server instance with the provided dependencies.
@@ -79,16 +80,17 @@ func NewServer(msgService messaging.Service, st store.Store, timer models.Timer,
 
 // Opts holds configuration options for the API server, such as HTTP address and default schedule.
 type Opts struct {
-	Addr                      string           // overrides API_ADDR
-	DefaultSchedule           *models.Schedule // overrides DEFAULT_SCHEDULE
-	IntakeBotPromptFile       string           // path to intake bot system prompt file
-	PromptGeneratorPromptFile string           // path to prompt generator system prompt file
-	FeedbackTrackerPromptFile string           // path to feedback tracker system prompt file
-	ChatHistoryLimit          int              // limit for number of history messages sent to bot tools
-	FeedbackInitialTimeout    string           // timeout for initial feedback response
-	FeedbackFollowupDelay     string           // delay before follow-up feedback session
-	DebugMode                 bool             // enable debug mode for user-facing debug messages
-	SchedulerPrepTimeMinutes  int              // preparation time in minutes before scheduled habit reminders
+	Addr                           string           // overrides API_ADDR
+	DefaultSchedule                *models.Schedule // overrides DEFAULT_SCHEDULE
+	IntakeBotPromptFile            string           // path to intake bot system prompt file
+	PromptGeneratorPromptFile      string           // path to prompt generator system prompt file
+	FeedbackTrackerPromptFile      string           // path to feedback tracker system prompt file
+	ChatHistoryLimit               int              // limit for number of history messages sent to bot tools
+	FeedbackInitialTimeout         string           // timeout for initial feedback response
+	FeedbackFollowupDelay          string           // delay before follow-up feedback session
+	DebugMode                      bool             // enable debug mode for user-facing debug messages
+	SchedulerPrepTimeMinutes       int              // preparation time in minutes before scheduled habit reminders
+	AutoFeedbackAfterPromptEnabled bool             // enable auto feedback session enforcement after scheduled prompt inactivity
 }
 
 // Option defines a configuration option for the API server.
@@ -179,6 +181,13 @@ func WithSchedulerPrepTimeMinutes(minutes int) Option {
 	}
 }
 
+// WithAutoFeedbackAfterPromptEnabled enables/disables auto feedback enforcement after scheduled prompts.
+func WithAutoFeedbackAfterPromptEnabled(enabled bool) Option {
+	return func(o *Opts) {
+		o.AutoFeedbackAfterPromptEnabled = enabled
+	}
+}
+
 // Run starts the API server and initializes dependencies, applying module options.
 // It returns an error if initialization fails.
 func Run(waOpts []whatsapp.Option, storeOpts []store.Option, genaiOpts []genai.Option, apiOpts []Option) error {
@@ -217,6 +226,7 @@ func createAndConfigureServer(waOpts []whatsapp.Option, storeOpts []store.Option
 	server.feedbackFollowupDelay = apiCfg.FeedbackFollowupDelay
 	server.debugMode = apiCfg.DebugMode
 	server.schedulerPrepTimeMinutes = apiCfg.SchedulerPrepTimeMinutes
+	server.autoFeedbackAfterPromptEnabled = apiCfg.AutoFeedbackAfterPromptEnabled
 
 	// Determine server address with priority: CLI options > default
 	addr := apiCfg.Addr
@@ -398,6 +408,7 @@ func (s *Server) initializeConversationFlow() error {
 		s.feedbackInitialTimeout,
 		s.feedbackFollowupDelay,
 		s.schedulerPrepTimeMinutes,
+		s.autoFeedbackAfterPromptEnabled,
 	)
 
 	// Set the chat history limit

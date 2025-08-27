@@ -12,7 +12,6 @@ import (
 	"github.com/BTreeMap/PromptPipe/internal/genai"
 	"github.com/BTreeMap/PromptPipe/internal/models"
 	"github.com/BTreeMap/PromptPipe/internal/util"
-	pputil "github.com/BTreeMap/PromptPipe/internal/util"
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/shared"
 )
@@ -26,8 +25,8 @@ type SchedulerTool struct {
 	stateManager    StateManager           // For storing schedule metadata
 	promptGenerator PromptGeneratorService // For generating habit prompts
 	prepTimeMinutes int                    // Preparation time in minutes (default 10)
-	// feature flags / config (lazy loaded)
-	autoFeedbackEnabled *bool // nil until first check; defaults to true
+	// feature flags / config (direct injection)
+	autoFeedbackEnabled bool // whether to auto enforce feedback after scheduled prompts
 }
 
 // MessagingService defines the interface for messaging operations needed by the scheduler.
@@ -85,13 +84,19 @@ func NewSchedulerToolComplete(timer models.Timer, msgService MessagingService, g
 
 // NewSchedulerToolWithPrepTime creates a new scheduler tool instance with custom preparation time.
 func NewSchedulerToolWithPrepTime(timer models.Timer, msgService MessagingService, genaiClient genai.ClientInterface, stateManager StateManager, promptGenerator PromptGeneratorService, prepTimeMinutes int) *SchedulerTool {
+	return NewSchedulerToolWithPrepTimeAndAutoFeedback(timer, msgService, genaiClient, stateManager, promptGenerator, prepTimeMinutes, true)
+}
+
+// NewSchedulerToolWithPrepTimeAndAutoFeedback creates a scheduler with explicit auto-feedback flag.
+func NewSchedulerToolWithPrepTimeAndAutoFeedback(timer models.Timer, msgService MessagingService, genaiClient genai.ClientInterface, stateManager StateManager, promptGenerator PromptGeneratorService, prepTimeMinutes int, autoFeedbackEnabled bool) *SchedulerTool {
 	return &SchedulerTool{
-		timer:           timer,
-		msgService:      msgService,
-		genaiClient:     genaiClient,
-		stateManager:    stateManager,
-		promptGenerator: promptGenerator,
-		prepTimeMinutes: prepTimeMinutes,
+		timer:               timer,
+		msgService:          msgService,
+		genaiClient:         genaiClient,
+		stateManager:        stateManager,
+		promptGenerator:     promptGenerator,
+		prepTimeMinutes:     prepTimeMinutes,
+		autoFeedbackEnabled: autoFeedbackEnabled,
 	}
 }
 
@@ -303,19 +308,9 @@ func (st *SchedulerTool) executeScheduledPrompt(ctx context.Context, participant
 	}
 
 	// Schedule auto feedback enforcement if feature flag enabled
-	if st.isAutoFeedbackEnabled() && st.timer != nil && st.stateManager != nil {
+	if st.autoFeedbackEnabled && st.timer != nil && st.stateManager != nil {
 		st.scheduleAutoFeedbackEnforcement(ctx, participantID)
 	}
-}
-
-// isAutoFeedbackEnabled determines if the auto feedback enforcement feature is enabled (feature flag, defaults true)
-func (st *SchedulerTool) isAutoFeedbackEnabled() bool {
-	if st.autoFeedbackEnabled != nil {
-		return *st.autoFeedbackEnabled
-	}
-	enabled := pputil.ParseBoolEnv("AUTO_FEEDBACK_AFTER_PROMPT_ENABLED", true)
-	st.autoFeedbackEnabled = &enabled
-	return enabled
 }
 
 // scheduleAutoFeedbackEnforcement sets a 5-minute timer that will transition the user into feedback collection

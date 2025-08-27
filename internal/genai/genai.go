@@ -63,12 +63,12 @@ type ChatService interface {
 
 // Client wraps the OpenAI API client for prompt generation.
 type Client struct {
-	chat        ChatService
-	model       string
-	temperature float64
+	chat                ChatService
+	model               string
+	temperature         float64
 	maxCompletionTokens int
-	debugMode   bool   // Enable debug mode for API call logging
-	stateDir    string // State directory for debug log files
+	debugMode           bool   // Enable debug mode for API call logging
+	stateDir            string // State directory for debug log files
 }
 
 // chatServiceWrapper implements ChatService interface for OpenAI client
@@ -89,14 +89,14 @@ func (w *chatServiceWrapper) Create(ctx context.Context, body openai.ChatComplet
 // Opts holds configuration options for the GenAI client, including API key override.
 // API key can be overridden via command-line options or environment variable.
 type Opts struct {
-	APIKey               string  // overrides OPENAI_API_KEY
-	Model                string  // overrides default model
-	Temperature          float64 // overrides default temperature
-	MaxCompletionTokens  int     // overrides default max completion tokens
+	APIKey              string  // overrides OPENAI_API_KEY
+	Model               string  // overrides default model
+	Temperature         float64 // overrides default temperature
+	MaxCompletionTokens int     // overrides default max completion tokens
 	// Deprecated: MaxTokens kept for backward compatibility; use MaxCompletionTokens
-	MaxTokens            int
-	DebugMode            bool   // Enable debug mode for API call logging
-	StateDir             string // State directory for debug log files
+	MaxTokens int
+	DebugMode bool   // Enable debug mode for API call logging
+	StateDir  string // State directory for debug log files
 }
 
 // Option defines a configuration option for the GenAI client.
@@ -168,18 +168,18 @@ func NewClient(opts ...Option) (*Client, error) {
 	}
 	// Initialize OpenAI client with API key
 	cli := openai.NewClient(option.WithAPIKey(apiKey))
-    // Prefer MaxCompletionTokens; fallback to (deprecated) MaxTokens if set and new value not overridden
-    if cfg.MaxCompletionTokens == 0 && cfg.MaxTokens > 0 {
-        cfg.MaxCompletionTokens = cfg.MaxTokens
-    }
+	// Prefer MaxCompletionTokens; fallback to (deprecated) MaxTokens if set and new value not overridden
+	if cfg.MaxCompletionTokens == 0 && cfg.MaxTokens > 0 {
+		cfg.MaxCompletionTokens = cfg.MaxTokens
+	}
 
 	client := &Client{
-		chat:               &chatServiceWrapper{newFunc: cli.Chat.Completions.New},
-		model:              cfg.Model,
-		temperature:        cfg.Temperature,
+		chat:                &chatServiceWrapper{newFunc: cli.Chat.Completions.New},
+		model:               cfg.Model,
+		temperature:         cfg.Temperature,
 		maxCompletionTokens: cfg.MaxCompletionTokens,
-		debugMode:          cfg.DebugMode,
-		stateDir:           cfg.StateDir,
+		debugMode:           cfg.DebugMode,
+		stateDir:            cfg.StateDir,
 	}
 
 	slog.Debug("Client.NewClient: client created successfully", "model", cfg.Model, "temperature", cfg.Temperature, "maxCompletionTokens", cfg.MaxCompletionTokens, "debugMode", cfg.DebugMode)
@@ -252,7 +252,7 @@ func (c *Client) GeneratePromptWithContext(ctx context.Context, system, user str
 			openai.SystemMessage(system),
 			openai.UserMessage(user),
 		},
-		Temperature: openai.Float(c.temperature),
+		Temperature:         openai.Float(c.temperature),
 		MaxCompletionTokens: openai.Int(int64(c.maxCompletionTokens)),
 	}
 
@@ -283,9 +283,9 @@ func (c *Client) GenerateWithMessages(ctx context.Context, messages []openai.Cha
 
 	// Prepare chat completion parameters with configured options
 	params := openai.ChatCompletionNewParams{
-		Model:       c.model,
-		Messages:    messages,
-		Temperature: openai.Float(c.temperature),
+		Model:               c.model,
+		Messages:            messages,
+		Temperature:         openai.Float(c.temperature),
 		MaxCompletionTokens: openai.Int(int64(c.maxCompletionTokens)),
 	}
 
@@ -348,10 +348,10 @@ func (c *Client) GenerateWithTools(ctx context.Context, messages []openai.ChatCo
 	slog.Debug("GenerateWithTools invoked", "messageCount", len(messages), "toolCount", len(tools), "model", c.model)
 
 	params := openai.ChatCompletionNewParams{
-		Model:       c.model,
-		Messages:    messages,
-		Tools:       tools,
-		Temperature: openai.Float(c.temperature),
+		Model:               c.model,
+		Messages:            messages,
+		Tools:               tools,
+		Temperature:         openai.Float(c.temperature),
 		MaxCompletionTokens: openai.Int(int64(c.maxCompletionTokens)),
 	}
 
@@ -406,9 +406,9 @@ func (c *Client) GenerateThinkingWithMessages(ctx context.Context, messages []op
 	augmented = append(augmented, openai.SystemMessage("You are to produce a structured JSON response ONLY. Format strictly as {\"thinking\": string, \"content\": string}. 'thinking' = brief internal reasoning (max 120 words, no sensitive data). 'content' = final user-facing reply. Do not wrap in markdown. Do not add extra keys."))
 
 	params := openai.ChatCompletionNewParams{
-		Model:       c.model,
-		Messages:    augmented,
-		Temperature: openai.Float(c.temperature),
+		Model:               c.model,
+		Messages:            augmented,
+		Temperature:         openai.Float(c.temperature),
 		MaxCompletionTokens: openai.Int(int64(c.maxCompletionTokens)),
 	}
 
@@ -445,10 +445,10 @@ func (c *Client) GenerateThinkingWithTools(ctx context.Context, messages []opena
 	augmented = append(augmented, openai.SystemMessage("Always respond with a JSON object {\"thinking\": string, \"content\": string}. If you decide to call tools, still provide this JSON: 'thinking' = concise reasoning (<=120 words), 'content' = user-facing reply (may be empty until tools executed). No extra text, no markdown."))
 
 	params := openai.ChatCompletionNewParams{
-		Model:       c.model,
-		Messages:    augmented,
-		Tools:       tools,
-		Temperature: openai.Float(c.temperature),
+		Model:               c.model,
+		Messages:            augmented,
+		Tools:               tools,
+		Temperature:         openai.Float(c.temperature),
 		MaxCompletionTokens: openai.Int(int64(c.maxCompletionTokens)),
 	}
 
