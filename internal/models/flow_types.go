@@ -42,4 +42,6 @@ const (
 	DataKeyScheduleRegistry        DataKey = "scheduleRegistry"        // For storing active schedules metadata
 	DataKeyConversationState       DataKey = "conversationState"       // For tracking current conversation state (COORDINATOR, INTAKE, FEEDBACK)
 	DataKeyStateTransitionTimerID  DataKey = "stateTransitionTimerID"  // For delayed state transitions
+	DataKeyLastPromptSentAt        DataKey = "lastPromptSentAt"        // Timestamp of last scheduled habit prompt delivery (RFC3339)
+	DataKeyAutoFeedbackTimerID     DataKey = "autoFeedbackTimerID"     // Timer ID for 5-min auto feedback enforcement
 )

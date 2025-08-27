@@ -135,6 +135,15 @@ func (stt *StateTransitionTool) executeImmediateTransition(ctx context.Context, 
 		return "", fmt.Errorf("failed to set conversation state: %w", err)
 	}
 
+	// If we have transitioned into FEEDBACK state, cancel any pending auto-feedback enforcement timer
+	if targetState == models.StateFeedback && stt.timer != nil {
+		if autoTimerID, err := stt.stateManager.GetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyAutoFeedbackTimerID); err == nil && autoTimerID != "" {
+			stt.timer.Cancel(autoTimerID)
+			stt.stateManager.SetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyAutoFeedbackTimerID, "")
+			slog.Debug("StateTransitionTool.executeImmediateTransition: cancelled auto feedback enforcement timer", "participantID", participantID, "timerID", autoTimerID)
+		}
+	}
+
 	// Log successful transition
 	slog.Info("StateTransitionTool.executeImmediateTransition: transition completed",
 		"participantID", participantID,
