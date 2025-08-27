@@ -7,25 +7,22 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"syscall"
+
+	"github.com/joho/godotenv"
 
 	"github.com/BTreeMap/PromptPipe/internal/api"
 	"github.com/BTreeMap/PromptPipe/internal/genai"
 	"github.com/BTreeMap/PromptPipe/internal/lockfile"
 	"github.com/BTreeMap/PromptPipe/internal/store"
+	pputil "github.com/BTreeMap/PromptPipe/internal/util"
 	"github.com/BTreeMap/PromptPipe/internal/whatsapp"
-	"github.com/joho/godotenv"
 )
 
-// Default configuration constants
 const (
-	// DefaultStateDir is the default directory for PromptPipe state data
-	DefaultStateDir = "/var/lib/promptpipe"
-	// DefaultAppDBFileName is the default SQLite database filename for application data
-	DefaultAppDBFileName = "state.db"
-	// DefaultWhatsAppDBFileName is the default SQLite database filename for WhatsApp/whatsmeow data
-	DefaultWhatsAppDBFileName = "whatsmeow.db"
+	DefaultStateDir            = "/var/lib/promptpipe"
+	DefaultAppDBFileName       = "state.db"       // default SQLite database filename for application data
+	DefaultWhatsAppDBFileName  = "whatsmeow.db"  // default SQLite database filename for WhatsApp/whatsmeow data
 )
 
 func main() {
@@ -233,7 +230,7 @@ func loadEnvironmentConfig() Config {
 		OpenAIKey:                 os.Getenv("OPENAI_API_KEY"),
 		APIAddr:                   os.Getenv("API_ADDR"),
 		DefaultCron:               os.Getenv("DEFAULT_SCHEDULE"),
-		DebugMode:                 parseBoolEnv("PROMPTPIPE_DEBUG", false),
+		DebugMode:                 pputil.ParseBoolEnv("PROMPTPIPE_DEBUG", false),
 		GenAITemperature:          parseFloatEnv("GENAI_TEMPERATURE", 0.1),
 		GenAIModel:                getEnvWithDefault("GENAI_MODEL", string(genai.DefaultModel)),
 		IntakeBotPromptFile:       getEnvWithDefault("INTAKE_BOT_PROMPT_FILE", "prompts/intake_bot_system.txt"),
@@ -487,24 +484,6 @@ func getEnvWithDefault(key, defaultValue string) string {
 	return defaultValue
 }
 
-// parseBoolEnv parses a boolean environment variable with a default value.
-// It accepts "true", "1", "yes", "on" (case insensitive) as true values.
-func parseBoolEnv(key string, defaultValue bool) bool {
-	val := os.Getenv(key)
-	if val == "" {
-		return defaultValue
-	}
-
-	switch strings.ToLower(val) {
-	case "true", "1", "yes", "on":
-		return true
-	case "false", "0", "no", "off":
-		return false
-	default:
-		slog.Warn("Invalid boolean value for environment variable", "key", key, "value", val, "defaulting_to", defaultValue)
-		return defaultValue
-	}
-}
 
 // parseIntEnv parses an integer environment variable with a default value.
 // It accepts positive integers, 0, and negative integers.
