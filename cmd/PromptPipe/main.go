@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"strconv"
 	"syscall"
 
 	"github.com/joho/godotenv"
@@ -231,15 +230,15 @@ func loadEnvironmentConfig() Config {
 		APIAddr:                   os.Getenv("API_ADDR"),
 		DefaultCron:               os.Getenv("DEFAULT_SCHEDULE"),
 		DebugMode:                 pputil.ParseBoolEnv("PROMPTPIPE_DEBUG", false),
-		GenAITemperature:          parseFloatEnv("GENAI_TEMPERATURE", 0.1),
-		GenAIModel:                getEnvWithDefault("GENAI_MODEL", string(genai.DefaultModel)),
-		IntakeBotPromptFile:       getEnvWithDefault("INTAKE_BOT_PROMPT_FILE", "prompts/intake_bot_system.txt"),
-		PromptGeneratorPromptFile: getEnvWithDefault("PROMPT_GENERATOR_PROMPT_FILE", "prompts/prompt_generator_system.txt"),
-		FeedbackTrackerPromptFile: getEnvWithDefault("FEEDBACK_TRACKER_PROMPT_FILE", "prompts/feedback_tracker_system.txt"),
-		ChatHistoryLimit:          parseIntEnv("CHAT_HISTORY_LIMIT", -1),
-		FeedbackInitialTimeout:    getEnvWithDefault("FEEDBACK_INITIAL_TIMEOUT", "15m"),
-		FeedbackFollowupDelay:     getEnvWithDefault("FEEDBACK_FOLLOWUP_DELAY", "3h"),
-		SchedulerPrepTimeMinutes:  parseIntEnv("SCHEDULER_PREP_TIME_MINUTES", 10),
+		GenAITemperature:          pputil.ParseFloatEnv("GENAI_TEMPERATURE", 0.1),
+		GenAIModel:                pputil.GetEnvWithDefault("GENAI_MODEL", string(genai.DefaultModel)),
+		IntakeBotPromptFile:       pputil.GetEnvWithDefault("INTAKE_BOT_PROMPT_FILE", "prompts/intake_bot_system.txt"),
+		PromptGeneratorPromptFile: pputil.GetEnvWithDefault("PROMPT_GENERATOR_PROMPT_FILE", "prompts/prompt_generator_system.txt"),
+		FeedbackTrackerPromptFile: pputil.GetEnvWithDefault("FEEDBACK_TRACKER_PROMPT_FILE", "prompts/feedback_tracker_system.txt"),
+		ChatHistoryLimit:          pputil.ParseIntEnv("CHAT_HISTORY_LIMIT", -1),
+		FeedbackInitialTimeout:    pputil.GetEnvWithDefault("FEEDBACK_INITIAL_TIMEOUT", "15m"),
+		FeedbackFollowupDelay:     pputil.GetEnvWithDefault("FEEDBACK_FOLLOWUP_DELAY", "3h"),
+		SchedulerPrepTimeMinutes:  pputil.ParseIntEnv("SCHEDULER_PREP_TIME_MINUTES", 10),
 	}
 
 	// Set default state directory if not specified
@@ -477,50 +476,4 @@ func buildAPIOptions(flags Flags) []api.Option {
 }
 
 // getEnvWithDefault gets an environment variable value or returns a default
-func getEnvWithDefault(key, defaultValue string) string {
-	if val := os.Getenv(key); val != "" {
-		return val
-	}
-	return defaultValue
-}
-
-
-// parseIntEnv parses an integer environment variable with a default value.
-// It accepts positive integers, 0, and negative integers.
-func parseIntEnv(key string, defaultValue int) int {
-	val := os.Getenv(key)
-	if val == "" {
-		return defaultValue
-	}
-
-	intVal, err := strconv.Atoi(val)
-	if err != nil {
-		slog.Warn("Invalid integer value for environment variable", "key", key, "value", val, "defaulting_to", defaultValue)
-		return defaultValue
-	}
-
-	return intVal
-}
-
-// parseFloatEnv parses a float environment variable with a default value.
-// It accepts float values between 0.0 and 1.0 for temperature settings.
-func parseFloatEnv(key string, defaultValue float64) float64 {
-	val := os.Getenv(key)
-	if val == "" {
-		return defaultValue
-	}
-
-	floatVal, err := strconv.ParseFloat(val, 64)
-	if err != nil {
-		slog.Warn("Invalid float value for environment variable", "key", key, "value", val, "defaulting_to", defaultValue)
-		return defaultValue
-	}
-
-	// Validate temperature range for GenAI settings
-	if key == "GENAI_TEMPERATURE" && (floatVal < 0.0 || floatVal > 1.0) {
-		slog.Warn("Temperature value out of range (0.0-1.0)", "key", key, "value", floatVal, "defaulting_to", defaultValue)
-		return defaultValue
-	}
-
-	return floatVal
-}
+// Environment variable helper functions centralized in internal/util/env.go
