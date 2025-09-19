@@ -15,13 +15,16 @@
   - [POST /response](#post-response)
   - [GET /responses](#get-responses)
   - [GET /stats](#get-stats)
+  - [GET /health](#get-health)
+  - [Timers API](#timers-api)
+  - [Conversation API](#conversation-api)
 - [Data Models](#data-models)
   - [Prompt](#prompt)
   - [Receipt](#receipt)
   - [Response](#response)
 - [Scheduling Prompts](#scheduling-prompts)
 - [Receipt Tracking](#receipt-tracking)
-- [Storage Backends](#storage-backends)
+- [Storage](#storage)
 - [Environment Variables](#environment-variables)
 - [Custom Flows](#custom-flows)
 - [Development](#development)
@@ -29,17 +32,17 @@
 
 ## Overview
 
-PromptPipe is a Go-based messaging service that delivers adaptive-intervention prompts over WhatsApp using the [whatsmeow](https://github.com/tulir/whatsmeow) library. It provides a RESTful API for scheduling messages, sending dynamic or GenAI-generated content, and tracking delivery/read receipts. The service is highly configurable via environment variables and supports both in-memory and PostgreSQL storage backends.
+PromptPipe is a Go-based messaging service that delivers adaptive-intervention prompts over WhatsApp using the [whatsmeow](https://github.com/tulir/whatsmeow) library. It provides a RESTful API for scheduling messages, sending dynamic or GenAI-generated content, and tracking delivery/read receipts. It also includes a stateful conversation flow (3‑bot architecture: Coordinator, Intake, Feedback). The service is highly configurable via environment variables and supports SQLite and PostgreSQL for the application database.
 
 ## Architecture
 
 - **Go Core**: High-performance, concurrent backend written in Go.
 - **Whatsmeow Integration**: Programmable WhatsApp client for messaging.
 - **API Layer**: RESTful endpoints for scheduling, sending, and tracking prompts (`internal/api`).
-- **Scheduler**: Cron-based scheduling for recurring or one-time prompts (`internal/scheduler`).
-- **Store**: Persists scheduled prompts and receipt events; supports in-memory and PostgreSQL (`internal/store`).
+- **Timer & Scheduler Tool**: Scheduling for recurring or one-time prompts via a timer and scheduler tool (`internal/flow/timer.go`, `internal/flow/scheduler_tool.go`).
+- **Store**: Persists receipts, responses, conversation state, schedules, and hooks (`internal/store`).
 - **Message Flow**: Pluggable flow generators produce message bodies (`internal/flow`).
-  - **Flow Generators**: Pluggable modules under `internal/flow` that transform a `Prompt` into a message string. By default, `static` and `branch` are registered; you can register your own generators (e.g. `genai` or `custom`).
+  - **Flow Generators**: `static`, `branch`, `genai`, and the stateful `conversation` flow; you can register custom generators.
 - **WhatsApp Client**: Handles WhatsApp network communication (`internal/whatsapp`).
 - **GenAI**: Optional OpenAI integration for dynamic content (`internal/genai`).
 - **Models**: Shared data structures (`internal/models`).
@@ -47,7 +50,7 @@ PromptPipe is a Go-based messaging service that delivers adaptive-intervention p
 ## Features
 
 - **Schedule prompts** at specific times or intervals (cron syntax).
-- **Pluggable messaging drivers**: Easily switch between WhatsApp, Twilio, or other providers without changing core logic.
+- **Messaging abstraction**: WhatsApp supported today via whatsmeow; interface allows adding other providers later.
 - **Send dynamic payloads**: text, media, and template messages with custom variables.
 - **GenAI-enhanced content**: Use OpenAI to generate message content dynamically.
 - **Structured reasoning**: Agent modules always request JSON `{thinking, content}`; thinking is surfaced only in debug mode for developers (no toggle to avoid schema drift).
@@ -57,6 +60,7 @@ PromptPipe is a Go-based messaging service that delivers adaptive-intervention p
 - **Modular design**: Integrates with any adaptive-intervention framework.
 - **Clear REST API**: Easy integration with your application.
 - **Customizable Message Flows**: Define and register custom flow generators for handling different prompt types.
+- **Stateful conversation**: 3‑bot architecture with enrollment endpoints and recovery.
 
 ## Installation
 
@@ -68,7 +72,7 @@ cd PromptPipe
 # Build the binary
 make build
 # Or use Go directly:
-go build -o PromptPipe cmd/PromptPipe/main.go
+go build -o build/promptpipe cmd/PromptPipe/main.go
 ```
 
 ## Additional Configuration Details
@@ -86,7 +90,7 @@ Create a `.env` file or export the following environment variables:
 # WhatsApp/Whatsmeow Database Configuration
 WHATSAPP_DB_DSN="file:/var/lib/promptpipe/whatsmeow.db?_foreign_keys=on"
 
-# Application Database Configuration  
+# Application Database Configuration
 DATABASE_DSN="postgres://user:pass@host:port/dbname?sslmode=disable"
 
 # Legacy Support (DATABASE_URL will be used for application database if DATABASE_DSN is not set)
@@ -97,6 +101,20 @@ PROMPTPIPE_STATE_DIR="/var/lib/promptpipe"    # Directory for file-based storage
 DEFAULT_SCHEDULE="0 9 * * *"                  # Default cron schedule (9 AM daily)
 API_ADDR=":8080"                              # API server address
 OPENAI_API_KEY="your_openai_api_key"          # OpenAI API key for GenAI operations
+# Optional GenAI settings
+GENAI_MODEL="gpt-4o-mini"
+GENAI_TEMPERATURE="0.1"
+
+# Conversation Flow prompts and limits
+INTAKE_BOT_PROMPT_FILE="prompts/intake_bot_system.txt"
+PROMPT_GENERATOR_PROMPT_FILE="prompts/prompt_generator_system.txt"
+FEEDBACK_TRACKER_PROMPT_FILE="prompts/feedback_tracker_system.txt"
+CHAT_HISTORY_LIMIT="-1"                         # -1=unlimited, 0=none, N=last N messages to tools
+FEEDBACK_INITIAL_TIMEOUT="15m"
+FEEDBACK_FOLLOWUP_DELAY="3h"
+SCHEDULER_PREP_TIME_MINUTES="10"
+AUTO_FEEDBACK_AFTER_PROMPT_ENABLED="true"
+PROMPTPIPE_DEBUG="false"
 ```
 
 ### Database Configuration Examples
@@ -141,19 +159,30 @@ Example SQLite DSN with foreign keys: `file:/path/to/database.db?_foreign_keys=o
 
 ```bash
 # Start the service (reads .env automatically)
-./PromptPipe [flags]
+./build/promptpipe [flags]
 ```
 
 ## Command Line Flags
 
-- `-api-addr string` : API server address (overrides $API_ADDR)
-- `-qr-output string` : path to write login QR code (default: stdout)
-- `-numeric-code`    : use numeric login code instead of QR code
-- `-state-dir string`: state directory for PromptPipe data (overrides $PROMPTPIPE_STATE_DIR)
-- `-whatsapp-db-dsn string`: WhatsApp/whatsmeow database connection string (overrides $WHATSAPP_DB_DSN)
-- `-app-db-dsn string`: application database connection string (overrides $DATABASE_DSN or $DATABASE_URL)
-- `-openai-api-key string`: OpenAI API key (overrides $OPENAI_API_KEY)
-- `-default-cron string`: default cron schedule for prompts (overrides $DEFAULT_SCHEDULE)
+- `-api-addr` API server address (overrides $API_ADDR)
+- `-qr-output` path to write login QR code
+- `-numeric-code` use numeric login code instead of QR code
+- `-state-dir` state directory for PromptPipe data (overrides $PROMPTPIPE_STATE_DIR)
+- `-whatsapp-db-dsn` WhatsApp/whatsmeow DB connection string (overrides $WHATSAPP_DB_DSN)
+- `-app-db-dsn` application DB connection string (overrides $DATABASE_DSN or $DATABASE_URL)
+- `-openai-api-key` OpenAI API key (overrides $OPENAI_API_KEY)
+- `-default-cron` default cron schedule for prompts (overrides $DEFAULT_SCHEDULE)
+- `-intake-bot-prompt-file` path to intake bot system prompt file
+- `-prompt-generator-prompt-file` path to prompt generator system prompt file
+- `-feedback-tracker-prompt-file` path to feedback tracker system prompt file
+- `-chat-history-limit` limit of history messages exposed to tools (-1=no limit)
+- `-feedback-initial-timeout` e.g., 15m
+- `-feedback-followup-delay` e.g., 3h
+- `-genai-temperature` 0.0–1.0
+- `-genai-model` OpenAI model name
+- `-scheduler-prep-time-minutes` default 10
+- `-auto-feedback-after-prompt-enabled` default true
+- `-debug` enable debug logging + structured thinking surfacing
 
 ## API Reference
 
@@ -163,7 +192,7 @@ All API endpoints expect and return JSON.
 
 Schedules a new prompt to be sent according to a cron expression.
 
-**Request Body:** `Prompt` object (see [Data Models](#prompt)). Supports optional `system_prompt` and `user_prompt` fields for GenAI content.
+**Request Body:** `Prompt` object (see [Data Models](#prompt)). Supports optional `system_prompt` and `user_prompt` for GenAI. Provide a `schedule` object to define timing.
 
 **Response Body:** `{"status":"ok"}`
 
@@ -177,7 +206,7 @@ Schedules a new prompt to be sent according to a cron expression.
 
 Sends a prompt immediately.
 
-**Request Body:** `Prompt` object (see [Data Models](#prompt), `cron` field is ignored). Supports optional `system_prompt` and `user_prompt` fields to generate dynamic content.
+**Request Body:** `Prompt` object (see [Data Models](#prompt); any `schedule` is ignored). Supports optional `system_prompt` and `user_prompt` to generate dynamic content.
 
 **Response Body:** `{"status":"ok"}`
 
@@ -238,28 +267,55 @@ Provides statistics over collected responses (total count, per sender counts, av
 - `200 OK`: Successfully retrieved statistics.
 - `500 Internal Server Error`: Error computing statistics.
 
+### GET /health
+
+Basic health/status endpoint.
+
+Responses:
+
+- `200 OK` healthy
+- `503 Service Unavailable` degraded, with error info
+
+### Timers API
+
+- `GET /timers` – list active timers
+- `GET /timers/{id}` – get info for a timer
+- `DELETE /timers/{id}` – cancel a timer
+
+### Conversation API
+
+- `POST /conversation/participants` – enroll a participant
+- `GET /conversation/participants` – list participants
+- `GET /conversation/participants/{id}` – get participant
+- `PUT /conversation/participants/{id}` – update participant
+- `DELETE /conversation/participants/{id}` – remove participant
+
 ## Data Models
 
 ### Prompt
 
-Represents a message to be sent, supporting multiple flow types (static, GenAI, branch, or custom).
+Represents a message to be sent, supporting multiple flow types (static, genai, branch, conversation, or custom).
 
 ```json
 {
-  "to": "string (E.164 phone number)",
-  "cron": "string (cron expression, optional for /send)",
-  "type": "string (one of \"static\", \"genai\", \"branch\", \"custom\"; defaults to \"static\")",
-  "state": "string (current state for custom flows, optional)",
-  "body": "string (message content or prompt template)",
-  "system_prompt": "string (optional system prompt for GenAI)",
-  "user_prompt": "string (optional user prompt for GenAI)",
-  "branch_options": [ { "label": "string", "body": "string" } ],
-  // custom flow modules may define additional fields here
+  "to": "+15551234567",
+  "schedule": {
+    "minute": 0,
+    "hour": 9,
+    "weekday": 1,
+    "timezone": "America/Toronto"
+  },
+  "type": "static | genai | branch | conversation | custom",
+  "state": "string (custom flows only)",
+  "body": "string (for static)",
+  "system_prompt": "string (for genai/conversation)",
+  "user_prompt": "string (for genai/conversation)",
+  "branch_options": [ { "label": "string", "body": "string" } ]
 }
 ```
 
 - `to`: The recipient's WhatsApp phone number in E.164 format (e.g., `+15551234567`).
-- `cron`: A standard cron expression (e.g., `0 9 * * *` for 9 AM daily). Required for `/schedule`.
+- `schedule`: Object for minute/hour/day/month/weekday + optional timezone. Required for `/schedule` if no default schedule is configured.
 - `type`: The type of flow to use for generating the message (e.g., "static", "genai", "branch", "custom").
 - `state`: Optional current state for custom flows.
 - `body`: The text content of the message or prompt template.
@@ -301,24 +357,20 @@ Represents an incoming response from a participant.
 
 ## Scheduling Prompts
 
-The `/schedule` endpoint allows you to define messages that will be sent out based on a cron schedule. The `cron` field in the `Prompt` model uses standard cron syntax. The scheduler service (`internal/scheduler`) is responsible for managing these jobs.
+The `/schedule` endpoint allows you to define messages that will be sent out based on a structured schedule object (minute/hour/day/month/weekday, optional timezone). A simple cron-like conversion is supported internally for timers.
 
 ## Receipt Tracking
 
-The system tracks message events (sent, delivered, read) and stores them. These can be retrieved via the `/receipts` endpoint. The `internal/store` package handles the persistence of these receipts, with options for in-memory or PostgreSQL storage.
+The system tracks message events (sent, delivered, read) and stores them. These can be retrieved via the `/receipts` endpoint. The `internal/store` package handles the persistence of these receipts.
 
-## Storage Backends
+## Storage
 
-PromptPipe supports a unified storage interface for message receipts and responses, with three implementations:
+PromptPipe uses two separate databases to separate concerns:
 
-- **SQLite Store**: Default storage backend. Stores data in a SQLite database file. By default, uses `/var/lib/promptpipe/promptpipe.db`. Configured via the `-db-dsn` flag or `DATABASE_URL` environment variable with a file path.
-- **PostgreSQL Store**: Enterprise storage backend. Provide a PostgreSQL DSN via the `-db-dsn` flag or `DATABASE_URL` environment variable to enable this backend. The system auto-detects PostgreSQL DSNs (containing `postgres://`, `host=`, or multiple key=value pairs).
-- **In-Memory Store**: Used for testing and development. Fast, but not persistent. Used when no database configuration is provided.
+- WhatsApp database (managed by whatsmeow) – configured via `WHATSAPP_DB_DSN` or `-whatsapp-db-dsn` (SQLite by default at `{STATE_DIR}/whatsmeow.db?_foreign_keys=on`).
+- Application database (managed by PromptPipe) – configured via `DATABASE_DSN` or `-app-db-dsn` (SQLite by default at `{STATE_DIR}/state.db?_foreign_keys=on`).
 
-All backends support the same schema with the following tables:
-
-- `receipts` (`id SERIAL PRIMARY KEY`, `recipient TEXT NOT NULL`, `status TEXT NOT NULL`, `time BIGINT NOT NULL`)
-- `responses` (`id SERIAL PRIMARY KEY`, `sender TEXT NOT NULL`, `body TEXT NOT NULL`, `time BIGINT NOT NULL`)
+PostgreSQL is supported for the application database by providing a `postgres://...` DSN. The project auto-detects DSN type. An in-memory store exists primarily for tests.
 
 ## Configuration
 
@@ -336,39 +388,49 @@ The SQLite database file is automatically placed at `{state-dir}/promptpipe.db` 
 
 The database can be configured in several ways (in order of precedence):
 
-1. **Command Line Flag**: `-db-dsn <connection-string-or-file-path>`
-2. **Environment Variables**: `WHATSAPP_DB_DSN` or `DATABASE_URL`
-3. **Default**: SQLite database at `{state-dir}/promptpipe.db`
+1. **Command Line Flags**: `-whatsapp-db-dsn`, `-app-db-dsn`
+2. **Environment Variables**: `WHATSAPP_DB_DSN`, `DATABASE_DSN` (or legacy `DATABASE_URL`)
+3. **Default**: SQLite databases under `{state-dir}` with foreign keys enabled
 
 Examples:
 
 ```bash
 # Use SQLite in custom location
-./promptpipe -db-dsn /path/to/my/database.db
+./build/promptpipe -app-db-dsn "file:/path/to/state.db?_foreign_keys=on"
 
 # Use PostgreSQL
-./promptpipe -db-dsn "postgres://user:password@localhost/promptpipe"
+./build/promptpipe -app-db-dsn "postgres://user:password@localhost/promptpipe?sslmode=disable"
 
 # Use custom state directory (SQLite will be at /custom/path/promptpipe.db)
-./promptpipe -state-dir /custom/path
+./build/promptpipe -state-dir /custom/path
 
 # Environment variable configuration
-export DATABASE_URL="postgres://user:password@localhost/promptpipe"
+export DATABASE_DSN="postgres://user:password@localhost/promptpipe?sslmode=disable"
 export PROMPTPIPE_STATE_DIR="/custom/state/dir"
-./promptpipe
+./build/promptpipe
 ```
 
 ## Additional Environment Variables
 
-| Variable               | Description                                 |
-|------------------------|---------------------------------------------|
-| PROMPTPIPE_STATE_DIR   | State directory for PromptPipe data        |
-| WHATSAPP_DB_DRIVER     | Database driver for Whatsmeow storage      |
-| WHATSAPP_DB_DSN        | Data source name for Whatsmeow DB          |
-| DATABASE_URL           | Database connection string (PostgreSQL/SQLite) |
-| DEFAULT_SCHEDULE       | Default cron schedule for prompts          |
-| API_ADDR               | API server address                          |
-| OPENAI_API_KEY         | API key for OpenAI GenAI operations        |
+| Variable                         | Description |
+|----------------------------------|-------------|
+| PROMPTPIPE_STATE_DIR             | State directory for PromptPipe data |
+| WHATSAPP_DB_DSN                  | WhatsApp/whatsmeow DB DSN |
+| DATABASE_DSN                     | Application DB DSN (or legacy DATABASE_URL) |
+| DEFAULT_SCHEDULE                 | Default cron schedule for /schedule when none provided |
+| API_ADDR                         | API server address |
+| OPENAI_API_KEY                   | API key for OpenAI GenAI operations |
+| GENAI_MODEL                      | OpenAI model (default gpt-4o-mini) |
+| GENAI_TEMPERATURE                | OpenAI temperature (default 0.1) |
+| INTAKE_BOT_PROMPT_FILE           | Path to intake system prompt |
+| PROMPT_GENERATOR_PROMPT_FILE     | Path to prompt-generator system prompt |
+| FEEDBACK_TRACKER_PROMPT_FILE     | Path to feedback tracker system prompt |
+| CHAT_HISTORY_LIMIT               | History window exposed to tools (-1/0/N) |
+| FEEDBACK_INITIAL_TIMEOUT         | Initial feedback timeout (e.g., 15m) |
+| FEEDBACK_FOLLOWUP_DELAY          | Follow-up feedback delay (e.g., 3h) |
+| SCHEDULER_PREP_TIME_MINUTES      | Minutes before target time for prep notifications |
+| AUTO_FEEDBACK_AFTER_PROMPT_ENABLED | Auto-enforce feedback session after scheduled prompt inactivity |
+| PROMPTPIPE_DEBUG                 | Enable debug mode and write API call logs under {STATE_DIR}/debug |
 
 ## Custom Flows
 
