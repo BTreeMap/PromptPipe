@@ -131,7 +131,7 @@ cd PromptPipe
 # Build the binary
 make build
 # OR use Go directly:
-go build -o PromptPipe cmd/PromptPipe/main.go
+go build -o build/promptpipe cmd/PromptPipe/main.go
 ```
 
 ## Codebase Structure
@@ -458,15 +458,8 @@ registered_hooks (
 
 ```text
 conversation_participants (1) ←→ (1) flow_states
-                          (1) ←→ (1) registered_hooks
-                          (1) ←→ (N) responses
-``` Database Relationships
-
-```
-
-conversation_participants (1) ←→ (1) flow_states
-                          (1) ←→ (1) registered_hooks
-                          (1) ←→ (N) responses
+conversation_participants (1) ←→ (1) registered_hooks
+conversation_participants (1) ←→ (N) responses
 
 #### Step 1: Install and Configure
 
@@ -474,7 +467,7 @@ conversation_participants (1) ←→ (1) flow_states
 # 1. Clone and build
 git clone https://github.com/BTreeMap/PromptPipe.git
 cd PromptPipe
-go build -o PromptPipe cmd/PromptPipe/main.go
+go build -o build/promptpipe cmd/PromptPipe/main.go
 
 # 2. Create configuration
 cat > .env << EOF
@@ -492,7 +485,7 @@ mkdir -p /tmp/promptpipe
 
 ```bash
 # Start PromptPipe
-./PromptPipe
+./build/promptpipe
 
 # Expected output:
 # [2025-08-15 10:30:00] Bootstrapping PromptPipe with configured modules
@@ -566,6 +559,7 @@ curl -X POST http://localhost:8080/conversation/participants \
     "name": "John Doe",
     "timezone": "America/Toronto"
   }'
+```
 
 #### Step 4: Monitor and Check Status
 
