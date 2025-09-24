@@ -22,10 +22,6 @@ func NewCoordinator(choice CoordinatorChoice, stateManager StateManager, genaiCl
 		fallthrough
 	default:
 		slog.Info("Coordinator selector: using LLM coordinator")
-		// We accept genaiClient as any here to avoid import cycles; the actual type is validated by constructor.
-		if client, ok := genaiClient.(any); ok {
-			_ = client // just to avoid unused; actual passing happens below
-		}
 		return NewCoordinatorModule(stateManager, nil, msgService, systemPromptFile, schedulerTool, promptGeneratorTool, stateTransitionTool, profileSaveTool)
 	}
 }

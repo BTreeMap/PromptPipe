@@ -34,13 +34,13 @@ func (stt *StateTransitionTool) GetToolDefinition() openai.ChatCompletionToolPar
 		Type: "function",
 		Function: shared.FunctionDefinitionParam{
 			Name:        "transition_state",
-			Description: openai.String("Transition the conversation to a specific state (COORDINATOR, INTAKE, FEEDBACK). Use this to route conversations to specialized handlers or to schedule delayed transitions."),
+			Description: openai.String("Transition the conversation to a specific state (INTAKE, PROMPT_GENERATOR, FEEDBACK). Use this to route conversations to specialized handlers or to schedule delayed transitions."),
 			Parameters: shared.FunctionParameters{
 				"type": "object",
 				"properties": map[string]interface{}{
 					"target_state": map[string]interface{}{
 						"type":        "string",
-						"enum":        []string{"COORDINATOR", "INTAKE", "FEEDBACK"},
+						"enum":        []string{"INTAKE", "PROMPT_GENERATOR", "FEEDBACK"},
 						"description": "The target state to transition to",
 					},
 					"delay_minutes": map[string]interface{}{
@@ -82,10 +82,10 @@ func (stt *StateTransitionTool) ExecuteStateTransition(ctx context.Context, part
 	// Convert string to StateType
 	var targetState models.StateType
 	switch targetStateStr {
-	case "COORDINATOR":
-		targetState = models.StateCoordinator
 	case "INTAKE":
 		targetState = models.StateIntake
+	case "PROMPT_GENERATOR":
+		targetState = models.StatePromptGenerator
 	case "FEEDBACK":
 		targetState = models.StateFeedback
 	default:
@@ -229,9 +229,9 @@ func (stt *StateTransitionTool) getCurrentConversationState(ctx context.Context,
 		return "", err
 	}
 
-	// Default to COORDINATOR if no state is set
+	// Default to INTAKE if no state is set
 	if stateStr == "" {
-		return models.StateCoordinator, nil
+		return models.StateIntake, nil
 	}
 
 	return models.StateType(stateStr), nil

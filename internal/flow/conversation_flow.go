@@ -86,16 +86,16 @@ type ConversationFlow struct {
 	genaiClient         genai.ClientInterface
 	systemPrompt        string
 	systemPromptFile    string
-	chatHistoryLimit    int                  // Limit for number of history messages sent to bot tools (-1: no limit, 0: no history, positive: limit to last N messages)
-	schedulerTool       *SchedulerTool       // Tool for scheduling daily prompts
-	coordinatorModule   *CoordinatorModule   // Module for coordinator conversations and routing
-	intakeModule        *IntakeModule        // Module for conducting intake conversations
-	promptGeneratorTool *PromptGeneratorTool // Tool for generating personalized habit prompts
-	feedbackModule      *FeedbackModule      // Module for tracking user feedback and updating profiles
-	stateTransitionTool *StateTransitionTool // Tool for managing conversation state transitions
-	profileSaveTool     *ProfileSaveTool     // Tool for saving user profiles (shared across modules)
-	debugMode           bool                 // Enable debug mode for user-facing debug messages
-	msgService          MessagingService     // Messaging service for sending debug messages
+	chatHistoryLimit    int                    // Limit for number of history messages sent to bot tools (-1: no limit, 0: no history, positive: limit to last N messages)
+	schedulerTool       *SchedulerTool         // Tool for scheduling daily prompts
+	intakeModule        *IntakeModule          // Module for conducting intake conversations
+	promptGeneratorTool *PromptGeneratorTool   // Tool for generating personalized habit prompts
+	promptGeneratorMod  *PromptGeneratorModule // Module for prompt generation as a first-class bot
+	feedbackModule      *FeedbackModule        // Module for tracking user feedback and updating profiles
+	stateTransitionTool *StateTransitionTool   // Tool for managing conversation state transitions
+	profileSaveTool     *ProfileSaveTool       // Tool for saving user profiles (shared across modules)
+	debugMode           bool                   // Enable debug mode for user-facing debug messages
+	msgService          MessagingService       // Messaging service for sending debug messages
 } // NewConversationFlow creates a new conversation flow with dependencies.
 func NewConversationFlow(stateManager StateManager, genaiClient genai.ClientInterface, systemPromptFile string) *ConversationFlow {
 	slog.Debug("ConversationFlow.NewConversationFlow: creating flow with dependencies", "systemPromptFile", systemPromptFile)
@@ -137,10 +137,10 @@ func NewConversationFlowWithAllToolsAndTimeouts(stateManager StateManager, genai
 	stateTransitionTool := NewStateTransitionTool(stateManager, timer)
 	profileSaveTool := NewProfileSaveTool(stateManager)
 
-	// Create modules with shared tools
-	coordinatorModule := NewCoordinatorModule(stateManager, genaiClient, msgService, systemPromptFile, schedulerTool, promptGeneratorTool, stateTransitionTool, profileSaveTool)
+	// Create modules with shared tools (coordinator removed in new design)
 	intakeModule := NewIntakeModule(stateManager, genaiClient, msgService, intakeBotPromptFile, stateTransitionTool, profileSaveTool, schedulerTool, promptGeneratorTool)
 	feedbackModule := NewFeedbackModuleWithTimeouts(stateManager, genaiClient, feedbackTrackerPromptFile, timer, msgService, feedbackInitialTimeout, feedbackFollowupDelay, stateTransitionTool, profileSaveTool, schedulerTool)
+	promptGenModule := NewPromptGeneratorModule(stateManager, genaiClient, msgService, stateTransitionTool, schedulerTool, profileSaveTool, promptGeneratorTool)
 
 	return &ConversationFlow{
 		stateManager:        stateManager,
@@ -148,9 +148,9 @@ func NewConversationFlowWithAllToolsAndTimeouts(stateManager StateManager, genai
 		systemPromptFile:    systemPromptFile,
 		chatHistoryLimit:    -1, // Default: no limit
 		schedulerTool:       schedulerTool,
-		coordinatorModule:   coordinatorModule,
 		intakeModule:        intakeModule,
 		promptGeneratorTool: promptGeneratorTool,
+		promptGeneratorMod:  promptGenModule,
 		feedbackModule:      feedbackModule,
 		stateTransitionTool: stateTransitionTool,
 		profileSaveTool:     profileSaveTool,
@@ -195,14 +195,7 @@ func (f *ConversationFlow) LoadSystemPrompt() error {
 // LoadToolSystemPrompts loads system prompts for all modules.
 func (f *ConversationFlow) LoadToolSystemPrompts() error {
 	slog.Debug("flow.LoadToolSystemPrompts: loading module system prompts")
-
-	// Load coordinator module system prompt
-	if f.coordinatorModule != nil {
-		if err := f.coordinatorModule.LoadSystemPrompt(); err != nil {
-			slog.Warn("flow.LoadToolSystemPrompts: failed to load coordinator module system prompt", "error", err)
-			// Continue even if coordinator module prompt fails to load
-		}
-	}
+	// Coordinator removed in new design
 
 	// Load intake module system prompt
 	if f.intakeModule != nil {
@@ -212,11 +205,17 @@ func (f *ConversationFlow) LoadToolSystemPrompts() error {
 		}
 	}
 
-	// Load prompt generator system prompt
+	// Load prompt generator system prompt (tool)
 	if f.promptGeneratorTool != nil {
 		if err := f.promptGeneratorTool.LoadSystemPrompt(); err != nil {
-			slog.Warn("flow.LoadToolSystemPrompts: failed to load prompt generator system prompt", "error", err)
-			// Continue even if prompt generator prompt fails to load
+			slog.Warn("flow.LoadToolSystemPrompts: failed to load prompt generator tool system prompt", "error", err)
+		}
+	}
+
+	// Load prompt generator module system prompt
+	if f.promptGeneratorMod != nil {
+		if err := f.promptGeneratorMod.LoadSystemPrompt(); err != nil {
+			slog.Warn("flow.LoadToolSystemPrompts: failed to load prompt generator module system prompt", "error", err)
 		}
 	}
 
@@ -345,17 +344,20 @@ func (f *ConversationFlow) processConversationMessage(ctx context.Context, parti
 	// Route to appropriate state handler
 	var response string
 	switch conversationState {
-	case models.StateCoordinator:
-		response, err = f.processCoordinatorState(ctx, participantID, userMessage, history)
 	case models.StateIntake:
 		response, err = f.processIntakeState(ctx, participantID, userMessage, history)
+	case models.StatePromptGenerator:
+		response, err = f.processPromptGeneratorState(ctx, participantID, userMessage, history)
 	case models.StateFeedback:
 		response, err = f.processFeedbackState(ctx, participantID, userMessage, history)
 	default:
-		// Unknown state - fallback to coordinator
-		slog.Warn("ConversationFlow.processConversationMessage: unknown conversation state, falling back to coordinator",
+		// Unknown state - default to INTAKE
+		slog.Warn("ConversationFlow.processConversationMessage: unknown conversation state, defaulting to INTAKE",
 			"conversationState", conversationState, "participantID", participantID)
-		response, err = f.processCoordinatorState(ctx, participantID, userMessage, history)
+		if f.stateManager != nil {
+			_ = f.stateManager.SetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyConversationState, string(models.StateIntake))
+		}
+		response, err = f.processIntakeState(ctx, participantID, userMessage, history)
 	}
 
 	if err != nil {
@@ -449,6 +451,8 @@ func (f *ConversationFlow) saveConversationHistory(ctx context.Context, particip
 
 // buildOpenAIMessages creates OpenAI message array with system prompt, participant background, and conversation history.
 // Follows the structure: system prompt + user background (as system message) + conversation history + current instruction
+//
+//lint:ignore U1000 kept for potential reuse in tool-enabled flows and debug exports
 func (f *ConversationFlow) buildOpenAIMessages(ctx context.Context, participantID string, history *ConversationHistory) ([]openai.ChatCompletionMessageParamUnion, error) {
 	messages := []openai.ChatCompletionMessageParamUnion{}
 
@@ -498,6 +502,8 @@ func (f *ConversationFlow) buildOpenAIMessages(ctx context.Context, participantI
 }
 
 // getParticipantBackground retrieves participant background information from state storage
+//
+//lint:ignore U1000 kept for future conversational context building and used by debug tooling
 func (f *ConversationFlow) getParticipantBackground(ctx context.Context, participantID string) (string, error) {
 	// Try to get participant background from state data
 	background, err := f.stateManager.GetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyParticipantBackground)
@@ -519,6 +525,8 @@ func (f *ConversationFlow) getParticipantBackground(ctx context.Context, partici
 }
 
 // getProfileStatus checks the user's profile completeness and returns status information for the AI
+//
+//lint:ignore U1000 kept for future conversational context building and used by debug tooling
 func (f *ConversationFlow) getProfileStatus(ctx context.Context, participantID string) string {
 	// Try to get user profile
 	profileJSON, err := f.stateManager.GetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyUserProfile)
@@ -693,7 +701,7 @@ func (f *ConversationFlow) buildDebugInfo(ctx context.Context, participantID str
 // getCurrentConversationState retrieves the current conversation state for a participant.
 func (f *ConversationFlow) getCurrentConversationState(ctx context.Context, participantID string) (models.StateType, error) {
 	if f.stateManager == nil {
-		return models.StateCoordinator, nil // Default to coordinator if no state manager
+		return models.StateIntake, nil // Default to intake if no state manager
 	}
 
 	stateStr, err := f.stateManager.GetStateData(ctx, participantID, models.FlowTypeConversation,
@@ -702,9 +710,9 @@ func (f *ConversationFlow) getCurrentConversationState(ctx context.Context, part
 		return "", err
 	}
 
-	// Default to COORDINATOR if no state is set
+	// Default to INTAKE if no state is set
 	if stateStr == "" {
-		return models.StateCoordinator, nil
+		return models.StateIntake, nil
 	}
 
 	return models.StateType(stateStr), nil
@@ -712,32 +720,7 @@ func (f *ConversationFlow) getCurrentConversationState(ctx context.Context, part
 
 // processCoordinatorState handles messages when in the coordinator state.
 // The coordinator decides which tools to use and can transition to other states.
-func (f *ConversationFlow) processCoordinatorState(ctx context.Context, participantID, userMessage string, history *ConversationHistory) (string, error) {
-	slog.Debug("ConversationFlow.processCoordinatorState: delegating to coordinator module",
-		"participantID", participantID)
-
-	if f.coordinatorModule == nil {
-		return "", fmt.Errorf("coordinator module not available")
-	}
-
-	// Convert conversation history to OpenAI format
-	chatHistory, err := f.buildOpenAIMessages(ctx, participantID, history)
-	if err != nil {
-		slog.Error("ConversationFlow.processCoordinatorState: failed to build chat history", "error", err, "participantID", participantID)
-		return "", fmt.Errorf("failed to build chat history: %w", err)
-	}
-
-	// Remove the system prompt from chat history since coordinator module will add its own
-	if len(chatHistory) > 0 {
-		// Check if first message is system message and remove it
-		if msg := chatHistory[0]; msg.OfSystem != nil {
-			chatHistory = chatHistory[1:]
-		}
-	}
-
-	// Delegate to coordinator module
-	return f.coordinatorModule.ProcessMessageWithHistory(ctx, participantID, userMessage, chatHistory, history)
-}
+// Coordinator state removed in new design
 
 // processIntakeState handles messages when in the intake state.
 // The intake module directly processes the conversation without using tools.
@@ -813,6 +796,40 @@ func (f *ConversationFlow) processFeedbackState(ctx context.Context, participant
 	if f.feedbackModule != nil {
 		f.feedbackModule.CancelPendingFeedback(ctx, participantID)
 		slog.Debug("ConversationFlow.processFeedbackState: cancelled pending feedback timers", "participantID", participantID)
+	}
+
+	return response, nil
+}
+
+// processPromptGeneratorState handles messages when in the prompt generator state.
+// The prompt generator module directly processes generation requests and may schedule delivery or hand off to feedback.
+func (f *ConversationFlow) processPromptGeneratorState(ctx context.Context, participantID, userMessage string, history *ConversationHistory) (string, error) {
+	slog.Debug("ConversationFlow.processPromptGeneratorState: processing prompt generation message",
+		"participantID", participantID)
+
+	if f.promptGeneratorMod == nil {
+		return "", fmt.Errorf("prompt generator module not available")
+	}
+
+	// Get previous chat history for context
+	chatHistory, err := f.getPreviousChatHistory(ctx, participantID, 50)
+	if err != nil {
+		slog.Warn("flow.failed to get chat history for prompt generator", "error", err, "participantID", participantID)
+		chatHistory = []openai.ChatCompletionMessageParamUnion{}
+	}
+
+	args := map[string]interface{}{
+		"user_response": userMessage,
+	}
+
+	response, err := f.promptGeneratorMod.ExecutePromptGeneratorWithHistoryAndConversation(ctx, participantID, args, chatHistory, history)
+	if err != nil {
+		slog.Error("ConversationFlow.processPromptGeneratorState: prompt generation execution failed", "error", err, "participantID", participantID)
+		return "", fmt.Errorf("prompt generation processing failed: %w", err)
+	}
+
+	if f.debugMode {
+		f.sendDebugMessage(ctx, participantID, fmt.Sprintf("Executed PromptGeneratorModule.ExecutePromptGeneratorWithHistory() - Response length: %d", len(response)))
 	}
 
 	return response, nil
