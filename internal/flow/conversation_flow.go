@@ -712,6 +712,8 @@ func (f *ConversationFlow) getCurrentConversationState(ctx context.Context, part
 
 	// Default to INTAKE if no state is set
 	if stateStr == "" {
+		// Persist the default for clarity and future routing
+		_ = f.stateManager.SetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyConversationState, string(models.StateIntake))
 		return models.StateIntake, nil
 	}
 
