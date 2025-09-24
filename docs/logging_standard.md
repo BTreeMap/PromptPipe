@@ -4,7 +4,7 @@
 
 All log messages should follow this format:
 
-```
+```text
 [Component].[Function]: [Purpose/Action] [status]
 ```
 
@@ -19,16 +19,15 @@ All log messages should follow this format:
 ### Flow Package
 
 - `ConversationFlow` - conversation flow operations
-- `SchedulerTool` - scheduling operations  
-- `OneMinuteInterventionTool` - intervention operations
+- `SchedulerTool` - scheduling operations
 - `SimpleTimer` - timer operations
 - `StateManager` - state management operations
-- `MicroHealthInterventionGenerator` - micro health intervention operations
+- `CoordinatorModule`, `IntakeModule`, `FeedbackModule` - conversation modules
 
 ### API Package
 
 - `Server` - HTTP server operations
-- `Handler` - HTTP request handling
+- `Handlers` - HTTP request handling
 
 ### Messaging Package
 

@@ -19,8 +19,7 @@ The original PromptPipe application had critical state persistence issues that c
 
 ### 2. **Flow-Specific Recovery** (`internal/flow/`)
 
-- **`MicroHealthInterventionRecovery`**: Handles intervention participant recovery
-- **`ConversationFlowRecovery`**: Handles conversation participant recovery
+- **`ConversationFlowRecovery`**: Handles conversation participant recovery (the current flow type)
 - Each flow manages its own business logic while using generic infrastructure
 
 ### 3. **Application Integration** (`internal/api/api.go`)
@@ -57,14 +56,13 @@ The existing database schema already supports all required state persistence:
 -- Flow states with current state and timer IDs in state_data
 CREATE TABLE flow_states (
     participant_id TEXT NOT NULL,
-    flow_type TEXT NOT NULL, 
+    flow_type TEXT NOT NULL,
     current_state TEXT NOT NULL,
-    state_data TEXT,  -- JSON with timer IDs and other state
+    state_data TEXT,
     ...
 );
 
--- Participant tables for recovery enumeration
-CREATE TABLE intervention_participants (...);
+-- Participant table for recovery enumeration
 CREATE TABLE conversation_participants (...);
 ```
 
@@ -112,8 +110,6 @@ recoveryManager := recovery.NewRecoveryManager(store, timer)
 
 // Register flow recoveries
 stateManager := flow.NewStoreBasedStateManager(store)
-recoveryManager.RegisterRecoverable(
-    flow.NewMicroHealthInterventionRecovery(stateManager))
 recoveryManager.RegisterRecoverable(
     flow.NewConversationFlowRecovery())
 

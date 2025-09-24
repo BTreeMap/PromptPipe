@@ -30,13 +30,13 @@ The command line flag takes precedence over the environment variable.
 
 When debug mode is enabled, API call logs are stored in:
 
-```
+```text
 {STATE_DIR}/debug/
 ```
 
 Each log file is named using the format:
 
-```
+```text
 YYYY-MM-DD.HH-MM-SS.{16-character-random-hex}.json
 ```
 

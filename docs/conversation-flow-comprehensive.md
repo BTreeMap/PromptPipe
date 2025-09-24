@@ -32,7 +32,7 @@ The conversation flow system enables persistent, AI-powered conversational inter
 
 ### High-Level Data Flow
 
-```
+```text
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
 │   User/Client   │ -> │  Bot Runtime    │ -> │   Flow Engine   │
 │  (WhatsApp/SMS) │    │  (whatsmeow)    │    │ (Conversation)  │
@@ -67,13 +67,13 @@ The conversation flow system enables persistent, AI-powered conversational inter
 
 **Key Functions**:
 
-- `enrollConversationParticipantHandler`: Participant registration
+- Participant enrollment, list/get/update/delete handlers
 - Phone number validation and canonicalization
 - Initial state setup and background context storage
 
 **Data Flow**:
 
-```
+```text
 HTTP Request -> JSON Validation -> Phone Canonicalization -> 
 Participant Creation -> State Initialization -> Background Storage
 ```
@@ -82,24 +82,26 @@ Participant Creation -> State Initialization -> Background Storage
 
 ```go
 type ConversationEnrollmentRequest struct {
-    PhoneNumber string `json:"phoneNumber"`
-    Name        string `json:"name"`
+    PhoneNumber string `json:"phone_number"`
+    Name        string `json:"name,omitempty"`
     Gender      string `json:"gender,omitempty"`
     Ethnicity   string `json:"ethnicity,omitempty"`
     Background  string `json:"background,omitempty"`
+    Timezone    string `json:"timezone,omitempty"`
 }
 
 type ConversationParticipant struct {
     ID          string    `json:"id"`
-    PhoneNumber string    `json:"phoneNumber"`
-    Name        string    `json:"name"`
+    PhoneNumber string    `json:"phone_number"`
+    Name        string    `json:"name,omitempty"`
     Gender      string    `json:"gender,omitempty"`
     Ethnicity   string    `json:"ethnicity,omitempty"`
     Background  string    `json:"background,omitempty"`
+    Timezone    string    `json:"timezone,omitempty"`
     Status      string    `json:"status"`
-    EnrolledAt  time.Time `json:"enrolledAt"`
-    CreatedAt   time.Time `json:"createdAt"`
-    UpdatedAt   time.Time `json:"updatedAt"`
+    EnrolledAt  time.Time `json:"enrolled_at"`
+    CreatedAt   time.Time `json:"created_at"`
+    UpdatedAt   time.Time `json:"updated_at"`
 }
 ```
 
@@ -193,7 +195,7 @@ type StateManager interface {
 
 **Data Flow**:
 
-```
+```text
 1. HTTP Request Received
    └── JSON payload with participant details
 
@@ -244,7 +246,7 @@ type StateManager interface {
 
 **Data Flow**:
 
-```
+```text
 1. Message Reception
    └── WhatsApp/SMS service receives message
    └── Creates models.Response object
@@ -299,7 +301,7 @@ type StateManager interface {
 
 **Persistence Points**:
 
-```
+```text
 1. Conversation History
    └── JSON-serialized in flow_states.state_data
    └── Key: DataKeyConversationHistory
@@ -322,7 +324,7 @@ type StateManager interface {
 
 **Recovery Process**:
 
-```
+```text
 1. Application Startup
    └── Recovery system initialization
 
@@ -465,7 +467,7 @@ err = sm.store.SaveFlowState(flowState)
 
 ### 1. Message Reception
 
-```
+```text
 WhatsApp Service -> models.Response -> ResponseHandler.ProcessResponse()
 ```
 

@@ -37,7 +37,7 @@ The scheduler now intelligently determines whether to schedule for today or tomo
 
 Users now receive preparation messages that help them mentally prepare for their habit:
 
-```
+```text
 "Your 8:00 AM meditation session is starting in 10 minutes. 
 Take a moment to prepare your space and mind."
 ```
@@ -137,17 +137,18 @@ params := models.SchedulerToolParams{
 
 ### Same-Day Scheduling for Testing
 
-The unified approach makes testing much easier:
+The unified approach makes testing much easier. You can create a schedule close to the current time using the public `/schedule` endpoint:
 
 ```bash
-# Schedule for 15 minutes from now
-current_time=$(date '+%H:%M')
-target_time=$(date -d '+15 minutes' '+%H:%M')
+# Schedule for ~15 minutes from now via /schedule
+target_minute=$(date -d '+15 minutes' '+%M')
+target_hour=$(date -d '+15 minutes' '+%H')
 
-curl -X POST /scheduler \
-  -d "{\"action\":\"create\", \"type\":\"fixed\", \"fixed_time\":\"$target_time\"}"
+curl -s -X POST http://localhost:8080/schedule \
+  -H 'Content-Type: application/json' \
+  -d "{\"to\":\"+15551234567\",\"type\":\"static\",\"body\":\"Test\",\"schedule\":{\"hour\":$target_hour,\"minute\":$target_minute}}"
 
-# Will get prep message in ~5 minutes (15min - 10min prep time)
+# With prep time set to 10 minutes, the prep notification will occur ~5 minutes from now
 ```
 
 ### Debug Scenarios
@@ -160,7 +161,7 @@ curl -X POST /scheduler \
 
 ### 1. Schedule Creation Flow
 
-```
+```text
 User Request → LLM → SchedulerTool.ExecuteScheduler() 
 ↓
 determineTargetTime() → shouldScheduleToday() → buildSchedule()
@@ -172,7 +173,7 @@ Success Response with prep time explanation
 
 ### 2. Message Delivery Flow
 
-```
+```text
 Timer Triggers → executeScheduledPrompt()
 ↓
 PromptGenerator.ExecutePromptGenerator() (if available)
