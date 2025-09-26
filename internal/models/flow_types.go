@@ -25,9 +25,8 @@ const (
 const (
 	StateConversationActive StateType = "CONVERSATION_ACTIVE"
 	// Removed: StateCoordinator (deprecated in new design)
-	StateIntake          StateType = "INTAKE"           // Intake bot conversations (default sub-state)
-	StatePromptGenerator StateType = "PROMPT_GENERATOR" // Prompt generator bot conversations
-	StateFeedback        StateType = "FEEDBACK"         // Feedback tracker conversations
+	StateIntake   StateType = "INTAKE"   // Intake bot conversations (default sub-state)
+	StateFeedback StateType = "FEEDBACK" // Feedback tracker conversations
 )
 
 // Data key constants for conversation flow.
@@ -41,7 +40,7 @@ const (
 	DataKeyFeedbackTimerID         DataKey = "feedbackTimerID"         // For tracking initial feedback timer
 	DataKeyFeedbackFollowupTimerID DataKey = "feedbackFollowupTimerID" // For tracking follow-up feedback timer
 	DataKeyScheduleRegistry        DataKey = "scheduleRegistry"        // For storing active schedules metadata
-	DataKeyConversationState       DataKey = "conversationState"       // For tracking current conversation sub-state (INTAKE, PROMPT_GENERATOR, FEEDBACK)
+	DataKeyConversationState       DataKey = "conversationState"       // For tracking current conversation sub-state (INTAKE or FEEDBACK)
 	DataKeyStateTransitionTimerID  DataKey = "stateTransitionTimerID"  // For delayed state transitions
 	DataKeyLastPromptSentAt        DataKey = "lastPromptSentAt"        // Timestamp of last scheduled habit prompt delivery (RFC3339)
 	DataKeyAutoFeedbackTimerID     DataKey = "autoFeedbackTimerID"     // Timer ID for 5-min auto feedback enforcement

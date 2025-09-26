@@ -22,15 +22,12 @@ func TestConversationFlow_DefaultsToIntake(t *testing.T) {
 
 	intake := NewIntakeModule(sm, gen, msg, "intake.txt", stt, prof, sched, pgt)
 	feedback := NewFeedbackModuleWithTimeouts(sm, gen, "feedback.txt", timer, msg, "15m", "3h", stt, prof, sched)
-	promptMod := NewPromptGeneratorModule(sm, gen, msg, stt, sched, prof, pgt)
-
 	f := &ConversationFlow{
 		stateManager:        sm,
 		genaiClient:         gen,
 		intakeModule:        intake,
 		feedbackModule:      feedback,
 		promptGeneratorTool: pgt,
-		promptGeneratorMod:  promptMod,
 		stateTransitionTool: stt,
 		profileSaveTool:     prof,
 	}
@@ -56,8 +53,8 @@ func TestConversationFlow_DefaultsToIntake(t *testing.T) {
 	}
 }
 
-// Tests that when sub-state is PROMPT_GENERATOR, routing goes to PromptGeneratorModule.
-func TestConversationFlow_RoutesToPromptGenerator(t *testing.T) {
+// Tests that a legacy PROMPT_GENERATOR state falls back to the intake module.
+func TestConversationFlow_LegacyPromptGeneratorStateFallsBackToIntake(t *testing.T) {
 	sm := NewMockStateManager()
 	gen := &MockGenAIClientWithTools{shouldCallTools: false}
 	msg := &MockMessagingService{}
@@ -70,15 +67,12 @@ func TestConversationFlow_RoutesToPromptGenerator(t *testing.T) {
 
 	intake := NewIntakeModule(sm, gen, msg, "intake.txt", stt, prof, sched, pgt)
 	feedback := NewFeedbackModuleWithTimeouts(sm, gen, "feedback.txt", timer, msg, "15m", "3h", stt, prof, sched)
-	promptMod := NewPromptGeneratorModule(sm, gen, msg, stt, sched, prof, pgt)
-
 	f := &ConversationFlow{
 		stateManager:        sm,
 		genaiClient:         gen,
 		intakeModule:        intake,
 		feedbackModule:      feedback,
 		promptGeneratorTool: pgt,
-		promptGeneratorMod:  promptMod,
 		stateTransitionTool: stt,
 		profileSaveTool:     prof,
 	}
@@ -86,13 +80,19 @@ func TestConversationFlow_RoutesToPromptGenerator(t *testing.T) {
 	ctx := context.Background()
 	participantID := "user-2"
 	_ = sm.SetCurrentState(ctx, participantID, models.FlowTypeConversation, models.StateConversationActive)
-	_ = sm.SetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyConversationState, string(models.StatePromptGenerator))
+	_ = sm.SetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyConversationState, "PROMPT_GENERATOR")
 
 	out, err := f.ProcessResponse(ctx, participantID, "please generate a prompt")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if out == "" {
-		t.Fatalf("expected non-empty response from prompt generator module")
+		t.Fatalf("expected non-empty response when falling back to intake")
+	}
+
+	// Verify the state was corrected back to INTAKE
+	stateVal, _ := sm.GetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyConversationState)
+	if stateVal != string(models.StateIntake) {
+		t.Fatalf("expected fallback state INTAKE, got %s", stateVal)
 	}
 }
