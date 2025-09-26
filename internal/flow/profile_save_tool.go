@@ -79,7 +79,11 @@ func (pst *ProfileSaveTool) GetToolDefinition() openai.ChatCompletionToolParam {
 						"type":        "string",
 						"description": "Last prompt that worked well for the user (for feedback tracking)",
 					},
-					"last_barrier": map[string]interface{}{
+					"last_motivator": map[string]interface{}{
+						"type":        "string",
+						"description": "Last reported motivator or reason (for feedback tracking)",
+					},
+					"last_blocker": map[string]interface{}{
 						"type":        "string",
 						"description": "Last reported barrier or challenge (for feedback tracking)",
 					},
