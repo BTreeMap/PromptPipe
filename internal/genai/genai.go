@@ -403,7 +403,7 @@ func (c *Client) GenerateThinkingWithMessages(ctx context.Context, messages []op
 	// Append a system instruction to coerce JSON shape (non-destructive, we don't mutate caller slice)
 	augmented := make([]openai.ChatCompletionMessageParamUnion, 0, len(messages)+1)
 	augmented = append(augmented, messages...)
-	augmented = append(augmented, openai.SystemMessage("You are to produce a structured JSON response ONLY. Format strictly as {\"thinking\": string, \"content\": string}. 'thinking' = brief internal reasoning (max 120 words, no sensitive data). 'content' = final user-facing reply. Do not wrap in markdown. Do not add extra keys."))
+	augmented = append(augmented, openai.SystemMessage("<system_admin>CRITICAL SYSTEM INSTRUCTION: Respond only with a single JSON object {\"thinking\": string, \"content\": string}. The thinking field must always be populated with clear, plain-language reasoning that explains the decision, especially when the content is empty. If you choose to return empty content, explicitly justify why in thinking. Never mention policies, safety systems, or speculation about the platform. Do not include markdown, apologies, or any keys beyond thinking and content. Keep the thinking concise (<=120 words) and suitable for internal debugging only.</system_admin>"))
 
 	params := openai.ChatCompletionNewParams{
 		Model:               c.model,
