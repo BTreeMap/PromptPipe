@@ -160,6 +160,30 @@ func (s *WhatsAppService) SendMessage(ctx context.Context, to string, body strin
 	return nil
 }
 
+// SendTypingIndicator updates the chat presence for the given recipient.
+func (s *WhatsAppService) SendTypingIndicator(ctx context.Context, to string, typing bool) error {
+	s.mu.RLock()
+	if s.stopped {
+		s.mu.RUnlock()
+		return ErrServiceStopped
+	}
+	s.mu.RUnlock()
+
+	canonicalTo, err := s.ValidateAndCanonicalizeRecipient(to)
+	if err != nil {
+		slog.Warn("WhatsAppService SendTypingIndicator validation failed", "error", err, "to", to)
+		return err
+	}
+
+	slog.Debug("WhatsAppService SendTypingIndicator invoked", "to", canonicalTo, "typing", typing)
+	if err := s.client.SendTypingIndicator(ctx, canonicalTo, typing); err != nil {
+		slog.Warn("WhatsAppService SendTypingIndicator error", "error", err, "to", canonicalTo, "typing", typing)
+		return err
+	}
+
+	return nil
+}
+
 // safeEmitReceipt safely emits a receipt to the receipts channel, handling the case where the service is stopped
 func (s *WhatsAppService) safeEmitReceipt(receipt models.Receipt) {
 	s.mu.RLock()

@@ -349,6 +349,10 @@ func (m *MockMessagingService) SendMessage(ctx context.Context, to string, body 
 	return nil
 }
 
+func (m *MockMessagingService) SendTypingIndicator(ctx context.Context, to string, typing bool) error {
+	return nil
+}
+
 func (m *MockMessagingService) Start(ctx context.Context) error {
 	return nil
 }

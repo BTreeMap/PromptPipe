@@ -33,6 +33,7 @@ type SchedulerTool struct {
 type MessagingService interface {
 	ValidateAndCanonicalizeRecipient(recipient string) (string, error)
 	SendMessage(ctx context.Context, to, message string) error
+	SendTypingIndicator(ctx context.Context, to string, typing bool) error
 }
 
 // PromptGeneratorService defines the interface for prompt generation operations.

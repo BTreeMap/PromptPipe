@@ -37,6 +37,38 @@ func TestWhatsAppService_SendMessage_Receipt(t *testing.T) {
 	}
 }
 
+func TestWhatsAppService_SendTypingIndicator(t *testing.T) {
+	mockClient := whatsapp.NewMockClient()
+	svc := NewWhatsAppService(mockClient)
+	ctx := context.Background()
+	to := "+1234567890"
+
+	if err := svc.SendTypingIndicator(ctx, to, true); err != nil {
+		t.Fatalf("SendTypingIndicator returned error: %v", err)
+	}
+	if len(mockClient.TypingEvents) != 1 {
+		t.Fatalf("expected 1 typing event, got %d", len(mockClient.TypingEvents))
+	}
+	event := mockClient.TypingEvents[0]
+	if event.To != "1234567890" {
+		t.Errorf("expected canonical recipient 1234567890, got %s", event.To)
+	}
+	if !event.Typing {
+		t.Errorf("expected typing state true, got false")
+	}
+
+	// Ensure stop event works too
+	if err := svc.SendTypingIndicator(ctx, to, false); err != nil {
+		t.Fatalf("SendTypingIndicator stop returned error: %v", err)
+	}
+	if len(mockClient.TypingEvents) != 2 {
+		t.Fatalf("expected 2 typing events, got %d", len(mockClient.TypingEvents))
+	}
+	if mockClient.TypingEvents[1].Typing {
+		t.Errorf("expected typing state false for stop")
+	}
+}
+
 // Test Start and Stop do not error and close channels
 func TestWhatsAppService_StartStop(t *testing.T) {
 	mockClient := whatsapp.NewMockClient()

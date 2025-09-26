@@ -704,6 +704,15 @@ func CreateConversationHook(participantID string, msgService Service) ResponseAc
 		}
 
 		// Process the response through the conversation flow
+		if err := msgService.SendTypingIndicator(ctx, from, true); err != nil {
+			slog.Debug("ConversationHook typing indicator start failed", "error", err, "participantID", participantID)
+		}
+		defer func() {
+			if err := msgService.SendTypingIndicator(ctx, from, false); err != nil {
+				slog.Debug("ConversationHook typing indicator stop failed", "error", err, "participantID", participantID)
+			}
+		}()
+
 		aiResponse, err := conversationFlow.ProcessResponse(ctx, participantID, responseText)
 		if err != nil {
 			slog.Error("ConversationHook flow processing failed", "error", err, "participantID", participantID)

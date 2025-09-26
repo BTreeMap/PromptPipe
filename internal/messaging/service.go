@@ -17,6 +17,10 @@ type Service interface {
 	// SendMessage sends a message to a recipient.
 	SendMessage(ctx context.Context, to string, body string) error
 
+	// SendTypingIndicator updates the recipient's chat presence to show or hide a typing indicator.
+	// Implementations should treat this as best-effort and not fail hard if the provider doesn't support it.
+	SendTypingIndicator(ctx context.Context, to string, typing bool) error
+
 	// Start begins any background processing (e.g., polling for events).
 	Start(ctx context.Context) error
 

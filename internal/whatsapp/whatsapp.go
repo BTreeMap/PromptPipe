@@ -31,6 +31,7 @@ const (
 // WhatsAppSender is an interface for sending WhatsApp messages (for production and testing)
 type WhatsAppSender interface {
 	SendMessage(ctx context.Context, to string, body string) error
+	SendTypingIndicator(ctx context.Context, to string, typing bool) error
 }
 
 // Opts holds configuration options for the WhatsApp client.
@@ -202,6 +203,36 @@ func (c *Client) SendMessage(ctx context.Context, to string, body string) error 
 	return nil
 }
 
+// SendTypingIndicator updates the chat presence state (typing indicator) for a conversation.
+func (c *Client) SendTypingIndicator(ctx context.Context, to string, typing bool) error {
+	if c.waClient == nil {
+		return fmt.Errorf("whatsapp client not initialized")
+	}
+	if to == "" {
+		return fmt.Errorf("recipient cannot be empty")
+	}
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
+	jid := types.NewJID(to, JIDSuffix)
+	presence := types.ChatPresencePaused
+	if typing {
+		presence = types.ChatPresenceComposing
+	}
+
+	if err := c.waClient.SendChatPresence(jid, presence, types.ChatPresenceMediaText); err != nil {
+		slog.Error("Failed to send WhatsApp typing indicator", "to", to, "error", err, "typing", typing)
+		return fmt.Errorf("failed to send typing indicator: %w", err)
+	}
+
+	slog.Debug("WhatsApp typing indicator sent", "to", to, "typing", typing)
+	return nil
+}
+
 // GetClient returns the underlying whatsmeow client for event handling
 func (c *Client) GetClient() *whatsmeow.Client {
 	return c.waClient
@@ -212,6 +243,7 @@ func (c *Client) GetClient() *whatsmeow.Client {
 // Update api_test.go to use MockClient for waClient.
 type MockClient struct {
 	SentMessages []SentMessage
+	TypingEvents []TypingEvent
 }
 
 // SentMessage represents a message sent via MockClient for testing
@@ -223,6 +255,7 @@ type SentMessage struct {
 func NewMockClient() *MockClient {
 	return &MockClient{
 		SentMessages: make([]SentMessage, 0),
+		TypingEvents: make([]TypingEvent, 0),
 	}
 }
 
@@ -242,4 +275,16 @@ func (m *MockClient) SendMessage(ctx context.Context, to string, body string) er
 	})
 
 	return nil
+}
+
+// SendTypingIndicator records typing indicator state changes for testing.
+func (m *MockClient) SendTypingIndicator(ctx context.Context, to string, typing bool) error {
+	m.TypingEvents = append(m.TypingEvents, TypingEvent{To: to, Typing: typing})
+	return nil
+}
+
+// TypingEvent captures mock typing indicator invocations for assertions.
+type TypingEvent struct {
+	To     string
+	Typing bool
 }

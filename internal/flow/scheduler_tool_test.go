@@ -75,6 +75,11 @@ func (m *MockMessagingService) SendMessage(ctx context.Context, to, message stri
 	return nil
 }
 
+func (m *MockMessagingService) SendTypingIndicator(ctx context.Context, to string, typing bool) error {
+	slog.Debug("MockMessagingService.SendTypingIndicator", "to", to, "typing", typing)
+	return nil
+}
+
 func TestSchedulerTool_GetToolDefinition(t *testing.T) {
 	timer := &MockTimer{}
 	msgService := &MockMessagingService{}
