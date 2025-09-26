@@ -425,12 +425,13 @@ func (c *Client) GenerateThinkingWithMessages(ctx context.Context, messages []op
 	raw := strings.TrimSpace(resp.Choices[0].Message.Content)
 
 	tr := &ThinkingResponse{}
-	if err := json.Unmarshal([]byte(raw), tr); err != nil || (tr.Thinking == "" && tr.Content == "") {
+	if err := json.Unmarshal([]byte(raw), tr); err != nil {
 		// Fallback: treat entire output as content
 		slog.Warn("GenerateThinkingWithMessages: JSON parse failed, using raw content fallback", "error", err)
 		tr.Thinking = ""
 		tr.Content = raw
 	}
+	normalizeThinking(tr, "thinking_with_messages")
 	return tr, nil
 }
 
@@ -469,12 +470,16 @@ func (c *Client) GenerateThinkingWithTools(ctx context.Context, messages []opena
 	// Parse thinking/content JSON if possible
 	var temp ThinkingResponse
 	if err := json.Unmarshal([]byte(raw), &temp); err == nil {
+		normalizeThinking(&temp, "thinking_with_tools")
 		result.Thinking = temp.Thinking
 		result.Content = temp.Content
 	} else {
 		// Fallback: treat raw as user-facing content
 		slog.Warn("GenerateThinkingWithTools: JSON parse failed, using raw content fallback", "error", err)
-		result.Content = raw
+		temp = ThinkingResponse{Thinking: "", Content: raw}
+		normalizeThinking(&temp, "thinking_with_tools_parse_fallback")
+		result.Thinking = temp.Thinking
+		result.Content = temp.Content
 	}
 
 	// Extract tool calls
@@ -490,4 +495,32 @@ func (c *Client) GenerateThinkingWithTools(ctx context.Context, messages []opena
 	}
 
 	return result, nil
+}
+
+// normalizeThinking enforces that the thinking field is always populated and clarifies empty content cases.
+func normalizeThinking(tr *ThinkingResponse, origin string) {
+	trimmedThinking := strings.TrimSpace(tr.Thinking)
+	trimmedContent := strings.TrimSpace(tr.Content)
+
+	if trimmedThinking == "" {
+		if trimmedContent == "" {
+			tr.Thinking = fmt.Sprintf("System fallback (%s): the model returned empty user-facing content without explanation. Empty content is being surfaced intentionally so upstream logic can decide next steps.", origin)
+		} else {
+			tr.Thinking = fmt.Sprintf("System fallback (%s): the model omitted its reasoning. Passing the generated content through as-is.", origin)
+		}
+	} else {
+		tr.Thinking = trimmedThinking
+	}
+
+	if trimmedContent == "" {
+		if !strings.Contains(strings.ToLower(tr.Thinking), "empty user") {
+			if !strings.HasSuffix(tr.Thinking, ".") {
+				tr.Thinking += "."
+			}
+			tr.Thinking += " It is intentionally returning empty user-facing content to signal no message should be sent."
+		}
+		tr.Content = ""
+	} else {
+		tr.Content = trimmedContent
+	}
 }
