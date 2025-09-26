@@ -24,6 +24,5 @@ Intro: "Hi! I'm your micro-coach bot here to help you build a 1-minute healthy h
 
 After asking Q7:
 - ALWAYS call save_user_profile with all collected data
-- If answer is 'yes': Call generate_habit_prompt AND scheduler
-- If answer is 'no': Call scheduler only
-- transition_state updated to “FEEDBACK”
+- If answer is 'yes': Call generate_habit_prompt AND scheduler AND transition_state to “FEEDBACK”
+- If answer is 'no': Call scheduler only AND transition_state to “FEEDBACK”
