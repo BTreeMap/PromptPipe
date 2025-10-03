@@ -31,17 +31,21 @@ const (
 
 // Data key constants for conversation flow.
 const (
-	DataKeyConversationHistory     DataKey = "conversationHistory"
-	DataKeySystemPrompt            DataKey = "systemPrompt"
-	DataKeyParticipantBackground   DataKey = "participantBackground"
-	DataKeyUserProfile             DataKey = "userProfile"             // For storing structured user profiles
-	DataKeyLastHabitPrompt         DataKey = "lastHabitPrompt"         // For tracking the last habit prompt sent
-	DataKeyFeedbackState           DataKey = "feedbackState"           // For tracking feedback collection state
-	DataKeyFeedbackTimerID         DataKey = "feedbackTimerID"         // For tracking initial feedback timer
-	DataKeyFeedbackFollowupTimerID DataKey = "feedbackFollowupTimerID" // For tracking follow-up feedback timer
-	DataKeyScheduleRegistry        DataKey = "scheduleRegistry"        // For storing active schedules metadata
-	DataKeyConversationState       DataKey = "conversationState"       // For tracking current conversation sub-state (INTAKE or FEEDBACK)
-	DataKeyStateTransitionTimerID  DataKey = "stateTransitionTimerID"  // For delayed state transitions
-	DataKeyLastPromptSentAt        DataKey = "lastPromptSentAt"        // Timestamp of last scheduled habit prompt delivery (RFC3339)
-	DataKeyAutoFeedbackTimerID     DataKey = "autoFeedbackTimerID"     // Timer ID for 5-min auto feedback enforcement
+	DataKeyConversationHistory        DataKey = "conversationHistory"
+	DataKeySystemPrompt               DataKey = "systemPrompt"
+	DataKeyParticipantBackground      DataKey = "participantBackground"
+	DataKeyUserProfile                DataKey = "userProfile"                // For storing structured user profiles
+	DataKeyLastHabitPrompt            DataKey = "lastHabitPrompt"            // For tracking the last habit prompt sent
+	DataKeyFeedbackState              DataKey = "feedbackState"              // For tracking feedback collection state
+	DataKeyFeedbackTimerID            DataKey = "feedbackTimerID"            // For tracking initial feedback timer
+	DataKeyFeedbackFollowupTimerID    DataKey = "feedbackFollowupTimerID"    // For tracking follow-up feedback timer
+	DataKeyScheduleRegistry           DataKey = "scheduleRegistry"           // For storing active schedules metadata
+	DataKeyConversationState          DataKey = "conversationState"          // For tracking current conversation sub-state (INTAKE or FEEDBACK)
+	DataKeyStateTransitionTimerID     DataKey = "stateTransitionTimerID"     // For delayed state transitions
+	DataKeyLastPromptSentAt           DataKey = "lastPromptSentAt"           // Timestamp of last scheduled habit prompt delivery (RFC3339)
+	DataKeyAutoFeedbackTimerID        DataKey = "autoFeedbackTimerID"        // Timer ID for 5-min auto feedback enforcement
+	DataKeyDailyPromptPending         DataKey = "dailyPromptPending"         // JSON payload while awaiting a reply to the daily prompt
+	DataKeyDailyPromptReminderTimerID DataKey = "dailyPromptReminderTimerID" // Timer ID for the daily prompt reminder
+	DataKeyDailyPromptReminderSentAt  DataKey = "dailyPromptReminderSentAt"  // Timestamp when the daily prompt reminder was sent
+	DataKeyDailyPromptRespondedAt     DataKey = "dailyPromptRespondedAt"     // Timestamp when the user replied after the daily prompt
 )

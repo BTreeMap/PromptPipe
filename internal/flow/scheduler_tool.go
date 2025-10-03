@@ -16,6 +16,17 @@ import (
 	"github.com/openai/openai-go/shared"
 )
 
+const (
+	defaultDailyPromptReminderDelay   = 5 * time.Hour
+	defaultDailyPromptReminderMessage = "Friendly check-in: we haven't heard back after today's habit prompt. Reply with a quick update when you're ready!"
+)
+
+type dailyPromptPendingState struct {
+	SentAt        string `json:"sent_at"`
+	To            string `json:"to"`
+	ReminderDueAt string `json:"reminder_due_at,omitempty"`
+}
+
 // SchedulerTool provides LLM tool functionality for scheduling daily habit prompts.
 // This unified implementation uses a preparation time approach for both fixed and random scheduling.
 type SchedulerTool struct {
@@ -26,7 +37,8 @@ type SchedulerTool struct {
 	promptGenerator PromptGeneratorService // For generating habit prompts
 	prepTimeMinutes int                    // Preparation time in minutes (default 10)
 	// feature flags / config (direct injection)
-	autoFeedbackEnabled bool // whether to auto enforce feedback after scheduled prompts
+	autoFeedbackEnabled      bool // whether to auto enforce feedback after scheduled prompts
+	dailyPromptReminderDelay time.Duration
 }
 
 // MessagingService defines the interface for messaging operations needed by the scheduler.
@@ -44,42 +56,46 @@ type PromptGeneratorService interface {
 // NewSchedulerTool creates a new scheduler tool instance with default 10-minute preparation time.
 func NewSchedulerTool(timer models.Timer, msgService MessagingService) *SchedulerTool {
 	return &SchedulerTool{
-		timer:           timer,
-		msgService:      msgService,
-		prepTimeMinutes: 10, // Default 10 minutes preparation time
+		timer:                    timer,
+		msgService:               msgService,
+		prepTimeMinutes:          10, // Default 10 minutes preparation time
+		dailyPromptReminderDelay: defaultDailyPromptReminderDelay,
 	}
 }
 
 // NewSchedulerToolWithGenAI creates a new scheduler tool instance with GenAI support.
 func NewSchedulerToolWithGenAI(timer models.Timer, msgService MessagingService, genaiClient genai.ClientInterface) *SchedulerTool {
 	return &SchedulerTool{
-		timer:           timer,
-		msgService:      msgService,
-		genaiClient:     genaiClient,
-		prepTimeMinutes: 10, // Default 10 minutes preparation time
+		timer:                    timer,
+		msgService:               msgService,
+		genaiClient:              genaiClient,
+		prepTimeMinutes:          10, // Default 10 minutes preparation time
+		dailyPromptReminderDelay: defaultDailyPromptReminderDelay,
 	}
 }
 
 // NewSchedulerToolWithStateManager creates a new scheduler tool instance with state management.
 func NewSchedulerToolWithStateManager(timer models.Timer, msgService MessagingService, genaiClient genai.ClientInterface, stateManager StateManager) *SchedulerTool {
 	return &SchedulerTool{
-		timer:           timer,
-		msgService:      msgService,
-		genaiClient:     genaiClient,
-		stateManager:    stateManager,
-		prepTimeMinutes: 10, // Default 10 minutes preparation time
+		timer:                    timer,
+		msgService:               msgService,
+		genaiClient:              genaiClient,
+		stateManager:             stateManager,
+		prepTimeMinutes:          10, // Default 10 minutes preparation time
+		dailyPromptReminderDelay: defaultDailyPromptReminderDelay,
 	}
 }
 
 // NewSchedulerToolComplete creates a new scheduler tool instance with all dependencies.
 func NewSchedulerToolComplete(timer models.Timer, msgService MessagingService, genaiClient genai.ClientInterface, stateManager StateManager, promptGenerator PromptGeneratorService) *SchedulerTool {
 	return &SchedulerTool{
-		timer:           timer,
-		msgService:      msgService,
-		genaiClient:     genaiClient,
-		stateManager:    stateManager,
-		promptGenerator: promptGenerator,
-		prepTimeMinutes: 10, // Default 10 minutes preparation time
+		timer:                    timer,
+		msgService:               msgService,
+		genaiClient:              genaiClient,
+		stateManager:             stateManager,
+		promptGenerator:          promptGenerator,
+		prepTimeMinutes:          10, // Default 10 minutes preparation time
+		dailyPromptReminderDelay: defaultDailyPromptReminderDelay,
 	}
 }
 
@@ -91,14 +107,30 @@ func NewSchedulerToolWithPrepTime(timer models.Timer, msgService MessagingServic
 // NewSchedulerToolWithPrepTimeAndAutoFeedback creates a scheduler with explicit auto-feedback flag.
 func NewSchedulerToolWithPrepTimeAndAutoFeedback(timer models.Timer, msgService MessagingService, genaiClient genai.ClientInterface, stateManager StateManager, promptGenerator PromptGeneratorService, prepTimeMinutes int, autoFeedbackEnabled bool) *SchedulerTool {
 	return &SchedulerTool{
-		timer:               timer,
-		msgService:          msgService,
-		genaiClient:         genaiClient,
-		stateManager:        stateManager,
-		promptGenerator:     promptGenerator,
-		prepTimeMinutes:     prepTimeMinutes,
-		autoFeedbackEnabled: autoFeedbackEnabled,
+		timer:                    timer,
+		msgService:               msgService,
+		genaiClient:              genaiClient,
+		stateManager:             stateManager,
+		promptGenerator:          promptGenerator,
+		prepTimeMinutes:          prepTimeMinutes,
+		autoFeedbackEnabled:      autoFeedbackEnabled,
+		dailyPromptReminderDelay: defaultDailyPromptReminderDelay,
 	}
+}
+
+// SetDailyPromptReminderDelay overrides the default reminder delay.
+// A non-positive delay disables the follow-up reminder.
+func (st *SchedulerTool) SetDailyPromptReminderDelay(delay time.Duration) {
+	if st == nil {
+		return
+	}
+
+	if delay <= 0 {
+		st.dailyPromptReminderDelay = 0
+		return
+	}
+
+	st.dailyPromptReminderDelay = delay
 }
 
 // GetToolDefinition returns the OpenAI tool definition for the scheduler.
@@ -308,6 +340,9 @@ func (st *SchedulerTool) executeScheduledPrompt(ctx context.Context, participant
 		}
 	}
 
+	// Schedule mechanical reminder in case the user doesn't respond to the daily prompt.
+	st.scheduleDailyPromptReminder(ctx, participantID, prompt.To)
+
 	// Schedule auto feedback enforcement if feature flag enabled
 	if st.autoFeedbackEnabled && st.timer != nil && st.stateManager != nil {
 		st.scheduleAutoFeedbackEnforcement(ctx, participantID)
@@ -335,6 +370,169 @@ func (st *SchedulerTool) scheduleAutoFeedbackEnforcement(ctx context.Context, pa
 		slog.Warn("SchedulerTool.scheduleAutoFeedbackEnforcement: failed to store enforcement timer ID", "participantID", participantID, "timerID", timerID, "error", err)
 	}
 	slog.Info("SchedulerTool.scheduleAutoFeedbackEnforcement: auto feedback enforcement scheduled", "participantID", participantID, "timerID", timerID, "delayMinutes", enforcementDelay.Minutes())
+}
+
+func (st *SchedulerTool) scheduleDailyPromptReminder(ctx context.Context, participantID, to string) {
+	if st == nil || st.timer == nil || st.stateManager == nil || st.msgService == nil {
+		return
+	}
+
+	if st.dailyPromptReminderDelay <= 0 {
+		return
+	}
+
+	if strings.TrimSpace(to) == "" {
+		slog.Debug("SchedulerTool.scheduleDailyPromptReminder: recipient missing, skipping reminder", "participantID", participantID)
+		return
+	}
+
+	// Cancel any previously scheduled reminder to avoid duplicates.
+	if existingID, err := st.stateManager.GetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyDailyPromptReminderTimerID); err == nil && existingID != "" {
+		if cancelErr := st.timer.Cancel(existingID); cancelErr != nil {
+			slog.Warn("SchedulerTool.scheduleDailyPromptReminder: failed to cancel existing reminder timer", "participantID", participantID, "timerID", existingID, "error", cancelErr)
+		}
+	}
+
+	sentAt := time.Now().UTC()
+	pending := dailyPromptPendingState{
+		SentAt:        sentAt.Format(time.RFC3339),
+		To:            to,
+		ReminderDueAt: sentAt.Add(st.dailyPromptReminderDelay).Format(time.RFC3339),
+	}
+
+	payload, err := json.Marshal(pending)
+	if err != nil {
+		slog.Error("SchedulerTool.scheduleDailyPromptReminder: failed to marshal pending reminder state", "participantID", participantID, "error", err)
+		return
+	}
+
+	if err := st.stateManager.SetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyDailyPromptPending, string(payload)); err != nil {
+		slog.Error("SchedulerTool.scheduleDailyPromptReminder: failed to persist pending reminder state", "participantID", participantID, "error", err)
+		return
+	}
+
+	timerID, err := st.timer.ScheduleAfter(st.dailyPromptReminderDelay, func() {
+		st.sendDailyPromptReminder(participantID, to, pending.SentAt)
+	})
+	if err != nil {
+		slog.Error("SchedulerTool.scheduleDailyPromptReminder: failed to schedule reminder timer", "participantID", participantID, "error", err)
+		return
+	}
+
+	if err := st.stateManager.SetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyDailyPromptReminderTimerID, timerID); err != nil {
+		slog.Warn("SchedulerTool.scheduleDailyPromptReminder: failed to store reminder timer ID", "participantID", participantID, "timerID", timerID, "error", err)
+	}
+
+	slog.Info("SchedulerTool.scheduleDailyPromptReminder: reminder scheduled", "participantID", participantID, "timerID", timerID, "delayHours", st.dailyPromptReminderDelay.Hours())
+}
+
+func (st *SchedulerTool) handleDailyPromptReply(ctx context.Context, participantID string, replyAt time.Time) {
+	if st == nil || st.stateManager == nil {
+		return
+	}
+
+	pendingJSON, err := st.stateManager.GetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyDailyPromptPending)
+	if err != nil {
+		slog.Error("SchedulerTool.handleDailyPromptReply: failed to load pending state", "participantID", participantID, "error", err)
+		return
+	}
+	if strings.TrimSpace(pendingJSON) == "" {
+		return
+	}
+
+	var pending dailyPromptPendingState
+	if err := json.Unmarshal([]byte(pendingJSON), &pending); err != nil {
+		slog.Warn("SchedulerTool.handleDailyPromptReply: invalid pending state payload", "participantID", participantID, "error", err)
+		st.clearDailyPromptReminderState(ctx, participantID)
+		return
+	}
+	if strings.TrimSpace(pending.SentAt) == "" {
+		st.clearDailyPromptReminderState(ctx, participantID)
+		return
+	}
+
+	sentAt, err := time.Parse(time.RFC3339, pending.SentAt)
+	if err != nil {
+		slog.Warn("SchedulerTool.handleDailyPromptReply: unable to parse pending sent timestamp", "participantID", participantID, "error", err)
+		st.clearDailyPromptReminderState(ctx, participantID)
+		return
+	}
+
+	if replyAt.Before(sentAt) {
+		slog.Debug("SchedulerTool.handleDailyPromptReply: reply predates tracked prompt, ignoring", "participantID", participantID)
+		return
+	}
+
+	timerID, err := st.stateManager.GetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyDailyPromptReminderTimerID)
+	if err != nil {
+		slog.Warn("SchedulerTool.handleDailyPromptReply: failed to read reminder timer ID", "participantID", participantID, "error", err)
+	} else if timerID != "" && st.timer != nil {
+		if cancelErr := st.timer.Cancel(timerID); cancelErr != nil {
+			slog.Warn("SchedulerTool.handleDailyPromptReply: failed to cancel reminder timer", "participantID", participantID, "timerID", timerID, "error", cancelErr)
+		}
+	}
+
+	st.clearDailyPromptReminderState(ctx, participantID)
+
+	if err := st.stateManager.SetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyDailyPromptRespondedAt, replyAt.UTC().Format(time.RFC3339)); err != nil {
+		slog.Warn("SchedulerTool.handleDailyPromptReply: failed to record response timestamp", "participantID", participantID, "error", err)
+	}
+}
+
+func (st *SchedulerTool) sendDailyPromptReminder(participantID, to, expectedSentAt string) {
+	if st == nil || st.stateManager == nil || st.msgService == nil {
+		return
+	}
+
+	ctx := context.Background()
+
+	pendingJSON, err := st.stateManager.GetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyDailyPromptPending)
+	if err != nil {
+		slog.Error("SchedulerTool.sendDailyPromptReminder: failed to load pending state", "participantID", participantID, "error", err)
+		return
+	}
+	if strings.TrimSpace(pendingJSON) == "" {
+		slog.Debug("SchedulerTool.sendDailyPromptReminder: no pending reminder found", "participantID", participantID)
+		return
+	}
+
+	var pending dailyPromptPendingState
+	if err := json.Unmarshal([]byte(pendingJSON), &pending); err != nil {
+		slog.Warn("SchedulerTool.sendDailyPromptReminder: invalid pending state payload", "participantID", participantID, "error", err)
+		st.clearDailyPromptReminderState(ctx, participantID)
+		return
+	}
+
+	if pending.SentAt != expectedSentAt {
+		slog.Debug("SchedulerTool.sendDailyPromptReminder: pending state updated, skipping reminder", "participantID", participantID)
+		return
+	}
+
+	if err := st.msgService.SendMessage(ctx, to, defaultDailyPromptReminderMessage); err != nil {
+		slog.Error("SchedulerTool.sendDailyPromptReminder: failed to send reminder message", "participantID", participantID, "error", err)
+		return
+	}
+
+	if err := st.stateManager.SetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyDailyPromptReminderSentAt, time.Now().UTC().Format(time.RFC3339)); err != nil {
+		slog.Warn("SchedulerTool.sendDailyPromptReminder: failed to record reminder timestamp", "participantID", participantID, "error", err)
+	}
+
+	slog.Info("SchedulerTool.sendDailyPromptReminder: reminder sent", "participantID", participantID, "to", to)
+
+	st.clearDailyPromptReminderState(ctx, participantID)
+}
+
+func (st *SchedulerTool) clearDailyPromptReminderState(ctx context.Context, participantID string) {
+	if st == nil || st.stateManager == nil {
+		return
+	}
+
+	if err := st.stateManager.SetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyDailyPromptPending, ""); err != nil {
+		slog.Warn("SchedulerTool.clearDailyPromptReminderState: failed to clear pending state", "participantID", participantID, "error", err)
+	}
+	if err := st.stateManager.SetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyDailyPromptReminderTimerID, ""); err != nil {
+		slog.Warn("SchedulerTool.clearDailyPromptReminderState: failed to clear reminder timer ID", "participantID", participantID, "error", err)
+	}
 }
 
 // enforceFeedbackIfNoResponse executes in background after the enforcement delay.

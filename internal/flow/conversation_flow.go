@@ -320,6 +320,11 @@ func (f *ConversationFlow) processConversationMessage(ctx context.Context, parti
 	}
 	history.Messages = append(history.Messages, userMsg)
 
+	// Mark daily prompt as replied if a reminder is pending
+	if f.schedulerTool != nil {
+		f.schedulerTool.handleDailyPromptReply(ctx, participantID, userMsg.Timestamp)
+	}
+
 	// Get current conversation state to determine routing
 	conversationState, err := f.getCurrentConversationState(ctx, participantID)
 	if err != nil {

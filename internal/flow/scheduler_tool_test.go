@@ -14,6 +14,7 @@ import (
 // Mock timer for testing
 type MockTimer struct {
 	scheduledCalls []ScheduledCall
+	cancelledIDs   []string
 }
 
 type ScheduledCall struct {
@@ -48,6 +49,7 @@ func (m *MockTimer) ScheduleWithSchedule(schedule *models.Schedule, fn func()) (
 }
 
 func (m *MockTimer) Cancel(id string) error {
+	m.cancelledIDs = append(m.cancelledIDs, id)
 	return nil
 }
 
@@ -62,7 +64,14 @@ func (m *MockTimer) GetTimer(id string) (*models.TimerInfo, error) {
 }
 
 // Mock messaging service for testing
-type MockMessagingService struct{}
+type MockMessage struct {
+	To      string
+	Message string
+}
+
+type MockMessagingService struct {
+	sentMessages []MockMessage
+}
 
 func (m *MockMessagingService) ValidateAndCanonicalizeRecipient(recipient string) (string, error) {
 	// Simple validation - assume phone number format
@@ -72,6 +81,7 @@ func (m *MockMessagingService) ValidateAndCanonicalizeRecipient(recipient string
 func (m *MockMessagingService) SendMessage(ctx context.Context, to, message string) error {
 	// Mock sending - just log the operation
 	slog.Debug("MockMessagingService.SendMessage: sending mock message", "to", to, "messageLength", len(message))
+	m.sentMessages = append(m.sentMessages, MockMessage{To: to, Message: message})
 	return nil
 }
 
@@ -248,6 +258,137 @@ func TestSchedulerTool_ExecuteScheduler_CreateRandom(t *testing.T) {
 		if recurringSchedule.Minute == nil || *recurringSchedule.Minute != 50 {
 			t.Errorf("Expected recurring schedule minute=50 (prep time), got %v", recurringSchedule.Minute)
 		}
+	}
+}
+
+func TestSchedulerTool_SchedulesDailyPromptReminder(t *testing.T) {
+	timer := &MockTimer{}
+	msgService := &MockMessagingService{}
+	stateManager := NewMockStateManager()
+	tool := NewSchedulerToolWithStateManager(timer, msgService, nil, stateManager)
+
+	ctx := context.Background()
+	participantID := "reminder-test"
+	prompt := models.Prompt{To: "+1234567890", Type: models.PromptTypeStatic, Body: "Daily prompt"}
+
+	tool.executeScheduledPrompt(ctx, participantID, prompt)
+
+	if len(msgService.sentMessages) != 1 {
+		t.Fatalf("expected exactly one message sent (the prompt), got %d", len(msgService.sentMessages))
+	}
+
+	if len(timer.scheduledCalls) == 0 {
+		t.Fatal("expected reminder timer to be scheduled")
+	}
+
+	foundReminder := false
+	for _, call := range timer.scheduledCalls {
+		if call.Delay != nil && *call.Delay == tool.dailyPromptReminderDelay {
+			foundReminder = true
+		}
+	}
+
+	if !foundReminder {
+		t.Fatalf("expected reminder scheduled with delay %s", tool.dailyPromptReminderDelay)
+	}
+
+	pendingJSON, err := stateManager.GetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyDailyPromptPending)
+	if err != nil {
+		t.Fatalf("unexpected error loading pending state: %v", err)
+	}
+	if strings.TrimSpace(pendingJSON) == "" {
+		t.Fatal("expected pending reminder state to be stored")
+	}
+}
+
+func TestSchedulerTool_DailyPromptReminderClearedOnReply(t *testing.T) {
+	timer := &MockTimer{}
+	msgService := &MockMessagingService{}
+	stateManager := NewMockStateManager()
+	tool := NewSchedulerToolWithStateManager(timer, msgService, nil, stateManager)
+
+	ctx := context.Background()
+	participantID := "reminder-reply"
+	prompt := models.Prompt{To: "+15550000000", Type: models.PromptTypeStatic, Body: "Daily prompt"}
+
+	tool.executeScheduledPrompt(ctx, participantID, prompt)
+
+	pendingJSON, err := stateManager.GetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyDailyPromptPending)
+	if err != nil {
+		t.Fatalf("unexpected error loading pending state: %v", err)
+	}
+	if strings.TrimSpace(pendingJSON) == "" {
+		t.Fatal("expected pending reminder state to exist")
+	}
+
+	var pending dailyPromptPendingState
+	if err := json.Unmarshal([]byte(pendingJSON), &pending); err != nil {
+		t.Fatalf("failed to parse pending state: %v", err)
+	}
+
+	sentAt, err := time.Parse(time.RFC3339, pending.SentAt)
+	if err != nil {
+		t.Fatalf("failed to parse sent timestamp: %v", err)
+	}
+	replyAt := sentAt.Add(10 * time.Minute)
+
+	tool.handleDailyPromptReply(ctx, participantID, replyAt)
+
+	clearedPending, _ := stateManager.GetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyDailyPromptPending)
+	if strings.TrimSpace(clearedPending) != "" {
+		t.Error("expected pending reminder state to be cleared after reply")
+	}
+
+	clearedTimerID, _ := stateManager.GetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyDailyPromptReminderTimerID)
+	if strings.TrimSpace(clearedTimerID) != "" {
+		t.Error("expected reminder timer ID to be cleared after reply")
+	}
+
+	if len(timer.cancelledIDs) == 0 {
+		t.Error("expected reminder timer to be cancelled after reply")
+	}
+}
+
+func TestSchedulerTool_DailyPromptReminderSendsWhenNoReply(t *testing.T) {
+	timer := &MockTimer{}
+	msgService := &MockMessagingService{}
+	stateManager := NewMockStateManager()
+	tool := NewSchedulerToolWithStateManager(timer, msgService, nil, stateManager)
+	tool.dailyPromptReminderDelay = time.Second
+
+	ctx := context.Background()
+	participantID := "reminder-no-reply"
+	prompt := models.Prompt{To: "+16660000000", Type: models.PromptTypeStatic, Body: "Daily prompt"}
+
+	tool.executeScheduledPrompt(ctx, participantID, prompt)
+
+	if len(timer.scheduledCalls) == 0 {
+		t.Fatal("expected reminder timer to be scheduled")
+	}
+
+	if len(msgService.sentMessages) != 1 {
+		t.Fatalf("expected exactly one message sent before reminder, got %d", len(msgService.sentMessages))
+	}
+
+	reminderCall := timer.scheduledCalls[len(timer.scheduledCalls)-1]
+	if reminderCall.Fn == nil {
+		t.Fatal("expected reminder timer to have callback")
+	}
+
+	reminderCall.Fn()
+
+	if len(msgService.sentMessages) != 2 {
+		t.Fatalf("expected reminder message to be sent, got %d messages", len(msgService.sentMessages))
+	}
+
+	reminder := msgService.sentMessages[len(msgService.sentMessages)-1]
+	if !strings.Contains(reminder.Message, "haven't heard back") {
+		t.Errorf("unexpected reminder message: %s", reminder.Message)
+	}
+
+	pendingJSON, _ := stateManager.GetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyDailyPromptPending)
+	if strings.TrimSpace(pendingJSON) != "" {
+		t.Error("expected pending reminder state to be cleared after sending reminder")
 	}
 }
 
