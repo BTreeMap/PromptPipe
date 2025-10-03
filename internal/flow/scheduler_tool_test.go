@@ -90,10 +90,14 @@ func (m *MockMessagingService) SendTypingIndicator(ctx context.Context, to strin
 	return nil
 }
 
+func newSchedulerToolForTest(timer models.Timer, msgService MessagingService, stateManager StateManager) *SchedulerTool {
+	return NewSchedulerToolWithPrepTimeAndAutoFeedback(timer, msgService, nil, stateManager, nil, 10, true)
+}
+
 func TestSchedulerTool_GetToolDefinition(t *testing.T) {
 	timer := &MockTimer{}
 	msgService := &MockMessagingService{}
-	tool := NewSchedulerTool(timer, msgService)
+	tool := newSchedulerToolForTest(timer, msgService, nil)
 
 	definition := tool.GetToolDefinition()
 
@@ -140,7 +144,7 @@ func TestSchedulerTool_ExecuteScheduler_CreateFixed(t *testing.T) {
 	timer := &MockTimer{}
 	msgService := &MockMessagingService{}
 	stateManager := NewMockStateManager()
-	tool := NewSchedulerToolWithStateManager(timer, msgService, nil, stateManager)
+	tool := newSchedulerToolForTest(timer, msgService, stateManager)
 
 	// Add phone number to context as the scheduler tool expects it
 	ctx := context.WithValue(context.Background(), phoneNumberContextKey, "+1234567890")
@@ -204,7 +208,7 @@ func TestSchedulerTool_ExecuteScheduler_CreateRandom(t *testing.T) {
 	timer := &MockTimer{}
 	msgService := &MockMessagingService{}
 	stateManager := NewMockStateManager()
-	tool := NewSchedulerToolWithStateManager(timer, msgService, nil, stateManager)
+	tool := newSchedulerToolForTest(timer, msgService, stateManager)
 
 	// Add phone number to context as the scheduler tool expects it
 	ctx := context.WithValue(context.Background(), phoneNumberContextKey, "+1234567890")
@@ -265,7 +269,7 @@ func TestSchedulerTool_SchedulesDailyPromptReminder(t *testing.T) {
 	timer := &MockTimer{}
 	msgService := &MockMessagingService{}
 	stateManager := NewMockStateManager()
-	tool := NewSchedulerToolWithStateManager(timer, msgService, nil, stateManager)
+	tool := newSchedulerToolForTest(timer, msgService, stateManager)
 
 	ctx := context.Background()
 	participantID := "reminder-test"
@@ -305,7 +309,7 @@ func TestSchedulerTool_DailyPromptReminderClearedOnReply(t *testing.T) {
 	timer := &MockTimer{}
 	msgService := &MockMessagingService{}
 	stateManager := NewMockStateManager()
-	tool := NewSchedulerToolWithStateManager(timer, msgService, nil, stateManager)
+	tool := newSchedulerToolForTest(timer, msgService, stateManager)
 
 	ctx := context.Background()
 	participantID := "reminder-reply"
@@ -353,7 +357,7 @@ func TestSchedulerTool_DailyPromptReminderSendsWhenNoReply(t *testing.T) {
 	timer := &MockTimer{}
 	msgService := &MockMessagingService{}
 	stateManager := NewMockStateManager()
-	tool := NewSchedulerToolWithStateManager(timer, msgService, nil, stateManager)
+	tool := newSchedulerToolForTest(timer, msgService, stateManager)
 	tool.dailyPromptReminderDelay = time.Second
 
 	ctx := context.Background()
@@ -370,7 +374,19 @@ func TestSchedulerTool_DailyPromptReminderSendsWhenNoReply(t *testing.T) {
 		t.Fatalf("expected exactly one message sent before reminder, got %d", len(msgService.sentMessages))
 	}
 
-	reminderCall := timer.scheduledCalls[len(timer.scheduledCalls)-1]
+	var reminderCall *ScheduledCall
+	for i := range timer.scheduledCalls {
+		call := &timer.scheduledCalls[i]
+		if call.Delay != nil && *call.Delay == tool.dailyPromptReminderDelay {
+			reminderCall = call
+			break
+		}
+	}
+
+	if reminderCall == nil {
+		t.Fatalf("expected reminder scheduled with delay %s", tool.dailyPromptReminderDelay)
+	}
+
 	if reminderCall.Fn == nil {
 		t.Fatal("expected reminder timer to have callback")
 	}
@@ -395,7 +411,7 @@ func TestSchedulerTool_DailyPromptReminderSendsWhenNoReply(t *testing.T) {
 func TestSchedulerTool_ExecuteScheduler_InvalidParams(t *testing.T) {
 	timer := &MockTimer{}
 	msgService := &MockMessagingService{}
-	tool := NewSchedulerTool(timer, msgService)
+	tool := newSchedulerToolForTest(timer, msgService, nil)
 
 	// Add phone number to context so we can test parameter validation specifically
 	ctx := context.WithValue(context.Background(), phoneNumberContextKey, "+1234567890")
@@ -574,7 +590,7 @@ func TestSchedulerTool_ExecuteScheduler_List(t *testing.T) {
 	timer := &MockTimer{}
 	msgService := &MockMessagingService{}
 	stateManager := NewMockStateManager()
-	tool := NewSchedulerToolWithStateManager(timer, msgService, nil, stateManager)
+	tool := newSchedulerToolForTest(timer, msgService, stateManager)
 
 	ctx := context.Background()
 	participantID := "test-participant"
@@ -631,7 +647,7 @@ func TestSchedulerTool_ExecuteScheduler_Delete(t *testing.T) {
 	timer := &MockTimer{}
 	msgService := &MockMessagingService{}
 	stateManager := NewMockStateManager()
-	tool := NewSchedulerToolWithStateManager(timer, msgService, nil, stateManager)
+	tool := newSchedulerToolForTest(timer, msgService, stateManager)
 
 	ctx := context.Background()
 	participantID := "test-participant"

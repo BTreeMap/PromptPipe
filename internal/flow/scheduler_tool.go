@@ -53,57 +53,6 @@ type PromptGeneratorService interface {
 	ExecutePromptGenerator(ctx context.Context, participantID string, args map[string]interface{}) (string, error)
 }
 
-// NewSchedulerTool creates a new scheduler tool instance with default 10-minute preparation time.
-func NewSchedulerTool(timer models.Timer, msgService MessagingService) *SchedulerTool {
-	return &SchedulerTool{
-		timer:                    timer,
-		msgService:               msgService,
-		prepTimeMinutes:          10, // Default 10 minutes preparation time
-		dailyPromptReminderDelay: defaultDailyPromptReminderDelay,
-	}
-}
-
-// NewSchedulerToolWithGenAI creates a new scheduler tool instance with GenAI support.
-func NewSchedulerToolWithGenAI(timer models.Timer, msgService MessagingService, genaiClient genai.ClientInterface) *SchedulerTool {
-	return &SchedulerTool{
-		timer:                    timer,
-		msgService:               msgService,
-		genaiClient:              genaiClient,
-		prepTimeMinutes:          10, // Default 10 minutes preparation time
-		dailyPromptReminderDelay: defaultDailyPromptReminderDelay,
-	}
-}
-
-// NewSchedulerToolWithStateManager creates a new scheduler tool instance with state management.
-func NewSchedulerToolWithStateManager(timer models.Timer, msgService MessagingService, genaiClient genai.ClientInterface, stateManager StateManager) *SchedulerTool {
-	return &SchedulerTool{
-		timer:                    timer,
-		msgService:               msgService,
-		genaiClient:              genaiClient,
-		stateManager:             stateManager,
-		prepTimeMinutes:          10, // Default 10 minutes preparation time
-		dailyPromptReminderDelay: defaultDailyPromptReminderDelay,
-	}
-}
-
-// NewSchedulerToolComplete creates a new scheduler tool instance with all dependencies.
-func NewSchedulerToolComplete(timer models.Timer, msgService MessagingService, genaiClient genai.ClientInterface, stateManager StateManager, promptGenerator PromptGeneratorService) *SchedulerTool {
-	return &SchedulerTool{
-		timer:                    timer,
-		msgService:               msgService,
-		genaiClient:              genaiClient,
-		stateManager:             stateManager,
-		promptGenerator:          promptGenerator,
-		prepTimeMinutes:          10, // Default 10 minutes preparation time
-		dailyPromptReminderDelay: defaultDailyPromptReminderDelay,
-	}
-}
-
-// NewSchedulerToolWithPrepTime creates a new scheduler tool instance with custom preparation time.
-func NewSchedulerToolWithPrepTime(timer models.Timer, msgService MessagingService, genaiClient genai.ClientInterface, stateManager StateManager, promptGenerator PromptGeneratorService, prepTimeMinutes int) *SchedulerTool {
-	return NewSchedulerToolWithPrepTimeAndAutoFeedback(timer, msgService, genaiClient, stateManager, promptGenerator, prepTimeMinutes, true)
-}
-
 // NewSchedulerToolWithPrepTimeAndAutoFeedback creates a scheduler with explicit auto-feedback flag.
 func NewSchedulerToolWithPrepTimeAndAutoFeedback(timer models.Timer, msgService MessagingService, genaiClient genai.ClientInterface, stateManager StateManager, promptGenerator PromptGeneratorService, prepTimeMinutes int, autoFeedbackEnabled bool) *SchedulerTool {
 	return &SchedulerTool{
