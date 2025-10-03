@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/BTreeMap/PromptPipe/internal/models"
@@ -27,6 +28,7 @@ type UserProfile struct {
 	LastSuccessfulPrompt string `json:"last_successful_prompt,omitempty"` // Last prompt that worked
 	LastBarrier          string `json:"last_barrier,omitempty"`           // Last reported barrier
 	LastTweak            string `json:"last_tweak,omitempty"`             // Last requested modification
+	LastMotivator        string `json:"last_motivator,omitempty"`         // Last motivational reason reported
 	SuccessCount         int    `json:"success_count"`                    // Number of successful completions
 	TotalPrompts         int    `json:"total_prompts"`                    // Total prompts sent
 }
@@ -79,13 +81,13 @@ func (pst *ProfileSaveTool) GetToolDefinition() openai.ChatCompletionToolParam {
 						"type":        "string",
 						"description": "Last prompt that worked well for the user (for feedback tracking)",
 					},
+					"last_barrier": map[string]interface{}{
+						"type":        "string",
+						"description": "Last reported barrier or blocker (for feedback tracking)",
+					},
 					"last_motivator": map[string]interface{}{
 						"type":        "string",
 						"description": "Last reported motivator or reason (for feedback tracking)",
-					},
-					"last_blocker": map[string]interface{}{
-						"type":        "string",
-						"description": "Last reported barrier or challenge (for feedback tracking)",
 					},
 					"last_tweak": map[string]interface{}{
 						"type":        "string",
@@ -119,53 +121,84 @@ func (pst *ProfileSaveTool) ExecuteProfileSave(ctx context.Context, participantI
 	}
 
 	// Update profile fields from arguments
-	var updated bool
-	if habitDomain, ok := args["habit_domain"].(string); ok && habitDomain != "" {
+	var (
+		updated       bool
+		updatedFields []string
+	)
+
+	// Handle deprecated alias "last_blocker" by mapping it to "last_barrier" when absent
+	if rawAlias, ok := args["last_blocker"]; ok {
+		if aliasVal, ok := rawAlias.(string); ok && aliasVal != "" {
+			if existing, exists := args["last_barrier"]; !exists {
+				args["last_barrier"] = aliasVal
+			} else if existingStr, ok := existing.(string); !ok || existingStr == "" {
+				args["last_barrier"] = aliasVal
+			}
+		}
+		delete(args, "last_blocker")
+	}
+
+	if habitDomain, ok := args["habit_domain"].(string); ok && habitDomain != "" && habitDomain != profile.HabitDomain {
 		profile.HabitDomain = habitDomain
 		updated = true
+		updatedFields = append(updatedFields, "habit_domain")
 		slog.Debug("ProfileSaveTool.ExecuteProfileSave: updated habit domain", "participantID", participantID, "habitDomain", habitDomain)
 	}
 
-	if motivationalFrame, ok := args["motivational_frame"].(string); ok && motivationalFrame != "" {
+	if motivationalFrame, ok := args["motivational_frame"].(string); ok && motivationalFrame != "" && motivationalFrame != profile.MotivationalFrame {
 		profile.MotivationalFrame = motivationalFrame
 		updated = true
+		updatedFields = append(updatedFields, "motivational_frame")
 		slog.Debug("ProfileSaveTool.ExecuteProfileSave: updated motivational frame", "participantID", participantID, "motivationalFrame", motivationalFrame)
 	}
 
-	if preferredTime, ok := args["preferred_time"].(string); ok && preferredTime != "" {
+	if aliasMotivator, ok := args["last_motivator"].(string); ok && aliasMotivator != "" && aliasMotivator != profile.LastMotivator {
+		profile.LastMotivator = aliasMotivator
+		updated = true
+		updatedFields = append(updatedFields, "last_motivator")
+		slog.Debug("ProfileSaveTool.ExecuteProfileSave: updated last motivator", "participantID", participantID)
+	}
+
+	if preferredTime, ok := args["preferred_time"].(string); ok && preferredTime != "" && preferredTime != profile.PreferredTime {
 		profile.PreferredTime = preferredTime
 		updated = true
+		updatedFields = append(updatedFields, "preferred_time")
 		slog.Debug("ProfileSaveTool.ExecuteProfileSave: updated preferred time", "participantID", participantID, "preferredTime", preferredTime)
 	}
 
-	if promptAnchor, ok := args["prompt_anchor"].(string); ok && promptAnchor != "" {
+	if promptAnchor, ok := args["prompt_anchor"].(string); ok && promptAnchor != "" && promptAnchor != profile.PromptAnchor {
 		profile.PromptAnchor = promptAnchor
 		updated = true
+		updatedFields = append(updatedFields, "prompt_anchor")
 		slog.Debug("ProfileSaveTool.ExecuteProfileSave: updated prompt anchor", "participantID", participantID, "promptAnchor", promptAnchor)
 	}
 
-	if additionalInfo, ok := args["additional_info"].(string); ok && additionalInfo != "" {
+	if additionalInfo, ok := args["additional_info"].(string); ok && additionalInfo != "" && additionalInfo != profile.AdditionalInfo {
 		profile.AdditionalInfo = additionalInfo
 		updated = true
+		updatedFields = append(updatedFields, "additional_info")
 		slog.Debug("ProfileSaveTool.ExecuteProfileSave: updated additional info", "participantID", participantID, "additionalInfo", additionalInfo)
 	}
 
 	// Feedback tracking fields
-	if lastSuccessfulPrompt, ok := args["last_successful_prompt"].(string); ok && lastSuccessfulPrompt != "" {
+	if lastSuccessfulPrompt, ok := args["last_successful_prompt"].(string); ok && lastSuccessfulPrompt != "" && lastSuccessfulPrompt != profile.LastSuccessfulPrompt {
 		profile.LastSuccessfulPrompt = lastSuccessfulPrompt
 		updated = true
+		updatedFields = append(updatedFields, "last_successful_prompt")
 		slog.Debug("ProfileSaveTool.ExecuteProfileSave: updated last successful prompt", "participantID", participantID)
 	}
 
-	if lastBarrier, ok := args["last_barrier"].(string); ok && lastBarrier != "" {
+	if lastBarrier, ok := args["last_barrier"].(string); ok && lastBarrier != "" && lastBarrier != profile.LastBarrier {
 		profile.LastBarrier = lastBarrier
 		updated = true
+		updatedFields = append(updatedFields, "last_barrier")
 		slog.Debug("ProfileSaveTool.ExecuteProfileSave: updated last barrier", "participantID", participantID)
 	}
 
-	if lastTweak, ok := args["last_tweak"].(string); ok && lastTweak != "" {
+	if lastTweak, ok := args["last_tweak"].(string); ok && lastTweak != "" && lastTweak != profile.LastTweak {
 		profile.LastTweak = lastTweak
 		updated = true
+		updatedFields = append(updatedFields, "last_tweak")
 		slog.Debug("ProfileSaveTool.ExecuteProfileSave: updated last tweak", "participantID", participantID)
 	}
 
@@ -175,11 +208,31 @@ func (pst *ProfileSaveTool) ExecuteProfileSave(ctx context.Context, participantI
 			slog.Error("ProfileSaveTool.ExecuteProfileSave: failed to save user profile", "error", err, "participantID", participantID)
 			return "", fmt.Errorf("failed to save user profile: %w", err)
 		}
-		slog.Info("ProfileSaveTool.ExecuteProfileSave: profile saved successfully", "participantID", participantID)
-		return "Profile updated successfully", nil
+		slog.Info("ProfileSaveTool.ExecuteProfileSave: profile saved successfully", "participantID", participantID, "updatedFields", updatedFields)
+
+		humanSummary := fmt.Sprintf("SUCCESS: profile saved (%d field(s) updated: %s)", len(updatedFields), strings.Join(updatedFields, ", "))
+		payload := map[string]interface{}{
+			"status":           "success",
+			"updated_fields":   updatedFields,
+			"profile_snapshot": profile,
+		}
+		if payloadJSON, err := json.Marshal(payload); err == nil {
+			return fmt.Sprintf("%s\n%s", humanSummary, string(payloadJSON)), nil
+		}
+		return humanSummary, nil
 	}
 
-	return "No profile changes to save", nil
+	// No changes detected but still respond clearly so the agent can continue
+	payload := map[string]interface{}{
+		"status":           "noop",
+		"message":          "Profile already contained the supplied values; no new save was required.",
+		"profile_snapshot": profile,
+	}
+	humanSummary := "NOOP: profile already up to date; no changes were saved."
+	if payloadJSON, err := json.Marshal(payload); err == nil {
+		return fmt.Sprintf("%s\n%s", humanSummary, string(payloadJSON)), nil
+	}
+	return humanSummary, nil
 }
 
 // getOrCreateUserProfile retrieves or creates a new user profile
@@ -207,6 +260,17 @@ func (pst *ProfileSaveTool) GetOrCreateUserProfile(ctx context.Context, particip
 	if err := json.Unmarshal([]byte(profileJSON), &profile); err != nil {
 		slog.Error("ProfileSaveTool.getOrCreateUserProfile: failed to unmarshal profile", "error", err, "participantID", participantID)
 		return nil, fmt.Errorf("failed to parse user profile: %w", err)
+	}
+
+	// Backwards compatibility: migrate legacy stored last_blocker -> last_barrier
+	if profile.LastBarrier == "" {
+		var legacy struct {
+			LastBlocker string `json:"last_blocker"`
+		}
+		if err := json.Unmarshal([]byte(profileJSON), &legacy); err == nil && legacy.LastBlocker != "" {
+			profile.LastBarrier = legacy.LastBlocker
+			slog.Debug("ProfileSaveTool.getOrCreateUserProfile: migrated legacy last_blocker to last_barrier", "participantID", participantID)
+		}
 	}
 
 	slog.Debug("ProfileSaveTool.getOrCreateUserProfile: loaded existing profile",

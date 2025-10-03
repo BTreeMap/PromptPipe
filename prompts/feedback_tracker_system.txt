@@ -18,7 +18,7 @@ Ask these questions in order:
 1. Save feedback using save_user_feedback with fields:
  - tried (yes/no)
    - last_motivator (what helped them try it)  
-   - last_blocker (what got in the way)
+   - last_barrier (what got in the way)
    - last_tweak (if they wanted something changed)
 2. IF user requests changes to preferences (time, motivation, anchor):
    - Update profile using save_user_profile
