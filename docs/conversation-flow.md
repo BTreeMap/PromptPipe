@@ -4,14 +4,14 @@ Up‑to‑date description (2025-08) of the production conversation flow archite
 
 ## Goals
 
-Provide a persistent, tool‑augmented AI conversation with each enrolled participant, supporting: free chat, structured intake, habit prompt generation & scheduling, and feedback collection with stateful routing (the "3‑bot" architecture: Intake Bot, Prompt Generator, Feedback Tracker) coordinated by a central Coordinator.
+Provide a persistent, tool‑augmented AI conversation with each enrolled participant, supporting structured intake, habit prompt generation & scheduling, and feedback collection. The production flow uses Intake and Feedback modules directly; the prompt generator and scheduler remain available as tools that those modules can call when they need to produce messaging or state changes.
 
 ## High‑Level Behavior
 
 1. Client enrolls a participant via `POST /conversation/participants` (phone is unique & canonicalized).
 2. Enrollment initializes flow state to `CONVERSATION_ACTIVE` and registers a persistent hook so every inbound message routes through the conversation flow.
 3. The server immediately generates and sends the first AI message using `ConversationFlow.ProcessResponse()` with a simulated user hint so the reply is a natural greeting.
-4. Each inbound user message is processed, appended to stored history, routed according to the current conversation sub‑state (Coordinator / Intake / Feedback), tools may be invoked, then the assistant response is stored and returned/sent.
+4. Each inbound user message is appended to stored history. The flow reads `conversationState` (defaults to `INTAKE`) to determine whether the Intake or Feedback module should handle the turn. The active module may invoke shared tools (scheduler, prompt generator, state transition, profile save) before returning a user-visible reply.
 5. History is trimmed (keep last 50) to avoid unbounded growth; up to 30 recent messages are supplied to the LLM for context (adaptive limiting logic in code).
 
 ## Key Components (Code References)
@@ -19,12 +19,12 @@ Provide a persistent, tool‑augmented AI conversation with each enrolled partic
 | Component | Purpose | File(s) |
 |-----------|---------|---------|
 | `ConversationFlow` | Orchestrates state retrieval, history persistence, routing to modules | `internal/flow/conversation_flow.go` |
-| `CoordinatorModule` | Default router; decides tool usage & state transitions | `internal/flow/coordinator_module.go` |
+| `CoordinatorModule` | Legacy optional router (not wired by default in production flow) | `internal/flow/coordinator_module.go` |
 | `IntakeModule` | Collects structured user profile (habit domain, motivation, preferred time, anchor) | `internal/flow/intake_module.go` |
 | `FeedbackModule` | Manages feedback after prompts; schedules follow‑ups | `internal/flow/feedback_module.go` |
 | `PromptGeneratorTool` | Generates personalized habit prompt text | `internal/flow/prompt_generator_tool.go` |
-| `SchedulerTool` | Schedules daily prompt delivery & manages schedule registry | `internal/flow/scheduler_tool.go` |
-| `StateTransitionTool` | LLM‑invokable function to change conversation sub‑state | `internal/flow/state_transition_tool.go` |
+| `SchedulerTool` | Schedules daily prompt delivery, mechanical reminders, and auto-feedback timers | `internal/flow/scheduler_tool.go` |
+| `StateTransitionTool` | Updates the active module (`INTAKE` ↔ `FEEDBACK`) with optional delays | `internal/flow/state_transition_tool.go` |
 | `ProfileSaveTool` | Persists structured profile fields | `internal/flow/profile_save_tool.go` |
 | `StoreBasedStateManager` | Persists state & data blobs | `internal/flow/state_manager.go` |
 | `MessagingService` | Sends outbound WhatsApp/SMS messages | `internal/messaging/` |
@@ -35,14 +35,15 @@ Provide a persistent, tool‑augmented AI conversation with each enrolled partic
 State constants (in `internal/models/flow_types.go`):
 
 * `CONVERSATION_ACTIVE` – Top‑level active status (always set once enrolled).
-* `COORDINATOR` – Default sub‑state; routes & invokes tools.
-* `INTAKE` – Intake bot collecting/repairing missing profile fields.
-* `FEEDBACK` – Feedback tracker gathering adherence & outcomes.
+* `INTAKE` – Default sub‑state; collects or repairs profile fields and can trigger scheduling.
+* `FEEDBACK` – Feedback tracker gathering adherence & outcomes after prompts are delivered.
 
 The flow keeps two notions:
 
-* Current flow state (`CONVERSATION_ACTIVE`) stored as current state.
-* Current conversation sub‑state stored separately under data key `conversationState` (defaults to `COORDINATOR`).
+* Current flow state (`CONVERSATION_ACTIVE`) stored as the persistent state record.
+* Current conversation sub‑state stored separately under data key `conversationState` (defaults to `INTAKE` if unset).
+
+> **Note:** The legacy `COORDINATOR` state remains in the repository for backward compatibility but is no longer wired into `NewConversationFlowWithAllTools`. Modules transition directly between `INTAKE` and `FEEDBACK` via the `StateTransitionTool`.
 
 ## Data Keys (models.DataKey*)
 
@@ -56,12 +57,18 @@ The flow keeps two notions:
 | `feedbackState` | Internal tracker for feedback collection progress |
 | `feedbackTimerID`, `feedbackFollowupTimerID` | Timer IDs for scheduled feedback follow‑ups |
 | `scheduleRegistry` | Active schedule metadata (prompt delivery scheduling) |
-| `conversationState` | Current sub‑state: `COORDINATOR` / `INTAKE` / `FEEDBACK` |
+| `conversationState` | Current sub‑state (`INTAKE` or `FEEDBACK`; defaults to `INTAKE`) |
 | `stateTransitionTimerID` | Pending delayed state transition timer |
+| `lastPromptSentAt` | Timestamp of the most recent scheduled habit prompt (RFC3339) |
+| `autoFeedbackTimerID` | Timer ID for post-prompt auto-feedback enforcement |
+| `dailyPromptPending` | JSON blob tracking the outstanding daily prompt awaiting reply |
+| `dailyPromptReminderTimerID` | Timer ID for the mechanical daily prompt reminder |
+| `dailyPromptReminderSentAt` | Timestamp when the reminder was actually sent |
+| `dailyPromptRespondedAt` | Timestamp when the participant replied after a prompt |
 
 ## System Prompts
 
-* `conversation_system_3bot.txt` – Coordinator system prompt (passed to CoordinatorModule + background + profile status)
+* `conversation_system_3bot.txt` – Base conversation instructions (legacy coordinator prompt; still loaded for compatibility)
 * `intake_bot_system.txt` – Intake bot instructions
 * `prompt_generator_system.txt` – Habit prompt generator
 * `feedback_tracker_system.txt` – Feedback tracker
@@ -124,31 +131,36 @@ Other endpoints:
 
 ## Message Processing Flow
 
-1. Append inbound user text to history.
-2. Determine current conversation sub‑state (`conversationState`, default `COORDINATOR`).
-3. Route to appropriate module:
-   * Coordinator → builds messages (system prompt + background + profile status + trimmed history), may call tools (state_transition, profile_save, generate_habit_prompt, schedule_prompt, etc.).
-   * Intake → runs structured question logic; uses previous chat history (configurable limit) and updates profile via tools.
-   * Feedback → analyzes user reply, updates feedback state, may cancel timers.
-4. Append assistant response to history; trim if >50.
-5. (Optional) If debug mode enabled, send a separate debug info message (state, profile summary, tool actions).
+1. Append inbound user text to history and notify the scheduler so any pending daily prompt reminder can be cancelled (`SchedulerTool.handleDailyPromptReply`).
+1. Determine current conversation sub‑state (`conversationState`, defaults to `INTAKE`).
+1. Route to the active module:
+
+* **Intake (`INTAKE`)** – Runs `handleIntakeToolLoop`, which may call `transition_state`, `save_user_profile`, `scheduler`, or `generate_habit_prompt` tool functions until a user-facing reply is produced.
+* **Feedback (`FEEDBACK`)** – Runs `handleFeedbackToolLoop`, which may call `transition_state`, `save_user_profile`, or `scheduler` while collecting outcome data.
+* Unknown or missing state defaults back to `INTAKE` and is persisted.
+
+1. Append the assistant response to history; trim if >50 and persist the updated conversation record.
+1. If debug mode is enabled, send a separate developer-facing debug message summarizing the current state, profile counters, and latest tool actions.
 
 ## Tool / Function Calling
 
-The Coordinator exposes a set of tools to the LLM (only those initialized):
-
-* `transition_state` (StateTransitionTool) – switch between COORDINATOR/INTAKE/FEEDBACK.
-* `save_user_profile` (ProfileSaveTool) – persist structured fields.
-* `generate_habit_prompt` (PromptGeneratorTool) – craft habit prompt.
-* `schedule_prompt` (SchedulerTool) – schedule recurring delivery referencing generated prompts.
-
-Intake & Feedback modules call their logic directly (not via tool calls from coordinator) while still receiving limited conversation context.
+* **IntakeModule** exposes `transition_state`, `save_user_profile`, `scheduler`, and `generate_habit_prompt` tool definitions to the LLM. Calls are executed inside `handleIntakeToolLoop`, which logs the tool name and a truncated JSON argument preview before dispatching.
+* **FeedbackModule** exposes `transition_state`, `save_user_profile`, and `scheduler` through `handleFeedbackToolLoop`, following the same logging and execution pattern.
+* **SchedulerTool** may in turn invoke the prompt generator when delivering scheduled prompts and manages the daily reminder / auto-feedback timers.
+* **Legacy CoordinatorModule** can still be wired manually for experimentation; if used, it shares the same tool set as Intake plus any custom additions.
 
 ## History & Context Limits
 
-* Persisted history trimmed to last 50 messages.
-* When constructing OpenAI context for Coordinator: keep up to last 30 messages (user/assistant only) plus system & background messages.
+* Persisted history trimmed to the last 50 messages.
+* Intake and Feedback modules both respect `CHAT_HISTORY_LIMIT` when constructing context for the LLM (default intake window is 30 user/assistant turns).
 * `SetChatHistoryLimit()` can override per‑tool history exposure (0 disables, -1 unlimited, >0 cap).
+
+## Daily Prompt Reminder Workflow
+
+1. When a scheduled habit prompt is delivered, `SchedulerTool.executeScheduledPrompt` records `lastPromptSentAt`, stores a `dailyPromptPending` payload, and schedules a reminder timer using `dailyPromptReminderDelay` (default 5 hours).
+1. If the participant replies before the reminder fires, `ConversationFlow.processConversationMessage` calls `SchedulerTool.handleDailyPromptReply`, which cancels the timer, clears pending state, and records `dailyPromptRespondedAt`.
+1. If the timer fires first, `SchedulerTool.sendDailyPromptReminder` sends a mechanical follow-up message, records `dailyPromptReminderSentAt`, and clears pending state to prevent duplicates.
+1. Reminder delays can be overridden per-instance via `SchedulerTool.SetDailyPromptReminderDelay`; passing a non-positive duration disables the follow-up entirely.
 
 ## Profile Status Injection
 
@@ -180,7 +192,7 @@ To add a new specialized module:
 1. Implement `<NewModule>` with `LoadSystemPrompt` and `Process...` / `Execute...` functions.
 2. Inject in `NewConversationFlowWithAllTools...` similar to other modules.
 3. Add new state constant & data keys (if needed) in `internal/models/flow_types.go`.
-4. Update coordinator tool set (if tool callable) or routing logic in `processConversationMessage`.
+4. Update `processConversationMessage` routing and, if tool callable, ensure the new tool definition is exposed by the relevant module.
 5. Document prompt file in `prompts/` directory.
 
 ## Operational Guidelines

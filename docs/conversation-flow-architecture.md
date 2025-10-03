@@ -16,12 +16,12 @@ Core runtime components used by the Conversation Flow:
 
 - Flow engine: `internal/flow/conversation_flow.go`
 - State management: `internal/flow/state_manager.go` (Store-backed)
-- Modules (3-bot architecture):
-  - Coordinator: `internal/flow/coordinator_module.go`
+- Modules (current production wiring):
   - Intake: `internal/flow/intake_module.go`
   - Feedback: `internal/flow/feedback_module.go`
+  - (Optional) Coordinator: `internal/flow/coordinator_module.go` / `coordinator_module_static.go`
 - Shared tools:
-  - SchedulerTool: `internal/flow/scheduler_tool.go`
+  - SchedulerTool: `internal/flow/scheduler_tool.go` (daily prompts, mechanical reminders, auto-feedback timers)
   - PromptGeneratorTool: `internal/flow/prompt_generator_tool.go`
   - StateTransitionTool: `internal/flow/state_transition_tool.go`
   - ProfileSaveTool: `internal/flow/profile_save_tool.go`
@@ -52,7 +52,6 @@ flowchart LR
 
   subgraph Conversation Flow
     CF[ConversationFlow]
-    CM[CoordinatorModule]
     IM[IntakeModule]
     FM[FeedbackModule]
   end
@@ -72,12 +71,8 @@ flowchart LR
 
   U --> WA --> RH --> CF
   CF <---> STOR
-  CF --> CM
-  CM --> GA
-  CM --> ST
-  CM --> PST
-  CM --> PGT
-  CM --> SCH
+  CF --> IM
+  CF --> FM
   IM --> GA
   IM --> ST
   IM --> PST
@@ -107,16 +102,17 @@ State types and data keys are defined in `internal/models/flow_types.go`:
 - Flow type: `conversation`
 - Primary flow state: `CONVERSATION_ACTIVE`
 - Conversation sub-state (stored under `DataKeyConversationState`):
-  - `COORDINATOR` (default router)
-  - `INTAKE` (profile collection)
+  - `INTAKE` (default; profile collection + scheduling)
   - `FEEDBACK` (prompt feedback + follow-ups)
+  - `COORDINATOR` (legacy/experimental; not set in production wiring)
 
 Important data keys:
 
 - `conversationHistory` (JSON of `[]ConversationMessage`)
 - `participantBackground` (optional context for prompts)
 - `systemPrompt` (optional; final prompt text may be loaded per-module)
-- `userProfile`, `lastHabitPrompt`, `feedbackState`, timers (`feedbackTimerID`, `feedbackFollowupTimerID`), `scheduleRegistry`, `stateTransitionTimerID`
+- `userProfile`, `lastHabitPrompt`, `feedbackState`, timers (`feedbackTimerID`, `feedbackFollowupTimerID`, `autoFeedbackTimerID`), `scheduleRegistry`, `stateTransitionTimerID`
+- Daily prompt reminder keys: `lastPromptSentAt`, `dailyPromptPending`, `dailyPromptReminderTimerID`, `dailyPromptReminderSentAt`, `dailyPromptRespondedAt`
 
 Persistence path:
 
@@ -133,7 +129,7 @@ sequenceDiagram
   participant RH as ResponseHandler
   participant CF as ConversationFlow
   participant SM as StateManager
-  participant MOD as Module (Coordinator/Intake/Feedback)
+  participant MOD as Module (Intake/Feedback)
   participant GA as GenAI
   participant TL as Tools
 
@@ -162,26 +158,31 @@ sequenceDiagram
 
 ## State transitions and handoffs
 
-A module handoff is driven by the StateTransitionTool writing `DataKeyConversationState` to one of `COORDINATOR`, `INTAKE`, or `FEEDBACK`. The default when empty is `COORDINATOR`. Delayed handoffs are scheduled via a timer and stored under `stateTransitionTimerID`.
+A module handoff is driven by the StateTransitionTool writing `DataKeyConversationState` to one of `INTAKE`, `FEEDBACK`, or the legacy `COORDINATOR`. In current production wiring the value defaults to `INTAKE` when empty. Delayed handoffs are scheduled via a timer and stored under `stateTransitionTimerID`.
 
 ```mermaid
 stateDiagram-v2
-    [*] --> COORDINATOR: Enrollment / no sub-state
-    COORDINATOR --> INTAKE: transition_state(INTAKE)\n(reason: profile collection)
-    INTAKE --> COORDINATOR: transition_state(COORDINATOR)\n(reason: profile sufficient or pause)
-    COORDINATOR --> FEEDBACK: transition_state(FEEDBACK)\n(trigger: after sending prompt or user reports outcome)
-    INTAKE --> FEEDBACK: transition_state(FEEDBACK)\n(trigger: immediate feedback on a starter prompt)
-    FEEDBACK --> COORDINATOR: transition_state(COORDINATOR)\n(reason: feedback processed / timeout)
+    [*] --> INTAKE: Enrollment / default route
+    INTAKE --> FEEDBACK: transition_state(FEEDBACK)\n(trigger: prompt delivered or intake follow-up)
+    FEEDBACK --> INTAKE: transition_state(INTAKE)\n(reason: feedback processed / next prompt setup)
 
-    note right of COORDINATOR: Can call tools (save profile, generate prompt, scheduler)\nCan schedule delayed transitions (minutes)
     note right of INTAKE: Builds userProfile via ProfileSaveTool\nMay schedule prompts; exits via transition_state
-    note right of FEEDBACK: Tracks outcomes; may schedule follow-ups\nUses timers for initial/ follow-up windows
+    note right of FEEDBACK: Tracks outcomes; may schedule follow-ups\nUses timers for initial/follow-up windows
+
+    state "Optional legacy coordinator" as LEGACY {
+        [*] --> COORDINATOR
+        COORDINATOR --> INTAKE: transition_state(INTAKE)\n(reason: profile collection)
+        INTAKE --> COORDINATOR: transition_state(COORDINATOR)\n(reason: profile sufficient or pause)
+        COORDINATOR --> FEEDBACK: transition_state(FEEDBACK)\n(trigger: after sending prompt or user reports outcome)
+        FEEDBACK --> COORDINATOR: transition_state(COORDINATOR)\n(reason: feedback processed / timeout)
+        note right of COORDINATOR: Experimental routing layer\nNot wired in production
+    }
 ```
 
 Transition mechanics (from code):
 
 - Setter: StateTransitionTool executes `SetStateData(DataKeyConversationState, target)`; for delayed transitions it schedules a timer and stores `stateTransitionTimerID`, then performs the transition on callback and clears the ID.
-- Router: `ConversationFlow.processConversationMessage()` reads `DataKeyConversationState` and dispatches to Coordinator/Intake/Feedback handlers. Unknown or empty defaults to Coordinator.
+- Router: `ConversationFlow.processConversationMessage()` reads `DataKeyConversationState` and dispatches to Intake/Feedback handlers (Coordinator only if explicitly configured). Unknown or empty defaults to Intake.
 - Cancellation: When scheduling a new delayed transition, any existing `stateTransitionTimerID` is canceled before setting a new one.
 - Persistence: History (`conversationHistory`) and `userProfile` remain intact across transitions. Only the sub-state changes.
 
@@ -199,7 +200,7 @@ sequenceDiagram
   User->>CF: Message arrives
   CF->>SM: Read DataKeyConversationState
   CF->>MOD: Invoke handler for current sub-state
-  MOD-->>STT: transition_state(target=INTAKE/FEEDBACK/COORDINATOR[, delay])
+  MOD-->>STT: transition_state(target=INTAKE/FEEDBACK[, delay])
   alt immediate transition
     STT->>SM: Set DataKeyConversationState=target
   else delayed transition
@@ -210,18 +211,18 @@ sequenceDiagram
   STT->>SM: Set DataKeyConversationState=target (clear timerID)
   end
   CF-->>User: Reply from MOD
-  Note over CF,MOD: Next message will be routed to the new module per state
+  Note over CF,MOD: Next message will be routed to the new module per state (legacy coordinator can receive the handoff when explicitly enabled)
 ```
 
 Common handoffs:
 
-- Coordinator → Intake: When the model determines profile info is needed; Intake collects and saves via ProfileSaveTool, then transitions back.
-- Coordinator/Intake → Feedback: After a prompt is sent and the user reports an outcome (or when the model decides to gather outcomes), Feedback tracks results and updates profile.
-- Feedback → Coordinator: After processing feedback or after a timeout/follow-up window, return to Coordinator.
+- Intake → Feedback: Triggered after a habit prompt is delivered or when an intake exchange requests immediate feedback. Feedback collects outcomes and may schedule follow-ups.
+- Feedback → Intake: Occurs after feedback has been processed or a follow-up window expires so Intake can resume maintenance or adjust scheduling.
+- Optional legacy coordinator → Intake/Feedback: Only when the coordinator module is explicitly wired for experiments; otherwise unused.
 
 ## Dynamic architecture overview (end-to-end)
 
-The following sequence shows a typical dynamic arc across modules, tools, timers, and messaging: Coordinator bootstraps, hands off to Intake for profile building, returns to Coordinator to generate/schedule prompts, then hands to Feedback to process outcomes, finally returning to Coordinator.
+The following sequence shows a typical dynamic arc across modules, tools, timers, and messaging: Intake gathers profile context and schedules prompts, then hands to Feedback to collect outcomes before returning to Intake. The legacy coordinator module can still be slotted in experimentally but is not part of the production loop.
 
 ```mermaid
 sequenceDiagram
@@ -231,7 +232,6 @@ sequenceDiagram
   participant RH as ResponseHandler
   participant CF as ConversationFlow
   participant SM as StateManager
-  participant CM as Coordinator
   participant IM as Intake
   participant FM as Feedback
   participant GA as GenAI
@@ -242,108 +242,65 @@ sequenceDiagram
   participant TMR as Timer
   participant MSG as MessagingService
 
-  Note over CF,SM: DataKeyConversationState defaults to COORDINATOR if empty
+  Note over CF,SM: DataKeyConversationState defaults to INTAKE if empty
 
   User->>WA: Message
   WA->>RH: Event
   RH->>CF: ProcessResponse(participantID,text)
   CF->>SM: GetCurrentState + GetStateData(conversationState, history)
-  CF->>CM: Dispatch (COORDINATOR)
 
-  CM->>GA: GenerateWithTools(history + system prompts)
-  GA-->>CM: Tool call: save_user_profile(...)
-  CM->>PST: save_user_profile(args)
-  PST->>SM: SetStateData(userProfile)
-  PST-->>CM: ok
-
-  alt Profile incomplete
-    CM->>STT: transition_state(target=INTAKE)
-    STT->>SM: SetStateData(conversationState=INTAKE)
-  else Profile sufficient
-    CM-->>CF: Return assistant text
+  alt conversationState == INTAKE
+    CF->>IM: handleIntakeToolLoop
+    IM->>GA: GenerateThinkingWithTools(history, intake prompt)
+    GA-->>IM: Tool call(s)
+    IM->>PST: save_user_profile(args)
+    PST->>SM: SetStateData(userProfile)
+    IM->>SCH: scheduler(action=create, ...)
+    SCH->>TMR: Schedule prep timer + recurring daily run
+    SCH->>SM: Persist scheduleRegistry, lastPromptSentAt, dailyPromptPending
+    SCH-->>IM: Confirmation / tool result message
+    IM->>STT: transition_state(target=FEEDBACK[, delay_minutes])
+    STT->>SM: Update conversationState (cancel dailyPromptReminderTimerID if the participant has replied; cancel auto-feedback timer when entering FEEDBACK)
+    IM-->>CF: Assistant text (prompt or confirmation)
+  else conversationState == FEEDBACK
+    CF->>FM: handleFeedbackToolLoop
+    FM->>GA: GenerateThinkingWithTools(history, feedback prompt)
+    GA-->>FM: Tool call(s)
+    FM->>PST: save_user_profile(args)
+    PST->>SM: Update profile (success counts, barriers, tweaks)
+    FM->>SCH: scheduler(action=list/delete/...) (optional follow-up adjustments)
+    FM->>STT: transition_state(target=INTAKE)
+    STT->>SM: Update conversationState back to INTAKE (clear dailyPromptPending if prompt cycle completed)
+    FM-->>CF: Assistant text (personalized feedback)
   end
+
   CF->>SM: Save updated conversationHistory
   CF-->>RH: Assistant text
   RH-->>User: Send reply
 
-  %% Next user message routes to Intake
-  User->>WA: Follow-up
-  WA->>RH: Event
-  RH->>CF: ProcessResponse
-  CF->>SM: Read conversationState = INTAKE
-  CF->>IM: ExecuteIntakeBot
-  IM->>GA: GenerateWithTools
-  GA-->>IM: Tool call: save_user_profile(...)
-  IM->>PST: save_user_profile(args)
-  PST->>SM: Update userProfile
-  IM-->>STT: transition_state(target=COORDINATOR)
-  STT->>SM: Set conversationState=COORDINATOR
-  IM-->>CF: Assistant text (e.g., confirmation)
-  CF->>SM: Save history
-  CF-->>RH: Reply
-  RH-->>User: Send reply
+  %% Daily prompt reminder / auto-feedback timers
+  SCH->>TMR: Schedule reminder (dailyPromptReminderDelay)
+  SCH->>SM: Store dailyPromptReminderTimerID
+  Note over CF,SCH: When the participant replies, `handleDailyPromptReply` cancels the reminder and records dailyPromptRespondedAt
 
-  %% Coordinator generates and schedules prompts
-  CF->>CM: Dispatch (COORDINATOR)
-  CM->>PGT: ExecutePromptGenerator
-  PGT->>GA: Generate personalized prompt
-  GA-->>PGT: Prompt text
-  PGT-->>CM: Prompt text
-  CM-->>CF: Assistant prompt text
-  CF-->>RH: Reply to user
-  RH-->>User: Send prompt
-
-  CM->>SCH: scheduler(action=create, ...)
-  SCH->>TMR: Schedule prep & recurring timers
-  SCH->>SM: Save schedule metadata (scheduleRegistry)
-  SCH-->>CM: Confirmation
-  CM->>STT: transition_state(target=FEEDBACK[, delay_minutes])
-  alt delayed
-    STT->>TMR: Schedule delayed transition
-    TMR-->>STT: timerID
-    STT->>SM: Set stateTransitionTimerID
-  TMR-->>STT: On fire triggers executeImmediateTransition
-  STT->>SM: Set conversationState=FEEDBACK (clear timerID)
-  else immediate
-    STT->>SM: Set conversationState=FEEDBACK
-  end
-
-  %% User reports outcome -> Feedback module processes
-  User->>WA: Outcome / feedback
-  WA->>RH: Event
-  RH->>CF: ProcessResponse
-  CF->>SM: Read conversationState = FEEDBACK
-  CF->>FM: ExecuteFeedback
-  FM->>GA: GenerateWithTools
-  GA-->>FM: Tool call(s): save_user_profile / scheduler
-  FM->>PST: save_user_profile(args)
-  PST->>SM: Update profile (success counts, barriers, tweaks)
-  FM->>STT: transition_state(target=COORDINATOR)
-  STT->>SM: Set conversationState=COORDINATOR
-  FM-->>CF: Assistant text (personalized feedback)
-  CF->>SM: Save history
-  CF-->>RH: Reply
-  RH-->>User: Send reply
-
-  Note over SCH,TMR: Timers continue to fire sending scheduled prompts via MessagingService
+  Note over SCH,TMR: Timers continue to fire sending scheduled prompts via MessagingService; reminder timers send a mechanical follow-up if no reply is received before expiry
 ```
 
-## Module responsibilities (3-bot model)
-
-- Coordinator
-  - Default entry point and fallback router
-  - May call tools to save profile snippets, generate prompts, schedule reminders
-  - Uses `StateTransitionTool` to enter `INTAKE` or `FEEDBACK`
+## Module responsibilities (current wiring)
 
 - Intake
-  - Builds structured `userProfile` over multiple turns
-  - Can schedule initial prompts or generate tailored prompts while collecting profile info
-  - Uses `StateTransitionTool` to return to Coordinator after profile completeness criteria
+  - Default entry point; builds structured `userProfile` over multiple turns
+  - Schedules or updates daily prompts via the scheduler tool and can trigger prompt generation when ready
+  - Invokes `StateTransitionTool` to hand off to `FEEDBACK` when a prompt has been delivered or follow-up is desired
 
 - Feedback
-  - Collects user feedback on delivered prompts; can schedule follow-up reminders
-  - Manages initial/follow-up timers (`FEEDBACK_INITIAL_TIMEOUT`, `FEEDBACK_FOLLOWUP_DELAY`)
-  - Updates `feedbackState`, may adjust next prompt generation
+  - Collects user feedback on delivered prompts; can schedule follow-up reminders or adjust existing schedules
+  - Manages initial/follow-up timers (`FEEDBACK_INITIAL_TIMEOUT`, `FEEDBACK_FOLLOWUP_DELAY`) alongside scheduler automation
+  - Updates `feedbackState` and may transition back to `INTAKE` for continued intake or maintenance conversations
+
+- Optional Coordinator (legacy)
+  - Can be manually wired for experiments requiring an additional LLM-driven routing layer
+  - Shares the same tool set as Intake and can still transition between `INTAKE` and `FEEDBACK` via the state transition tool
 
 All modules:
 
@@ -356,16 +313,17 @@ All modules:
 
 - SchedulerTool
   - Creates recurring or one-shot schedules (uses `Timer`)
-  - Persists schedule metadata in `scheduleRegistry` and coordinates sending via Messaging
+  - Persists schedule metadata (`scheduleRegistry`) and tracks `lastPromptSentAt`
+  - Schedules mechanical reminders (`dailyPromptReminderDelay`) and auto-feedback enforcement timers
 
 - PromptGeneratorTool
   - Produces personalized, concise habit prompts; may store `lastHabitPrompt`
 
 - ProfileSaveTool
-  - Reads and updates structured `userProfile` in state; helps Coordinator/Intake make decisions
+  - Reads and updates structured `userProfile` in state; helps Intake and Feedback modules make decisions
 
 - StateTransitionTool
-  - Writes `DataKeyConversationState` to switch among `COORDINATOR`, `INTAKE`, `FEEDBACK`
+  - Writes `DataKeyConversationState` to switch among `INTAKE`, `FEEDBACK`, and legacy `COORDINATOR` when enabled
   - May set delayed transitions using `stateTransitionTimerID`
 
 ## Message building and prompts
@@ -391,7 +349,7 @@ Error modes and handling:
 - Missing module prompt file: fall back to a default in code and continue
 - Store errors while saving history: log warning, still return reply to user
 - No tools available: degrade to plain `GenerateWithMessages`
-- Invalid state: route through Coordinator as safe default
+- Invalid state: route through Intake as the safe default (Coordinator only when explicitly wired)
 
 Edge cases:
 
