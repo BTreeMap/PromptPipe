@@ -106,39 +106,22 @@ func NewConversationFlow(stateManager StateManager, genaiClient genai.ClientInte
 	}
 }
 
-// NewConversationFlowWithScheduler creates a new conversation flow with scheduler tool support.
-func NewConversationFlowWithScheduler(stateManager StateManager, genaiClient genai.ClientInterface, systemPromptFile string, schedulerTool *SchedulerTool) *ConversationFlow {
-	slog.Debug("ConversationFlow.NewConversationFlowWithScheduler: creating flow with scheduler tool", "systemPromptFile", systemPromptFile, "hasGenAI", genaiClient != nil, "hasSchedulerTool", schedulerTool != nil)
-	return &ConversationFlow{
-		stateManager:     stateManager,
-		genaiClient:      genaiClient,
-		systemPromptFile: systemPromptFile,
-		chatHistoryLimit: -1, // Default: no limit
-		schedulerTool:    schedulerTool,
-	}
-}
-
-// NewConversationFlowWithAllTools creates a new conversation flow with all tools for the 3-bot architecture.
-func NewConversationFlowWithAllTools(stateManager StateManager, genaiClient genai.ClientInterface, systemPromptFile string, msgService MessagingService, intakeBotPromptFile, promptGeneratorPromptFile, feedbackTrackerPromptFile string) *ConversationFlow {
-	return NewConversationFlowWithAllToolsAndTimeouts(stateManager, genaiClient, systemPromptFile, msgService, intakeBotPromptFile, promptGeneratorPromptFile, feedbackTrackerPromptFile, "15m", "3h", 10, true)
-}
-
-// NewConversationFlowWithAllToolsAndTimeouts creates a new conversation flow with all tools and configurable feedback timeouts for the 3-bot architecture.
-func NewConversationFlowWithAllToolsAndTimeouts(stateManager StateManager, genaiClient genai.ClientInterface, systemPromptFile string, msgService MessagingService, intakeBotPromptFile, promptGeneratorPromptFile, feedbackTrackerPromptFile, feedbackInitialTimeout, feedbackFollowupDelay string, schedulerPrepTimeMinutes int, autoFeedbackAfterPromptEnabled bool) *ConversationFlow {
-	slog.Debug("ConversationFlow.NewConversationFlowWithAllToolsAndTimeouts: creating flow with all tools and timeouts", "systemPromptFile", systemPromptFile, "hasGenAI", genaiClient != nil, "hasMessaging", msgService != nil, "intakeBotPromptFile", intakeBotPromptFile, "promptGeneratorPromptFile", promptGeneratorPromptFile, "feedbackTrackerPromptFile", feedbackTrackerPromptFile, "feedbackInitialTimeout", feedbackInitialTimeout, "feedbackFollowupDelay", feedbackFollowupDelay, "schedulerPrepTimeMinutes", schedulerPrepTimeMinutes, "autoFeedbackAfterPromptEnabled", autoFeedbackAfterPromptEnabled)
+// NewConversationFlowWithAllTools creates a new conversation flow with all tools and configurable feedback timeouts for the 3-bot architecture.
+func NewConversationFlowWithAllTools(stateManager StateManager, genaiClient genai.ClientInterface, systemPromptFile string, msgService MessagingService, intakeBotPromptFile, promptGeneratorPromptFile, feedbackTrackerPromptFile, feedbackInitialTimeout, feedbackFollowupDelay string, schedulerPrepTimeMinutes int, autoFeedbackAfterPromptEnabled bool) *ConversationFlow {
+	slog.Debug("ConversationFlow.NewConversationFlowWithAllTools: creating flow with all tools and timeouts", "systemPromptFile", systemPromptFile, "hasGenAI", genaiClient != nil, "hasMessaging", msgService != nil, "intakeBotPromptFile", intakeBotPromptFile, "promptGeneratorPromptFile", promptGeneratorPromptFile, "feedbackTrackerPromptFile", feedbackTrackerPromptFile, "feedbackInitialTimeout", feedbackInitialTimeout, "feedbackFollowupDelay", feedbackFollowupDelay, "schedulerPrepTimeMinutes", schedulerPrepTimeMinutes, "autoFeedbackAfterPromptEnabled", autoFeedbackAfterPromptEnabled)
 
 	// Create timer for scheduler
 	timer := NewSimpleTimer()
 
 	// Create shared tools in dependency order - prompt generator first, then scheduler
 	promptGeneratorTool := NewPromptGeneratorTool(stateManager, genaiClient, msgService, promptGeneratorPromptFile)
-	schedulerTool := NewSchedulerToolWithPrepTimeAndAutoFeedback(timer, msgService, genaiClient, stateManager, promptGeneratorTool, schedulerPrepTimeMinutes, autoFeedbackAfterPromptEnabled)
+	schedulerTool := NewSchedulerTool(timer, msgService, genaiClient, stateManager, promptGeneratorTool, schedulerPrepTimeMinutes, autoFeedbackAfterPromptEnabled)
 	stateTransitionTool := NewStateTransitionTool(stateManager, timer)
 	profileSaveTool := NewProfileSaveTool(stateManager)
 
 	// Create modules with shared tools (coordinator removed in new design)
 	intakeModule := NewIntakeModule(stateManager, genaiClient, msgService, intakeBotPromptFile, stateTransitionTool, profileSaveTool, schedulerTool, promptGeneratorTool)
-	feedbackModule := NewFeedbackModuleWithTimeouts(stateManager, genaiClient, feedbackTrackerPromptFile, timer, msgService, feedbackInitialTimeout, feedbackFollowupDelay, stateTransitionTool, profileSaveTool, schedulerTool)
+	feedbackModule := NewFeedbackModule(stateManager, genaiClient, feedbackTrackerPromptFile, timer, msgService, feedbackInitialTimeout, feedbackFollowupDelay, stateTransitionTool, profileSaveTool, schedulerTool)
 	return &ConversationFlow{
 		stateManager:        stateManager,
 		genaiClient:         genaiClient,

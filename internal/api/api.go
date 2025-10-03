@@ -397,7 +397,7 @@ func (s *Server) initializeConversationFlow() error {
 
 	// Use the new 3-bot system prompt
 	systemPromptFile3Bot := "prompts/conversation_system_3bot.txt"
-	conversationFlow := flow.NewConversationFlowWithAllToolsAndTimeouts(
+	conversationFlow := flow.NewConversationFlowWithAllTools(
 		stateManager,
 		genaiClientInterface,
 		systemPromptFile3Bot,

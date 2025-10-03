@@ -16,12 +16,12 @@ func TestConversationFlow_DefaultsToIntake(t *testing.T) {
 	// Build all tools, matching constructor
 	timer := NewSimpleTimer()
 	pgt := NewPromptGeneratorTool(sm, gen, msg, "test-prompt-file.txt")
-	sched := NewSchedulerToolWithPrepTimeAndAutoFeedback(timer, msg, gen, sm, pgt, 10, true)
+	sched := NewSchedulerTool(timer, msg, gen, sm, pgt, 10, true)
 	stt := NewStateTransitionTool(sm, timer)
 	prof := NewProfileSaveTool(sm)
 
 	intake := NewIntakeModule(sm, gen, msg, "intake.txt", stt, prof, sched, pgt)
-	feedback := NewFeedbackModuleWithTimeouts(sm, gen, "feedback.txt", timer, msg, "15m", "3h", stt, prof, sched)
+	feedback := NewFeedbackModule(sm, gen, "feedback.txt", timer, msg, "15m", "3h", stt, prof, sched)
 	f := &ConversationFlow{
 		stateManager:        sm,
 		genaiClient:         gen,
@@ -61,12 +61,12 @@ func TestConversationFlow_LegacyPromptGeneratorStateFallsBackToIntake(t *testing
 
 	timer := NewSimpleTimer()
 	pgt := NewPromptGeneratorTool(sm, gen, msg, "test-prompt-file.txt")
-	sched := NewSchedulerToolWithPrepTimeAndAutoFeedback(timer, msg, gen, sm, pgt, 10, true)
+	sched := NewSchedulerTool(timer, msg, gen, sm, pgt, 10, true)
 	stt := NewStateTransitionTool(sm, timer)
 	prof := NewProfileSaveTool(sm)
 
 	intake := NewIntakeModule(sm, gen, msg, "intake.txt", stt, prof, sched, pgt)
-	feedback := NewFeedbackModuleWithTimeouts(sm, gen, "feedback.txt", timer, msg, "15m", "3h", stt, prof, sched)
+	feedback := NewFeedbackModule(sm, gen, "feedback.txt", timer, msg, "15m", "3h", stt, prof, sched)
 	f := &ConversationFlow{
 		stateManager:        sm,
 		genaiClient:         gen,

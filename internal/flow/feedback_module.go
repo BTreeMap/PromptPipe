@@ -33,22 +33,9 @@ type FeedbackModule struct {
 	schedulerTool          *SchedulerTool       // Tool for scheduling prompts
 }
 
-// NewFeedbackModule creates a new feedback module instance.
-func NewFeedbackModule(stateManager StateManager, genaiClient genai.ClientInterface, systemPromptFile string, stateTransitionTool *StateTransitionTool, profileSaveTool *ProfileSaveTool, schedulerTool *SchedulerTool) *FeedbackModule {
-	slog.Debug("FeedbackModule.NewFeedbackModule: creating feedback module", "hasStateManager", stateManager != nil, "hasGenAI", genaiClient != nil, "systemPromptFile", systemPromptFile)
-	return &FeedbackModule{
-		stateManager:        stateManager,
-		genaiClient:         genaiClient,
-		systemPromptFile:    systemPromptFile,
-		stateTransitionTool: stateTransitionTool,
-		profileSaveTool:     profileSaveTool,
-		schedulerTool:       schedulerTool,
-	}
-}
-
-// NewFeedbackModuleWithTimeouts creates a new feedback module instance with timeout configuration.
-func NewFeedbackModuleWithTimeouts(stateManager StateManager, genaiClient genai.ClientInterface, systemPromptFile string, timer models.Timer, msgService MessagingService, feedbackInitialTimeout, feedbackFollowupDelay string, stateTransitionTool *StateTransitionTool, profileSaveTool *ProfileSaveTool, schedulerTool *SchedulerTool) *FeedbackModule {
-	slog.Debug("flow.NewFeedbackModuleWithTimeouts: creating feedback module with timeouts",
+// NewFeedbackModule creates a new feedback module instance with timeout configuration.
+func NewFeedbackModule(stateManager StateManager, genaiClient genai.ClientInterface, systemPromptFile string, timer models.Timer, msgService MessagingService, feedbackInitialTimeout, feedbackFollowupDelay string, stateTransitionTool *StateTransitionTool, profileSaveTool *ProfileSaveTool, schedulerTool *SchedulerTool) *FeedbackModule {
+	slog.Debug("flow.NewFeedbackModule: creating feedback module with timeouts",
 		"hasStateManager", stateManager != nil,
 		"hasGenAI", genaiClient != nil,
 		"systemPromptFile", systemPromptFile,

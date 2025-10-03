@@ -91,7 +91,7 @@ func (m *MockMessagingService) SendTypingIndicator(ctx context.Context, to strin
 }
 
 func newSchedulerToolForTest(timer models.Timer, msgService MessagingService, stateManager StateManager) *SchedulerTool {
-	return NewSchedulerToolWithPrepTimeAndAutoFeedback(timer, msgService, nil, stateManager, nil, 10, true)
+	return NewSchedulerTool(timer, msgService, nil, stateManager, nil, 10, true)
 }
 
 func TestSchedulerTool_GetToolDefinition(t *testing.T) {

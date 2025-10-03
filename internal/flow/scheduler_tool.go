@@ -53,8 +53,8 @@ type PromptGeneratorService interface {
 	ExecutePromptGenerator(ctx context.Context, participantID string, args map[string]interface{}) (string, error)
 }
 
-// NewSchedulerToolWithPrepTimeAndAutoFeedback creates a scheduler with explicit auto-feedback flag.
-func NewSchedulerToolWithPrepTimeAndAutoFeedback(timer models.Timer, msgService MessagingService, genaiClient genai.ClientInterface, stateManager StateManager, promptGenerator PromptGeneratorService, prepTimeMinutes int, autoFeedbackEnabled bool) *SchedulerTool {
+// NewSchedulerTool creates a scheduler with explicit auto-feedback configuration and customizable preparation time.
+func NewSchedulerTool(timer models.Timer, msgService MessagingService, genaiClient genai.ClientInterface, stateManager StateManager, promptGenerator PromptGeneratorService, prepTimeMinutes int, autoFeedbackEnabled bool) *SchedulerTool {
 	return &SchedulerTool{
 		timer:                    timer,
 		msgService:               msgService,
