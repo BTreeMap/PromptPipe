@@ -371,6 +371,8 @@ func (im *IntakeModule) executeIntakeToolCallsAndUpdateContext(ctx context.Conte
 	var toolResults []string
 	for _, toolCall := range toolResponse.ToolCalls {
 		slog.Info("IntakeModule: executing tool call", "participantID", participantID, "toolName", toolCall.Function.Name, "toolCallID", toolCall.ID)
+		argumentsPreview := formatToolArgumentsForLog(toolCall.Function.Arguments)
+		slog.Debug("IntakeModule: tool call arguments", "participantID", participantID, "toolName", toolCall.Function.Name, "toolCallID", toolCall.ID, "arguments", argumentsPreview)
 
 		var result string
 		var err error

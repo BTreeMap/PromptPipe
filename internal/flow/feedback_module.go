@@ -700,6 +700,8 @@ func (fm *FeedbackModule) executeFeedbackToolCallsAndUpdateContext(ctx context.C
 	var toolResults []string
 	for _, toolCall := range toolResponse.ToolCalls {
 		slog.Info("FeedbackModule: executing tool call", "participantID", participantID, "toolName", toolCall.Function.Name, "toolCallID", toolCall.ID)
+		argumentsPreview := formatToolArgumentsForLog(toolCall.Function.Arguments)
+		slog.Debug("FeedbackModule: tool call arguments", "participantID", participantID, "toolName", toolCall.Function.Name, "toolCallID", toolCall.ID, "arguments", argumentsPreview)
 
 		var result string
 		var err error
