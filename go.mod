@@ -9,6 +9,7 @@ require (
 	github.com/mdp/qrterminal/v3 v3.2.1
 	github.com/openai/openai-go v1.10.3
 	go.mau.fi/whatsmeow v0.0.0-20250716083826-71ea87a455e7
+	google.golang.org/protobuf v1.36.6
 )
 
 require (
@@ -31,6 +32,5 @@ require (
 	golang.org/x/sys v0.34.0 // indirect
 	golang.org/x/term v0.33.0 // indirect
 	golang.org/x/text v0.27.0 // indirect
-	google.golang.org/protobuf v1.36.6 // indirect
 	rsc.io/qr v0.2.0 // indirect
 )
