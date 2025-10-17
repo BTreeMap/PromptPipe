@@ -28,6 +28,18 @@ const (
 	JIDSuffix = "s.whatsapp.net"
 )
 
+// Poll configuration constants
+// These define the engagement poll sent with prompts and must match exactly
+// between the sending (SendPromptButtons) and receiving (poll response handler) logic.
+const (
+	// PollQuestion is the question text for the engagement poll
+	PollQuestion = "Did you do it?"
+)
+
+// PollOptions defines the available response options for the engagement poll.
+// The order matters - keep consistent between sending and receiving.
+var PollOptions = []string{"Done", "Next time"}
+
 // WhatsAppSender is an interface for sending WhatsApp messages (for production and testing)
 type WhatsAppSender interface {
 	SendMessage(ctx context.Context, to string, body string) error
@@ -232,8 +244,8 @@ func (c *Client) SendPromptButtons(ctx context.Context, to string, body string) 
 
 	// Then send a poll as a follow-up using Whatsmeow's built-in helper
 	pollMsg := c.waClient.BuildPollCreation(
-		"Did you do it?",
-		[]string{"Done", "Next time"},
+		PollQuestion,
+		PollOptions,
 		1, // single-select
 	)
 
@@ -339,7 +351,7 @@ func (m *MockClient) SendPromptButtons(ctx context.Context, to string, body stri
 		return err
 	}
 	// Simulate sending poll (just record it, no separate tracking needed for mock)
-	return m.SendMessage(ctx, to, "Did you do it?")
+	return m.SendMessage(ctx, to, PollQuestion)
 }
 
 // SendTypingIndicator records typing indicator state changes for testing.

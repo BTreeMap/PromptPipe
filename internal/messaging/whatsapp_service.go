@@ -2,6 +2,7 @@ package messaging
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -301,18 +302,25 @@ func (s *WhatsAppService) handleEvents(ctx context.Context) {
 	slog.Debug("WhatsAppService handleEvents stopping due to context cancellation")
 }
 
-// handleIncomingMessage processes incoming text messages from participants
+// handleIncomingMessage processes incoming text messages and poll responses from participants
 func (s *WhatsAppService) handleIncomingMessage(evt *events.Message) {
 	if evt.Message == nil {
 		return
 	}
 
-	// Extract text content
+	// Extract text content from regular messages or poll responses
 	var messageText string
 	if evt.Message.Conversation != nil {
 		messageText = *evt.Message.Conversation
 	} else if evt.Message.ExtendedTextMessage != nil && evt.Message.ExtendedTextMessage.Text != nil {
 		messageText = *evt.Message.ExtendedTextMessage.Text
+	} else if evt.Message.PollUpdateMessage != nil {
+		// Handle poll responses - convert to text format
+		messageText = s.handlePollResponse(evt)
+		if messageText == "" {
+			slog.Debug("WhatsAppService could not extract poll response", "from", evt.Info.Sender.String())
+			return
+		}
 	} else {
 		// Skip non-text messages (images, audio, etc.)
 		slog.Debug("WhatsAppService ignoring non-text message", "from", evt.Info.Sender.String())
@@ -335,6 +343,73 @@ func (s *WhatsAppService) handleIncomingMessage(evt *events.Message) {
 
 	// Send to responses channel (non-blocking)
 	s.safeEmitResponse(response)
+}
+
+// handlePollResponse decrypts and formats a poll response into text.
+// It returns a formatted string like "Q: Did you do it? A: Done" for the LLM pipeline.
+func (s *WhatsAppService) handlePollResponse(evt *events.Message) string {
+	if evt.Message.PollUpdateMessage == nil {
+		return ""
+	}
+
+	// Decrypt the poll vote using whatsmeow's DecryptPollVote
+	ctx := context.Background()
+	pollUpdate, err := s.waClient.GetClient().DecryptPollVote(ctx, evt)
+	if err != nil {
+		slog.Error("WhatsAppService failed to decrypt poll vote", "error", err, "from", evt.Info.Sender.String())
+		return ""
+	}
+
+	if pollUpdate == nil || len(pollUpdate.SelectedOptions) == 0 {
+		slog.Debug("WhatsAppService poll vote has no selected options", "from", evt.Info.Sender.String())
+		return ""
+	}
+
+	// For our specific poll ("Did you do it?" with "Done" and "Next time" options),
+	// we'll map the response back to the original options using SHA256 hashing
+	pollQuestion := whatsapp.PollQuestion
+	pollOptions := whatsapp.PollOptions
+
+	// Create a map of option hash to option text for matching
+	// WhatsApp uses SHA256 to hash poll options
+	optionHashMap := make(map[string]string)
+	for _, option := range pollOptions {
+		hash := sha256.Sum256([]byte(option))
+		optionHashMap[string(hash[:])] = option
+	}
+
+	// Find which option was selected by matching hashes
+	var selectedAnswers []string
+	for _, selectedHash := range pollUpdate.SelectedOptions {
+		if optionText, found := optionHashMap[string(selectedHash)]; found {
+			selectedAnswers = append(selectedAnswers, optionText)
+		} else {
+			slog.Warn("WhatsAppService could not match poll option hash",
+				"from", evt.Info.Sender.String(),
+				"hash_length", len(selectedHash))
+		}
+	}
+
+	// If we couldn't match any options, log and return a generic response
+	if len(selectedAnswers) == 0 {
+		slog.Warn("WhatsAppService could not match any poll option hashes",
+			"from", evt.Info.Sender.String(),
+			"selected_count", len(pollUpdate.SelectedOptions))
+		// Return a generic response indicating user engaged
+		return fmt.Sprintf("Q: %s A: [responded]", pollQuestion)
+	}
+
+	// Format as "Q: [question] A: [answer]" for the LLM to understand context
+	// For single-select polls, there will be only one answer
+	selectedAnswer := strings.Join(selectedAnswers, ", ")
+	formattedResponse := fmt.Sprintf("Q: %s A: %s", pollQuestion, selectedAnswer)
+
+	slog.Debug("WhatsAppService formatted poll response",
+		"from", evt.Info.Sender.String(),
+		"formatted", formattedResponse,
+		"selected_options", selectedAnswers)
+
+	return formattedResponse
 }
 
 // handleMessageReceipt processes delivery and read receipts
