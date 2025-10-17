@@ -18,7 +18,6 @@ import (
 	"go.mau.fi/whatsmeow/store/sqlstore"
 	"go.mau.fi/whatsmeow/types"
 	waLog "go.mau.fi/whatsmeow/util/log"
-	"google.golang.org/protobuf/proto"
 )
 
 // Constants for WhatsApp client configuration
@@ -231,21 +230,12 @@ func (c *Client) SendPromptButtons(ctx context.Context, to string, body string) 
 		return fmt.Errorf("failed to send prompt message to %s: %w", to, err)
 	}
 
-	// Then send a poll as a follow-up
-	pollMsg := &waE2E.Message{
-		PollCreationMessage: &waE2E.PollCreationMessage{
-			Name: proto.String("Did you do it?"),
-			Options: []*waE2E.PollCreationMessage_Option{
-				{
-					OptionName: proto.String("Done"),
-				},
-				{
-					OptionName: proto.String("Next time"),
-				},
-			},
-			SelectableOptionsCount: proto.Uint32(1), // Allow only one answer
-		},
-	}
+	// Then send a poll as a follow-up using Whatsmeow's built-in helper
+	pollMsg := c.waClient.BuildPollCreation(
+		"Did you do it?",
+		[]string{"Done", "Next time"},
+		1, // single-select
+	)
 
 	_, err = c.waClient.SendMessage(ctx, jid, pollMsg)
 	if err != nil {
