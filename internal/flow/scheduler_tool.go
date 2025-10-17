@@ -48,6 +48,10 @@ type MessagingService interface {
 	SendTypingIndicator(ctx context.Context, to string, typing bool) error
 }
 
+type promptButtonsSender interface {
+	SendPromptWithButtons(ctx context.Context, to, message string) error
+}
+
 // PromptGeneratorService defines the interface for prompt generation operations.
 type PromptGeneratorService interface {
 	ExecutePromptGenerator(ctx context.Context, participantID string, args map[string]interface{}) (string, error)
@@ -274,9 +278,16 @@ func (st *SchedulerTool) executeScheduledPrompt(ctx context.Context, participant
 		slog.Warn("SchedulerTool.executeScheduledPrompt: no message content available, using fallback", "to", prompt.To)
 	}
 
-	// Send the message
-	if err := st.msgService.SendMessage(ctx, prompt.To, message); err != nil {
-		slog.Error("SchedulerTool.executeScheduledPrompt: failed to send message", "error", err, "to", prompt.To, "message", message)
+	// Send the message with interactive buttons when supported
+	var sendErr error
+	if sender, ok := st.msgService.(promptButtonsSender); ok {
+		sendErr = sender.SendPromptWithButtons(ctx, prompt.To, message)
+	} else {
+		sendErr = st.msgService.SendMessage(ctx, prompt.To, message)
+	}
+
+	if sendErr != nil {
+		slog.Error("SchedulerTool.executeScheduledPrompt: failed to send message", "error", sendErr, "to", prompt.To, "message", message)
 		return
 	}
 

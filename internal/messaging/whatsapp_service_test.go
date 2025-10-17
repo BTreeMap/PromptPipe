@@ -69,6 +69,41 @@ func TestWhatsAppService_SendTypingIndicator(t *testing.T) {
 	}
 }
 
+func TestWhatsAppService_SendPromptWithButtons_UsesInteractivePath(t *testing.T) {
+	mockClient := whatsapp.NewMockClient()
+	svc := NewWhatsAppService(mockClient)
+	ctx := context.Background()
+	to, body := "+1234567890", "Try 10 mindful breaths after breakfast."
+
+	if err := svc.SendPromptWithButtons(ctx, to, body); err != nil {
+		t.Fatalf("SendPromptWithButtons returned error: %v", err)
+	}
+
+	if len(mockClient.PromptButtonMessages) != 1 {
+		t.Fatalf("expected 1 prompt button message, got %d", len(mockClient.PromptButtonMessages))
+	}
+
+	recorded := mockClient.PromptButtonMessages[0]
+	if recorded.To != "1234567890" {
+		t.Errorf("expected canonical recipient 1234567890, got %s", recorded.To)
+	}
+	if recorded.Body != body {
+		t.Errorf("expected body %q, got %q", body, recorded.Body)
+	}
+
+	select {
+	case receipt := <-svc.Receipts():
+		if receipt.To != "1234567890" {
+			t.Errorf("expected receipt recipient 1234567890, got %s", receipt.To)
+		}
+		if receipt.Status != models.MessageStatusSent {
+			t.Errorf("expected receipt status %s, got %s", models.MessageStatusSent, receipt.Status)
+		}
+	default:
+		t.Fatal("expected receipt for prompt button message")
+	}
+}
+
 // Test Start and Stop do not error and close channels
 func TestWhatsAppService_StartStop(t *testing.T) {
 	mockClient := whatsapp.NewMockClient()

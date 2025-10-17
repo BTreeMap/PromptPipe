@@ -18,6 +18,7 @@ import (
 	"go.mau.fi/whatsmeow/store/sqlstore"
 	"go.mau.fi/whatsmeow/types"
 	waLog "go.mau.fi/whatsmeow/util/log"
+	"google.golang.org/protobuf/proto"
 )
 
 // Constants for WhatsApp client configuration
@@ -26,6 +27,9 @@ const (
 	DefaultSQLitePath = "/var/lib/promptpipe/whatsmeow.db"
 	// JIDSuffix is the WhatsApp JID suffix for regular users
 	JIDSuffix = "s.whatsapp.net"
+
+	promptDoneButtonID  = "PROMPT_DONE"
+	promptLaterButtonID = "PROMPT_NEXT_TIME"
 )
 
 // WhatsAppSender is an interface for sending WhatsApp messages (for production and testing)
@@ -203,6 +207,55 @@ func (c *Client) SendMessage(ctx context.Context, to string, body string) error 
 	return nil
 }
 
+// SendPromptButtons sends a prompt message with interactive buttons for "Done" and "Next time" actions.
+func (c *Client) SendPromptButtons(ctx context.Context, to string, body string) error {
+	if c.waClient == nil {
+		return fmt.Errorf("whatsapp client not initialized")
+	}
+	if c.waClient.Store == nil {
+		return fmt.Errorf("whatsapp client store not available")
+	}
+	if to == "" {
+		return fmt.Errorf("recipient cannot be empty")
+	}
+	if strings.TrimSpace(body) == "" {
+		return fmt.Errorf("message body cannot be empty")
+	}
+
+	slog.Debug("Sending WhatsApp prompt with buttons", "to", to, "body_length", len(body))
+	jid := types.NewJID(to, JIDSuffix)
+	msg := &waE2E.Message{
+		ButtonsMessage: &waE2E.ButtonsMessage{
+			ContentText: proto.String(body),
+			FooterText:  proto.String("Let me know what works best for you."),
+			HeaderType:  waE2E.ButtonsMessage_TEXT.Enum(),
+			Buttons: []*waE2E.ButtonsMessage_Button{
+				{
+					ButtonID: proto.String(promptDoneButtonID),
+					ButtonText: &waE2E.ButtonsMessage_Button_ButtonText{
+						DisplayText: proto.String("Done"),
+					},
+				},
+				{
+					ButtonID: proto.String(promptLaterButtonID),
+					ButtonText: &waE2E.ButtonsMessage_Button_ButtonText{
+						DisplayText: proto.String("Next time"),
+					},
+				},
+			},
+		},
+	}
+
+	_, err := c.waClient.SendMessage(ctx, jid, msg)
+	if err != nil {
+		slog.Error("Failed to send WhatsApp prompt with buttons", "error", err, "to", to)
+		return fmt.Errorf("failed to send prompt with buttons to %s: %w", to, err)
+	}
+
+	slog.Debug("WhatsApp prompt with buttons sent successfully", "to", to)
+	return nil
+}
+
 // SendTypingIndicator updates the chat presence state (typing indicator) for a conversation.
 func (c *Client) SendTypingIndicator(ctx context.Context, to string, typing bool) error {
 	if c.waClient == nil {
@@ -242,8 +295,9 @@ func (c *Client) GetClient() *whatsmeow.Client {
 // In tests, use whatsapp.NewMockClient() instead of NewClient to avoid real WhatsApp connections.
 // Update api_test.go to use MockClient for waClient.
 type MockClient struct {
-	SentMessages []SentMessage
-	TypingEvents []TypingEvent
+	SentMessages         []SentMessage
+	PromptButtonMessages []SentMessage
+	TypingEvents         []TypingEvent
 }
 
 // SentMessage represents a message sent via MockClient for testing
@@ -254,8 +308,9 @@ type SentMessage struct {
 
 func NewMockClient() *MockClient {
 	return &MockClient{
-		SentMessages: make([]SentMessage, 0),
-		TypingEvents: make([]TypingEvent, 0),
+		SentMessages:         make([]SentMessage, 0),
+		PromptButtonMessages: make([]SentMessage, 0),
+		TypingEvents:         make([]TypingEvent, 0),
 	}
 }
 
@@ -275,6 +330,19 @@ func (m *MockClient) SendMessage(ctx context.Context, to string, body string) er
 	})
 
 	return nil
+}
+
+// SendPromptButtons records prompt button messages for testing purposes.
+func (m *MockClient) SendPromptButtons(ctx context.Context, to string, body string) error {
+	if to == "" {
+		return fmt.Errorf("recipient cannot be empty")
+	}
+	if body == "" {
+		return fmt.Errorf("message body cannot be empty")
+	}
+
+	m.PromptButtonMessages = append(m.PromptButtonMessages, SentMessage{To: to, Body: body})
+	return m.SendMessage(ctx, to, body)
 }
 
 // SendTypingIndicator records typing indicator state changes for testing.

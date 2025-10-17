@@ -160,6 +160,44 @@ func (s *WhatsAppService) SendMessage(ctx context.Context, to string, body strin
 	return nil
 }
 
+type promptButtonsClient interface {
+	SendPromptButtons(ctx context.Context, to string, body string) error
+}
+
+// SendPromptWithButtons sends a prompt message with interactive buttons when supported by the underlying client.
+func (s *WhatsAppService) SendPromptWithButtons(ctx context.Context, to string, body string) error {
+	s.mu.RLock()
+	if s.stopped {
+		s.mu.RUnlock()
+		return ErrServiceStopped
+	}
+	s.mu.RUnlock()
+
+	canonicalTo, err := s.ValidateAndCanonicalizeRecipient(to)
+	if err != nil {
+		slog.Error("WhatsAppService SendPromptWithButtons validation error", "error", err, "to", to)
+		return err
+	}
+
+	var sendErr error
+	if sender, ok := s.client.(promptButtonsClient); ok {
+		slog.Debug("WhatsAppService SendPromptWithButtons using interactive buttons", "to", canonicalTo)
+		sendErr = sender.SendPromptButtons(ctx, canonicalTo, body)
+	} else {
+		slog.Debug("WhatsAppService SendPromptWithButtons falling back to text message", "to", canonicalTo)
+		sendErr = s.client.SendMessage(ctx, canonicalTo, body)
+	}
+
+	if sendErr != nil {
+		slog.Error("WhatsAppService SendPromptWithButtons error", "error", sendErr, "to", canonicalTo)
+		return sendErr
+	}
+
+	s.safeEmitReceipt(models.Receipt{To: canonicalTo, Status: models.MessageStatusSent, Time: time.Now().Unix()})
+	slog.Info("WhatsAppService prompt with buttons sent and receipt emitted", "to", canonicalTo)
+	return nil
+}
+
 // SendTypingIndicator updates the chat presence for the given recipient.
 func (s *WhatsAppService) SendTypingIndicator(ctx context.Context, to string, typing bool) error {
 	s.mu.RLock()

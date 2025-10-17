@@ -10,8 +10,31 @@ import (
 	"time"
 
 	"github.com/BTreeMap/PromptPipe/internal/flow"
+	"github.com/BTreeMap/PromptPipe/internal/messaging"
 	"github.com/BTreeMap/PromptPipe/internal/models"
 )
+
+type promptButtonsSender interface {
+	SendPromptWithButtons(ctx context.Context, to string, body string) error
+}
+
+func shouldAttachPromptButtons(p models.Prompt) bool {
+	switch p.Type {
+	case models.PromptTypeBranch, models.PromptTypeConversation:
+		return false
+	default:
+		return true
+	}
+}
+
+func sendPromptMessage(ctx context.Context, svc messaging.Service, to string, body string, attachButtons bool) error {
+	if attachButtons {
+		if sender, ok := svc.(promptButtonsSender); ok {
+			return sender.SendPromptWithButtons(ctx, to, body)
+		}
+	}
+	return svc.SendMessage(ctx, to, body)
+}
 
 func (s *Server) sendHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Body != nil {
@@ -62,8 +85,8 @@ func (s *Server) sendHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = s.msgService.SendMessage(context.Background(), p.To, msg)
-	if err != nil {
+	ctx := context.Background()
+	if err = sendPromptMessage(ctx, s.msgService, p.To, msg, shouldAttachPromptButtons(p)); err != nil {
 		slog.Error("Server.sendHandler: failed to send message", "error", err, "to", p.To)
 		writeJSONResponse(w, http.StatusInternalServerError, models.Error("Failed to send message"))
 		return
@@ -148,8 +171,8 @@ func (s *Server) scheduleHandler(w http.ResponseWriter, r *http.Request) {
 			slog.Error("Server.scheduleHandler: failed to generate content in scheduled job", "error", genErr)
 			return
 		}
-		// Send message
-		if sendErr := s.msgService.SendMessage(ctx, job.To, msg); sendErr != nil {
+		// Send message (attach buttons for prompt types)
+		if sendErr := sendPromptMessage(ctx, s.msgService, job.To, msg, shouldAttachPromptButtons(job)); sendErr != nil {
 			slog.Error("Server.scheduleHandler: failed to send scheduled message", "error", sendErr, "to", job.To)
 			return
 		}
