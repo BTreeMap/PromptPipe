@@ -48,6 +48,8 @@ type MessagingService interface {
 	SendTypingIndicator(ctx context.Context, to string, typing bool) error
 }
 
+// promptButtonsSender defines the interface for sending prompts with enhanced engagement tracking.
+// Note: Despite the name "Buttons", this now sends a poll since WhatsApp deprecated button messages.
 type promptButtonsSender interface {
 	SendPromptWithButtons(ctx context.Context, to, message string) error
 }

@@ -27,9 +27,6 @@ const (
 	DefaultSQLitePath = "/var/lib/promptpipe/whatsmeow.db"
 	// JIDSuffix is the WhatsApp JID suffix for regular users
 	JIDSuffix = "s.whatsapp.net"
-
-	promptDoneButtonID  = "PROMPT_DONE"
-	promptLaterButtonID = "PROMPT_NEXT_TIME"
 )
 
 // WhatsAppSender is an interface for sending WhatsApp messages (for production and testing)
@@ -207,7 +204,8 @@ func (c *Client) SendMessage(ctx context.Context, to string, body string) error 
 	return nil
 }
 
-// SendPromptButtons sends a prompt message with interactive buttons for "Done" and "Next time" actions.
+// SendPromptButtons sends a prompt message followed by a poll for "Did you do it?" with two options.
+// This method maintains the original interface but now sends a poll instead of deprecated button messages.
 func (c *Client) SendPromptButtons(ctx context.Context, to string, body string) error {
 	if c.waClient == nil {
 		return fmt.Errorf("whatsapp client not initialized")
@@ -222,37 +220,40 @@ func (c *Client) SendPromptButtons(ctx context.Context, to string, body string) 
 		return fmt.Errorf("message body cannot be empty")
 	}
 
-	slog.Debug("Sending WhatsApp prompt with buttons", "to", to, "body_length", len(body))
+	slog.Debug("Sending WhatsApp prompt with poll", "to", to, "body_length", len(body))
 	jid := types.NewJID(to, JIDSuffix)
-	msg := &waE2E.Message{
-		ButtonsMessage: &waE2E.ButtonsMessage{
-			ContentText: proto.String(body),
-			FooterText:  proto.String("Let me know what works best for you."),
-			HeaderType:  waE2E.ButtonsMessage_TEXT.Enum(),
-			Buttons: []*waE2E.ButtonsMessage_Button{
+
+	// First send the main prompt message
+	mainMsg := &waE2E.Message{Conversation: &body}
+	_, err := c.waClient.SendMessage(ctx, jid, mainMsg)
+	if err != nil {
+		slog.Error("Failed to send WhatsApp prompt message", "error", err, "to", to)
+		return fmt.Errorf("failed to send prompt message to %s: %w", to, err)
+	}
+
+	// Then send a poll as a follow-up
+	pollMsg := &waE2E.Message{
+		PollCreationMessage: &waE2E.PollCreationMessage{
+			Name: proto.String("Did you do it?"),
+			Options: []*waE2E.PollCreationMessage_Option{
 				{
-					ButtonID: proto.String(promptDoneButtonID),
-					ButtonText: &waE2E.ButtonsMessage_Button_ButtonText{
-						DisplayText: proto.String("Done"),
-					},
+					OptionName: proto.String("Done"),
 				},
 				{
-					ButtonID: proto.String(promptLaterButtonID),
-					ButtonText: &waE2E.ButtonsMessage_Button_ButtonText{
-						DisplayText: proto.String("Next time"),
-					},
+					OptionName: proto.String("Next time"),
 				},
 			},
+			SelectableOptionsCount: proto.Uint32(1), // Allow only one answer
 		},
 	}
 
-	_, err := c.waClient.SendMessage(ctx, jid, msg)
+	_, err = c.waClient.SendMessage(ctx, jid, pollMsg)
 	if err != nil {
-		slog.Error("Failed to send WhatsApp prompt with buttons", "error", err, "to", to)
-		return fmt.Errorf("failed to send prompt with buttons to %s: %w", to, err)
+		slog.Error("Failed to send WhatsApp poll", "error", err, "to", to)
+		return fmt.Errorf("failed to send poll to %s: %w", to, err)
 	}
 
-	slog.Debug("WhatsApp prompt with buttons sent successfully", "to", to)
+	slog.Debug("WhatsApp prompt with poll sent successfully", "to", to)
 	return nil
 }
 
@@ -333,6 +334,7 @@ func (m *MockClient) SendMessage(ctx context.Context, to string, body string) er
 }
 
 // SendPromptButtons records prompt button messages for testing purposes.
+// Note: This now sends a poll instead of buttons, but maintains the interface name.
 func (m *MockClient) SendPromptButtons(ctx context.Context, to string, body string) error {
 	if to == "" {
 		return fmt.Errorf("recipient cannot be empty")
@@ -342,7 +344,12 @@ func (m *MockClient) SendPromptButtons(ctx context.Context, to string, body stri
 	}
 
 	m.PromptButtonMessages = append(m.PromptButtonMessages, SentMessage{To: to, Body: body})
-	return m.SendMessage(ctx, to, body)
+	// Simulate sending main message
+	if err := m.SendMessage(ctx, to, body); err != nil {
+		return err
+	}
+	// Simulate sending poll (just record it, no separate tracking needed for mock)
+	return m.SendMessage(ctx, to, "Did you do it?")
 }
 
 // SendTypingIndicator records typing indicator state changes for testing.

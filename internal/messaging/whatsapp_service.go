@@ -164,7 +164,9 @@ type promptButtonsClient interface {
 	SendPromptButtons(ctx context.Context, to string, body string) error
 }
 
-// SendPromptWithButtons sends a prompt message with interactive buttons when supported by the underlying client.
+// SendPromptWithButtons sends a prompt message followed by a poll for engagement tracking.
+// Note: Despite the name "Buttons", this now sends a poll since WhatsApp deprecated button messages.
+// The interface name is kept for backward compatibility.
 func (s *WhatsAppService) SendPromptWithButtons(ctx context.Context, to string, body string) error {
 	s.mu.RLock()
 	if s.stopped {
@@ -181,7 +183,7 @@ func (s *WhatsAppService) SendPromptWithButtons(ctx context.Context, to string, 
 
 	var sendErr error
 	if sender, ok := s.client.(promptButtonsClient); ok {
-		slog.Debug("WhatsAppService SendPromptWithButtons using interactive buttons", "to", canonicalTo)
+		slog.Debug("WhatsAppService SendPromptWithButtons using poll message", "to", canonicalTo)
 		sendErr = sender.SendPromptButtons(ctx, canonicalTo, body)
 	} else {
 		slog.Debug("WhatsAppService SendPromptWithButtons falling back to text message", "to", canonicalTo)
@@ -194,7 +196,7 @@ func (s *WhatsAppService) SendPromptWithButtons(ctx context.Context, to string, 
 	}
 
 	s.safeEmitReceipt(models.Receipt{To: canonicalTo, Status: models.MessageStatusSent, Time: time.Now().Unix()})
-	slog.Info("WhatsAppService prompt with buttons sent and receipt emitted", "to", canonicalTo)
+	slog.Info("WhatsAppService prompt with poll sent and receipt emitted", "to", canonicalTo)
 	return nil
 }
 

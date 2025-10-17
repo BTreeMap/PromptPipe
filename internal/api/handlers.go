@@ -18,6 +18,8 @@ type promptButtonsSender interface {
 	SendPromptWithButtons(ctx context.Context, to string, body string) error
 }
 
+// shouldAttachPromptButtons determines if a prompt should use the enhanced poll message format.
+// Note: Despite the name "Buttons", this now sends a poll since WhatsApp deprecated button messages.
 func shouldAttachPromptButtons(p models.Prompt) bool {
 	switch p.Type {
 	case models.PromptTypeBranch, models.PromptTypeConversation:
@@ -27,6 +29,8 @@ func shouldAttachPromptButtons(p models.Prompt) bool {
 	}
 }
 
+// sendPromptMessage sends a prompt message, optionally with a follow-up poll for engagement tracking.
+// Note: Despite the name "Buttons", this now sends a poll since WhatsApp deprecated button messages.
 func sendPromptMessage(ctx context.Context, svc messaging.Service, to string, body string, attachButtons bool) error {
 	if attachButtons {
 		if sender, ok := svc.(promptButtonsSender); ok {
