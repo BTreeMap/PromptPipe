@@ -40,6 +40,18 @@ const (
 // The order matters - keep consistent between sending and receiving.
 var PollOptions = []string{"Done", "Next time"}
 
+// FormatPollResponse formats a poll response into the standardized "Q: [question] A: [answer]" format.
+// This ensures consistent formatting across all parts of the codebase that handle poll responses.
+func FormatPollResponse(question, answer string) string {
+	return fmt.Sprintf("Q: %s A: %s", question, answer)
+}
+
+// GetSuccessPollResponse returns the formatted poll response string for a successful habit completion.
+// Use this for detecting when a user has clicked the "Done" button.
+func GetSuccessPollResponse() string {
+	return FormatPollResponse(PollQuestion, PollOptions[0]) // "Done" is the first option
+}
+
 // WhatsAppSender is an interface for sending WhatsApp messages (for production and testing)
 type WhatsAppSender interface {
 	SendMessage(ctx context.Context, to string, body string) error

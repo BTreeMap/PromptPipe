@@ -396,13 +396,13 @@ func (s *WhatsAppService) handlePollResponse(evt *events.Message) string {
 			"from", evt.Info.Sender.String(),
 			"selected_count", len(pollUpdate.SelectedOptions))
 		// Return a generic response indicating user engaged
-		return fmt.Sprintf("Q: %s A: [responded]", pollQuestion)
+		return whatsapp.FormatPollResponse(pollQuestion, "[responded]")
 	}
 
 	// Format as "Q: [question] A: [answer]" for the LLM to understand context
 	// For single-select polls, there will be only one answer
 	selectedAnswer := strings.Join(selectedAnswers, ", ")
-	formattedResponse := fmt.Sprintf("Q: %s A: %s", pollQuestion, selectedAnswer)
+	formattedResponse := whatsapp.FormatPollResponse(pollQuestion, selectedAnswer)
 
 	slog.Debug("WhatsAppService formatted poll response",
 		"from", evt.Info.Sender.String(),

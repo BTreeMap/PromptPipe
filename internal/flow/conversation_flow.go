@@ -12,6 +12,7 @@ import (
 
 	"github.com/BTreeMap/PromptPipe/internal/genai"
 	"github.com/BTreeMap/PromptPipe/internal/models"
+	"github.com/BTreeMap/PromptPipe/internal/whatsapp"
 	"github.com/openai/openai-go"
 )
 
@@ -304,8 +305,9 @@ func (f *ConversationFlow) processConversationMessage(ctx context.Context, parti
 	history.Messages = append(history.Messages, userMsg)
 
 	// Check if this is a "Done" poll response and increment success counter
-	if strings.Contains(userMessage, "Q: Did you do it? A: Done") {
-		slog.Debug("ConversationFlow.processConversationMessage: detected 'Done' poll response, incrementing SuccessCount", "participantID", participantID)
+	successResponse := whatsapp.GetSuccessPollResponse()
+	if strings.Contains(userMessage, successResponse) {
+		slog.Debug("ConversationFlow.processConversationMessage: detected success poll response, incrementing SuccessCount", "participantID", participantID, "response", successResponse)
 		if err := f.incrementSuccessCount(ctx, participantID); err != nil {
 			slog.Error("ConversationFlow.processConversationMessage: failed to increment SuccessCount", "error", err, "participantID", participantID)
 			// Don't fail the request, just log the error
