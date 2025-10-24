@@ -390,68 +390,67 @@ PromptPipe uses **two separate databases** to maintain clear separation of conce
 **`receipts`** - Message delivery tracking
 
 ```sql
-receipts (
-    id INTEGER PRIMARY KEY,
-    recipient TEXT NOT NULL,        -- E.164 phone number
-    status TEXT NOT NULL,           -- "sent", "delivered", "read", "failed"
-    time INTEGER NOT NULL           -- Unix timestamp
-)
+CREATE TABLE IF NOT EXISTS receipts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    recipient TEXT NOT NULL,
+    status TEXT NOT NULL,
+    time INTEGER NOT NULL
+);
 ```
 
 **`responses`** - Incoming message storage
 
 ```sql
-responses (
-    id INTEGER PRIMARY KEY,
-    sender TEXT NOT NULL,           -- E.164 phone number
-    body TEXT NOT NULL,             -- Message content
-    time INTEGER NOT NULL           -- Unix timestamp
-)
+CREATE TABLE IF NOT EXISTS responses (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    sender TEXT NOT NULL,
+    body TEXT NOT NULL,
+    time INTEGER NOT NULL
+);
 ```
 
 **`flow_states`** - Conversation state management
 
 ```sql
-flow_states (
-    id INTEGER PRIMARY KEY,
-    participant_id TEXT NOT NULL,  -- Unique participant identifier
-    flow_type TEXT NOT NULL,       -- "conversation", "intervention", etc.
-    current_state TEXT NOT NULL,   -- Current state in flow
-    state_data TEXT,               -- JSON blob with conversation history/data
-    last_prompted_at DATETIME,     -- Timestamp of the last prompt sent
-    created_at DATETIME,
-    updated_at DATETIME,
+CREATE TABLE IF NOT EXISTS flow_states (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    participant_id TEXT NOT NULL,
+    flow_type TEXT NOT NULL,
+    current_state TEXT NOT NULL,
+    state_data TEXT,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(participant_id, flow_type)
-)
+);
 ```
 
 **`conversation_participants`** - Participant profiles
 
 ```sql
-conversation_participants (
-    id TEXT PRIMARY KEY,           -- UUID
-    phone_number TEXT UNIQUE,      -- E.164 phone number
-    name TEXT,                     -- Display name
-    gender TEXT,                   -- Demographics (optional)
-    ethnicity TEXT,                -- Demographics (optional)
-    background TEXT,               -- Cultural/context info (optional)
-    status TEXT NOT NULL,          -- "active", "paused", "completed", "withdrawn"
-    enrolled_at DATETIME,
-    created_at DATETIME,
-    updated_at DATETIME
-)
+CREATE TABLE IF NOT EXISTS conversation_participants (
+    id TEXT PRIMARY KEY,
+    phone_number TEXT NOT NULL UNIQUE,
+    name TEXT,
+    gender TEXT,
+    ethnicity TEXT,
+    background TEXT,
+    status TEXT NOT NULL,
+    enrolled_at DATETIME NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 ```
 
 **`registered_hooks`** - Response routing configuration
 
 ```sql
-registered_hooks (
-    phone_number TEXT PRIMARY KEY, -- E.164 phone number
-    hook_type TEXT NOT NULL,       -- "conversation", "branch", "genai"
-    parameters TEXT NOT NULL,      -- JSON configuration
-    created_at DATETIME,
-    updated_at DATETIME
-)
+CREATE TABLE IF NOT EXISTS registered_hooks (
+    phone_number TEXT PRIMARY KEY,
+    hook_type TEXT NOT NULL,
+    parameters TEXT NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 ```
 
 ### Database Relationships
@@ -556,8 +555,7 @@ curl -X POST http://localhost:8080/conversation/participants \
   -H "Content-Type: application/json" \
   -d '{
     "phone_number": "+15551234567",
-    "name": "John Doe",
-    "timezone": "America/Toronto"
+    "name": "John Doe"
   }'
 ```
 

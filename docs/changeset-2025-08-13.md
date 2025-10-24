@@ -1,5 +1,7 @@
 # Unified Scheduler Tool Design
 
+> **Note**: This document describes the scheduler tool redesign completed on 2025-08-13. It documents the current unified preparation time approach for scheduling.
+
 ## Overview
 
 The SchedulerTool has been redesigned to use a unified "preparation time" approach for both fixed and random scheduling types. This simplifies the internal logic while maintaining backward compatibility with the existing LLM API.

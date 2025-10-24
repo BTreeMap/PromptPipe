@@ -87,8 +87,7 @@ Request body fields (`ConversationEnrollmentRequest`):
   "name": "Alice Smith",                    // optional
   "gender": "female",                       // optional
   "ethnicity": "Hispanic",                  // optional
-  "background": "College student...",       // optional
-  "timezone": "America/New_York"            // optional IANA TZ
+  "background": "College student..."        // optional
 }
 ```
 
@@ -113,7 +112,6 @@ Response (201):
     "gender": "female",
     "ethnicity": "Hispanic",
     "background": "College student...",
-    "timezone": "America/New_York",
     "status": "active",
     "enrolled_at": "2025-08-24T12:34:56Z",
     "created_at": "...",

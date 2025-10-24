@@ -8,7 +8,7 @@ Welcome! This guide gets you productive quickly: environment setup, core archite
 
 Install locally:
 
-- Go >= 1.22 (`go version`)
+- Go >= 1.24.3 (`go version`)
 - make
 - Git
 - (Optional) Docker (for Postgres)
