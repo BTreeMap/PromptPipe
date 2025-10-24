@@ -34,11 +34,21 @@ const (
 const (
 	// PollQuestion is the question text for the engagement poll
 	PollQuestion = "Did you do it?"
+
+	// IntensityPollQuestion is the question text for the intensity adjustment poll
+	IntensityPollQuestion = "How's the intensity?"
 )
 
 // PollOptions defines the available response options for the engagement poll.
 // The order matters - keep consistent between sending and receiving.
 var PollOptions = []string{"Done", "Next time"}
+
+// IntensityPollOptions defines all possible intensity adjustment options
+var IntensityPollOptions = map[string][]string{
+	"low":    {"Keep current", "Increase"},
+	"normal": {"Decrease", "Keep current", "Increase"},
+	"high":   {"Decrease", "Keep current"},
+}
 
 // FormatPollResponse formats a poll response into the standardized "Q: [question] A: [answer]" format.
 // This ensures consistent formatting across all parts of the codebase that handle poll responses.
@@ -50,6 +60,45 @@ func FormatPollResponse(question, answer string) string {
 // Use this for detecting when a user has clicked the "Done" button.
 func GetSuccessPollResponse() string {
 	return FormatPollResponse(PollQuestion, PollOptions[0]) // "Done" is the first option
+}
+
+// ParseIntensityPollResponse parses an intensity poll response and returns the new intensity level.
+// Returns empty string if the response is not a valid intensity adjustment response.
+// Valid responses: "Decrease", "Keep current", "Increase"
+func ParseIntensityPollResponse(response string, currentIntensity string) string {
+	// Check if this is an intensity adjustment poll response
+	if !strings.Contains(response, IntensityPollQuestion) {
+		return ""
+	}
+
+	// Extract the answer part
+	if strings.Contains(response, "A: Decrease") {
+		switch currentIntensity {
+		case "normal":
+			return "low"
+		case "high":
+			return "normal"
+		default:
+			return currentIntensity // Can't decrease from low
+		}
+	}
+
+	if strings.Contains(response, "A: Keep current") {
+		return currentIntensity
+	}
+
+	if strings.Contains(response, "A: Increase") {
+		switch currentIntensity {
+		case "low":
+			return "normal"
+		case "normal":
+			return "high"
+		default:
+			return currentIntensity // Can't increase from high
+		}
+	}
+
+	return "" // Not a valid intensity response
 }
 
 // WhatsAppSender is an interface for sending WhatsApp messages (for production and testing)
@@ -271,6 +320,46 @@ func (c *Client) SendPromptButtons(ctx context.Context, to string, body string) 
 	return nil
 }
 
+// SendIntensityAdjustmentPoll sends a poll asking the user to adjust their intervention intensity.
+// The poll options are determined by the current intensity level (low/normal/high).
+func (c *Client) SendIntensityAdjustmentPoll(ctx context.Context, to string, currentIntensity string) error {
+	if c.waClient == nil {
+		return fmt.Errorf("whatsapp client not initialized")
+	}
+	if c.waClient.Store == nil {
+		return fmt.Errorf("whatsapp client store not available")
+	}
+	if to == "" {
+		return fmt.Errorf("recipient cannot be empty")
+	}
+
+	// Get the appropriate poll options for the current intensity
+	options, exists := IntensityPollOptions[currentIntensity]
+	if !exists {
+		slog.Error("Invalid intensity level", "intensity", currentIntensity)
+		return fmt.Errorf("invalid intensity level: %s", currentIntensity)
+	}
+
+	slog.Debug("Sending intensity adjustment poll", "to", to, "currentIntensity", currentIntensity, "options", options)
+	jid := types.NewJID(to, JIDSuffix)
+
+	// Send poll using Whatsmeow's built-in helper
+	pollMsg := c.waClient.BuildPollCreation(
+		IntensityPollQuestion,
+		options,
+		1, // single-select
+	)
+
+	_, err := c.waClient.SendMessage(ctx, jid, pollMsg)
+	if err != nil {
+		slog.Error("Failed to send intensity adjustment poll", "error", err, "to", to)
+		return fmt.Errorf("failed to send intensity poll to %s: %w", to, err)
+	}
+
+	slog.Debug("Intensity adjustment poll sent successfully", "to", to)
+	return nil
+}
+
 // SendTypingIndicator updates the chat presence state (typing indicator) for a conversation.
 func (c *Client) SendTypingIndicator(ctx context.Context, to string, typing bool) error {
 	if c.waClient == nil {
@@ -364,6 +453,19 @@ func (m *MockClient) SendPromptButtons(ctx context.Context, to string, body stri
 	}
 	// Simulate sending poll (just record it, no separate tracking needed for mock)
 	return m.SendMessage(ctx, to, PollQuestion)
+}
+
+// SendIntensityAdjustmentPoll records intensity adjustment poll messages for testing purposes.
+func (m *MockClient) SendIntensityAdjustmentPoll(ctx context.Context, to string, currentIntensity string) error {
+	if to == "" {
+		return fmt.Errorf("recipient cannot be empty")
+	}
+	if currentIntensity == "" {
+		currentIntensity = "normal" // Default if not set
+	}
+
+	// Just send a simple message to track this - in real implementation, it would send a poll
+	return m.SendMessage(ctx, to, IntensityPollQuestion)
 }
 
 // SendTypingIndicator records typing indicator state changes for testing.

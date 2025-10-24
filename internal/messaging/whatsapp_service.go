@@ -163,6 +163,7 @@ func (s *WhatsAppService) SendMessage(ctx context.Context, to string, body strin
 
 type promptButtonsClient interface {
 	SendPromptButtons(ctx context.Context, to string, body string) error
+	SendIntensityAdjustmentPoll(ctx context.Context, to string, currentIntensity string) error
 }
 
 // SendPromptWithButtons sends a prompt message followed by a poll for engagement tracking.
@@ -195,12 +196,48 @@ func (s *WhatsAppService) SendPromptWithButtons(ctx context.Context, to string, 
 		slog.Error("WhatsAppService SendPromptWithButtons error", "error", sendErr, "to", canonicalTo)
 		return sendErr
 	}
-
 	s.safeEmitReceipt(models.Receipt{To: canonicalTo, Status: models.MessageStatusSent, Time: time.Now().Unix()})
 	slog.Info("WhatsAppService prompt with poll sent and receipt emitted", "to", canonicalTo)
 	return nil
 }
 
+// SendIntensityAdjustmentPoll sends an intensity adjustment poll to the user.
+// The poll options are smartly selected based on the user's current intensity level.
+func (s *WhatsAppService) SendIntensityAdjustmentPoll(ctx context.Context, to string, currentIntensity string) error {
+	s.mu.RLock()
+	if s.stopped {
+		s.mu.RUnlock()
+		return ErrServiceStopped
+	}
+	s.mu.RUnlock()
+
+	canonicalTo, err := s.ValidateAndCanonicalizeRecipient(to)
+	if err != nil {
+		slog.Error("WhatsAppService SendIntensityAdjustmentPoll validation error", "error", err, "to", to)
+		return err
+	}
+
+	var sendErr error
+	if sender, ok := s.client.(promptButtonsClient); ok {
+		slog.Debug("WhatsAppService SendIntensityAdjustmentPoll using poll message", "to", canonicalTo, "currentIntensity", currentIntensity)
+		sendErr = sender.SendIntensityAdjustmentPoll(ctx, canonicalTo, currentIntensity)
+	} else {
+		// Fallback: send text message asking about intensity
+		slog.Debug("WhatsAppService SendIntensityAdjustmentPoll falling back to text message", "to", canonicalTo)
+		sendErr = s.client.SendMessage(ctx, canonicalTo, "How's the intensity? Reply with 'low', 'normal', or 'high'.")
+	}
+
+	if sendErr != nil {
+		slog.Error("WhatsAppService SendIntensityAdjustmentPoll error", "error", sendErr, "to", canonicalTo)
+		return sendErr
+	}
+
+	s.safeEmitReceipt(models.Receipt{To: canonicalTo, Status: models.MessageStatusSent, Time: time.Now().Unix()})
+	slog.Info("WhatsAppService intensity adjustment poll sent and receipt emitted", "to", canonicalTo, "currentIntensity", currentIntensity)
+	return nil
+}
+
+// SendTypingIndicator updates the chat presence for the given recipient.
 // SendTypingIndicator updates the chat presence for the given recipient.
 func (s *WhatsAppService) SendTypingIndicator(ctx context.Context, to string, typing bool) error {
 	s.mu.RLock()

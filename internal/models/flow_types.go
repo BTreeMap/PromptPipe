@@ -48,4 +48,5 @@ const (
 	DataKeyDailyPromptReminderTimerID DataKey = "dailyPromptReminderTimerID" // Timer ID for the daily prompt reminder
 	DataKeyDailyPromptReminderSentAt  DataKey = "dailyPromptReminderSentAt"  // Timestamp when the daily prompt reminder was sent
 	DataKeyDailyPromptRespondedAt     DataKey = "dailyPromptRespondedAt"     // Timestamp when the user replied after the daily prompt
+	DataKeyLastIntensityPromptDate    DataKey = "lastIntensityPromptDate"    // Date (YYYY-MM-DD) when intensity adjustment was last offered
 )

@@ -21,6 +21,7 @@ type UserProfile struct {
 	PreferredTime     string    `json:"preferred_time"`     // Time window for nudging
 	PromptAnchor      string    `json:"prompt_anchor"`      // When habit fits naturally
 	AdditionalInfo    string    `json:"additional_info"`    // Any extra personalization info
+	Intensity         string    `json:"intensity"`          // Intervention intensity: "low", "normal", or "high" (default: "normal")
 	CreatedAt         time.Time `json:"created_at"`         // When profile was created
 	UpdatedAt         time.Time `json:"updated_at"`         // Last profile update
 
@@ -240,8 +241,9 @@ func (pst *ProfileSaveTool) GetOrCreateUserProfile(ctx context.Context, particip
 	profileJSON, err := pst.stateManager.GetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyUserProfile)
 	if err != nil {
 		slog.Debug("ProfileSaveTool.getOrCreateUserProfile: creating new profile", "participantID", participantID)
-		// Create new profile
+		// Create new profile with default intensity
 		return &UserProfile{
+			Intensity: "normal", // Default intensity
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 		}, nil
@@ -251,6 +253,7 @@ func (pst *ProfileSaveTool) GetOrCreateUserProfile(ctx context.Context, particip
 	if profileJSON == "" {
 		slog.Debug("ProfileSaveTool.getOrCreateUserProfile: empty profile data, creating new one", "participantID", participantID)
 		return &UserProfile{
+			Intensity: "normal", // Default intensity
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 		}, nil
@@ -271,6 +274,12 @@ func (pst *ProfileSaveTool) GetOrCreateUserProfile(ctx context.Context, particip
 			profile.LastBarrier = legacy.LastBlocker
 			slog.Debug("ProfileSaveTool.getOrCreateUserProfile: migrated legacy last_blocker to last_barrier", "participantID", participantID)
 		}
+	}
+
+	// Backwards compatibility: set default intensity for existing profiles without it
+	if profile.Intensity == "" {
+		profile.Intensity = "normal"
+		slog.Debug("ProfileSaveTool.getOrCreateUserProfile: set default intensity for existing profile", "participantID", participantID)
 	}
 
 	slog.Debug("ProfileSaveTool.getOrCreateUserProfile: loaded existing profile",

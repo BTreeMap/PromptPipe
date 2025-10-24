@@ -277,8 +277,9 @@ func TestSchedulerTool_SchedulesDailyPromptReminder(t *testing.T) {
 
 	tool.executeScheduledPrompt(ctx, participantID, prompt)
 
-	if len(msgService.sentMessages) != 1 {
-		t.Fatalf("expected exactly one message sent (the prompt), got %d", len(msgService.sentMessages))
+	// We expect 2 messages: the daily prompt and the intensity adjustment poll
+	if len(msgService.sentMessages) != 2 {
+		t.Fatalf("expected exactly two messages sent (the prompt and intensity poll), got %d", len(msgService.sentMessages))
 	}
 
 	if len(timer.scheduledCalls) == 0 {
@@ -370,8 +371,9 @@ func TestSchedulerTool_DailyPromptReminderSendsWhenNoReply(t *testing.T) {
 		t.Fatal("expected reminder timer to be scheduled")
 	}
 
-	if len(msgService.sentMessages) != 1 {
-		t.Fatalf("expected exactly one message sent before reminder, got %d", len(msgService.sentMessages))
+	// We expect 2 messages before reminder: the daily prompt and the intensity adjustment poll
+	if len(msgService.sentMessages) != 2 {
+		t.Fatalf("expected exactly two messages sent before reminder (the prompt and intensity poll), got %d", len(msgService.sentMessages))
 	}
 
 	var reminderCall *ScheduledCall
@@ -393,8 +395,9 @@ func TestSchedulerTool_DailyPromptReminderSendsWhenNoReply(t *testing.T) {
 
 	reminderCall.Fn()
 
-	if len(msgService.sentMessages) != 2 {
-		t.Fatalf("expected reminder message to be sent, got %d messages", len(msgService.sentMessages))
+	// After reminder fires, we should have 3 messages total: prompt, intensity poll, and reminder
+	if len(msgService.sentMessages) != 3 {
+		t.Fatalf("expected reminder message to be sent (3 total messages), got %d messages", len(msgService.sentMessages))
 	}
 
 	reminder := msgService.sentMessages[len(msgService.sentMessages)-1]

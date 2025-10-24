@@ -421,6 +421,9 @@ func (st *SchedulerTool) executeScheduledPrompt(ctx context.Context, participant
 	// Schedule mechanical reminder in case the user doesn't respond to the daily prompt.
 	st.scheduleDailyPromptReminder(ctx, participantID, prompt.To)
 
+	// Check if we should send the intensity adjustment poll (once per day)
+	st.checkAndSendIntensityAdjustment(ctx, participantID, prompt.To)
+
 	// Schedule auto feedback enforcement if feature flag enabled
 	if st.autoFeedbackEnabled && st.timer != nil && st.stateManager != nil {
 		st.scheduleAutoFeedbackEnforcement(ctx, participantID)
@@ -448,6 +451,71 @@ func (st *SchedulerTool) scheduleAutoFeedbackEnforcement(ctx context.Context, pa
 		slog.Warn("SchedulerTool.scheduleAutoFeedbackEnforcement: failed to store enforcement timer ID", "participantID", participantID, "timerID", timerID, "error", err)
 	}
 	slog.Info("SchedulerTool.scheduleAutoFeedbackEnforcement: auto feedback enforcement scheduled", "participantID", participantID, "timerID", timerID, "delayMinutes", enforcementDelay.Minutes())
+}
+
+// checkAndSendIntensityAdjustment checks if the intensity adjustment poll should be sent today.
+// This poll is sent once per day (not per prompt) to ask the user if they want to adjust their intensity.
+func (st *SchedulerTool) checkAndSendIntensityAdjustment(ctx context.Context, participantID, to string) {
+	if st == nil || st.stateManager == nil || st.msgService == nil {
+		return
+	}
+
+	if strings.TrimSpace(to) == "" {
+		slog.Debug("SchedulerTool.checkAndSendIntensityAdjustment: recipient missing, skipping", "participantID", participantID)
+		return
+	}
+
+	// Get the last date we prompted for intensity adjustment
+	lastPromptDate, err := st.stateManager.GetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyLastIntensityPromptDate)
+	if err != nil {
+		slog.Debug("SchedulerTool.checkAndSendIntensityAdjustment: no previous intensity prompt date found", "participantID", participantID)
+	}
+
+	// Check if we already prompted today
+	today := time.Now().UTC().Format("2006-01-02")
+	if lastPromptDate == today {
+		slog.Debug("SchedulerTool.checkAndSendIntensityAdjustment: already prompted today, skipping", "participantID", participantID)
+		return
+	}
+
+	// Get the user's current intensity level from their profile
+	profile, err := st.getUserProfile(ctx, participantID)
+	if err != nil {
+		slog.Warn("SchedulerTool.checkAndSendIntensityAdjustment: failed to get user profile", "participantID", participantID, "error", err)
+		return
+	}
+
+	currentIntensity := profile.Intensity
+	if currentIntensity == "" {
+		currentIntensity = "normal" // Default if not set
+	}
+
+	// Send the intensity adjustment poll
+	type intensitySender interface {
+		SendIntensityAdjustmentPoll(ctx context.Context, to string, currentIntensity string) error
+	}
+
+	var sendErr error
+	if sender, ok := st.msgService.(intensitySender); ok {
+		slog.Debug("SchedulerTool.checkAndSendIntensityAdjustment: sending intensity poll", "participantID", participantID, "currentIntensity", currentIntensity, "to", to)
+		sendErr = sender.SendIntensityAdjustmentPoll(ctx, to, currentIntensity)
+	} else {
+		// Fallback to text message
+		slog.Debug("SchedulerTool.checkAndSendIntensityAdjustment: falling back to text message", "participantID", participantID)
+		sendErr = st.msgService.SendMessage(ctx, to, "How's the intensity? Reply with 'low', 'normal', or 'high'.")
+	}
+
+	if sendErr != nil {
+		slog.Error("SchedulerTool.checkAndSendIntensityAdjustment: failed to send intensity poll", "participantID", participantID, "error", sendErr)
+		return
+	}
+
+	// Record that we prompted today
+	if err := st.stateManager.SetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyLastIntensityPromptDate, today); err != nil {
+		slog.Warn("SchedulerTool.checkAndSendIntensityAdjustment: failed to record intensity prompt date", "participantID", participantID, "error", err)
+	}
+
+	slog.Info("SchedulerTool.checkAndSendIntensityAdjustment: intensity poll sent", "participantID", participantID, "currentIntensity", currentIntensity, "to", to)
 }
 
 func (st *SchedulerTool) scheduleDailyPromptReminder(ctx context.Context, participantID, to string) {

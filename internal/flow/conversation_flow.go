@@ -314,6 +314,26 @@ func (f *ConversationFlow) processConversationMessage(ctx context.Context, parti
 		}
 	}
 
+	// Check if this is an intensity adjustment poll response and update profile
+	if f.profileSaveTool != nil {
+		profile, err := f.profileSaveTool.GetOrCreateUserProfile(ctx, participantID)
+		if err == nil {
+			newIntensity := whatsapp.ParseIntensityPollResponse(userMessage, profile.Intensity)
+			if newIntensity != "" && newIntensity != profile.Intensity {
+				slog.Info("ConversationFlow.processConversationMessage: detected intensity poll response, updating intensity", "participantID", participantID, "oldIntensity", profile.Intensity, "newIntensity", newIntensity)
+				profile.Intensity = newIntensity
+				profile.UpdatedAt = time.Now()
+				if err := f.profileSaveTool.saveUserProfile(ctx, participantID, profile); err != nil {
+					slog.Error("ConversationFlow.processConversationMessage: failed to update intensity", "error", err, "participantID", participantID)
+				} else {
+					slog.Debug("ConversationFlow.processConversationMessage: intensity updated successfully", "participantID", participantID, "intensity", newIntensity)
+				}
+			} else if newIntensity != "" {
+				slog.Debug("ConversationFlow.processConversationMessage: intensity kept at current level", "participantID", participantID, "intensity", profile.Intensity)
+			}
+		}
+	}
+
 	// Mark daily prompt as replied if a reminder is pending
 	if f.schedulerTool != nil {
 		f.schedulerTool.handleDailyPromptReply(ctx, participantID, userMsg.Timestamp)
