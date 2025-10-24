@@ -1,5 +1,7 @@
 # Intensity Adjustment Feature
 
+> **Note**: This document describes the intensity adjustment feature implementation. It serves as both implementation documentation and feature reference.
+
 ## Overview
 
 This document describes the intensity adjustment feature that allows users to control the frequency and intensity of their daily habit prompts through a poll-based interaction system.

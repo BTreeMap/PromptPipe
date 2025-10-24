@@ -1,5 +1,7 @@
 # PromptPipe Codebase Cleanup Report
 
+> **Note**: This is an audit document identifying potential areas for code cleanup and refactoring. It should be reviewed and updated periodically to reflect cleanup progress.
+
 ## Purpose
 
 This report identifies redundant components, legacy code paths, and unused modules in the PromptPipe codebase. Review each section before deciding whether to keep or remove the listed items.
