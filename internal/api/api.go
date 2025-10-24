@@ -507,7 +507,60 @@ func (s *Server) initializeRecovery() error {
 		// Don't fail startup for cleanup errors, just log them
 	}
 
+	// Recover pending daily prompt reminders through the SchedulerTool
+	// This must happen after conversation flow is initialized
+	if err := s.recoverSchedulerReminders(ctx); err != nil {
+		slog.Warn("Failed to recover scheduler reminders", "error", err)
+		// Don't fail startup for scheduler recovery errors, just log them
+	}
+
 	slog.Info("Application state recovery system initialized successfully")
+	return nil
+}
+
+// recoverSchedulerReminders recovers pending daily prompt reminders after server restart
+func (s *Server) recoverSchedulerReminders(ctx context.Context) error {
+	slog.Info("Recovering scheduler reminders for active conversation participants")
+
+	// Get the conversation flow
+	conversationFlowInterface, exists := flow.Get(models.PromptTypeConversation)
+	if !exists || conversationFlowInterface == nil {
+		return fmt.Errorf("conversation flow not registered")
+	}
+
+	conversationFlow, ok := conversationFlowInterface.(*flow.ConversationFlow)
+	if !ok {
+		return fmt.Errorf("conversation flow has unexpected type")
+	}
+
+	// Get the scheduler tool
+	schedulerTool := conversationFlow.GetSchedulerTool()
+	if schedulerTool == nil {
+		return fmt.Errorf("scheduler tool not available in conversation flow")
+	}
+
+	// Get all active conversation participants
+	participants, err := s.st.ListConversationParticipants()
+	if err != nil {
+		return fmt.Errorf("failed to list conversation participants: %w", err)
+	}
+
+	// Filter to only active participants
+	var activeParticipantIDs []string
+	for _, participant := range participants {
+		if participant.Status == models.ConversationStatusActive {
+			activeParticipantIDs = append(activeParticipantIDs, participant.ID)
+		}
+	}
+
+	// Recover reminders for all active participants
+	if err := schedulerTool.RecoverPendingReminders(ctx, activeParticipantIDs); err != nil {
+		return fmt.Errorf("scheduler reminder recovery completed with errors: %w", err)
+	}
+
+	slog.Info("Scheduler reminder recovery completed successfully",
+		"activeParticipants", len(activeParticipantIDs),
+		"totalParticipants", len(participants))
 	return nil
 }
 

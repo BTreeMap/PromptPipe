@@ -88,6 +88,106 @@ func (st *SchedulerTool) SetDailyPromptReminderDelay(delay time.Duration) {
 	st.dailyPromptReminderDelay = delay
 }
 
+// RecoverPendingReminders recovers any pending daily prompt reminders after server restart.
+// This should be called after the SchedulerTool is fully initialized with all dependencies.
+func (st *SchedulerTool) RecoverPendingReminders(ctx context.Context, participantIDs []string) error {
+	if st == nil || st.stateManager == nil || st.timer == nil || st.msgService == nil {
+		return fmt.Errorf("SchedulerTool not properly initialized")
+	}
+
+	if st.dailyPromptReminderDelay <= 0 {
+		slog.Debug("SchedulerTool.RecoverPendingReminders: reminder delay disabled, skipping recovery")
+		return nil
+	}
+
+	recoveredCount := 0
+	skippedCount := 0
+	errorCount := 0
+
+	for _, participantID := range participantIDs {
+		// Get pending reminder state
+		pendingJSON, err := st.stateManager.GetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyDailyPromptPending)
+		if err != nil || pendingJSON == "" {
+			// No pending reminder for this participant
+			skippedCount++
+			continue
+		}
+
+		// Parse the pending state
+		var pending dailyPromptPendingState
+		if err := json.Unmarshal([]byte(pendingJSON), &pending); err != nil {
+			slog.Warn("SchedulerTool.RecoverPendingReminders: invalid pending state, skipping",
+				"participantID", participantID, "error", err)
+			errorCount++
+			continue
+		}
+
+		// Parse the reminder due time
+		if pending.ReminderDueAt == "" {
+			slog.Debug("SchedulerTool.RecoverPendingReminders: no reminder due time, skipping",
+				"participantID", participantID)
+			skippedCount++
+			continue
+		}
+
+		reminderDueAt, err := time.Parse(time.RFC3339, pending.ReminderDueAt)
+		if err != nil {
+			slog.Warn("SchedulerTool.RecoverPendingReminders: invalid reminder due time format, skipping",
+				"participantID", participantID, "reminderDueAt", pending.ReminderDueAt, "error", err)
+			errorCount++
+			continue
+		}
+
+		now := time.Now()
+		delay := time.Until(reminderDueAt)
+
+		// If the reminder is overdue, send it soon (after a small delay to avoid startup flood)
+		if delay < 0 {
+			delay = 5 * time.Second
+			slog.Info("SchedulerTool.RecoverPendingReminders: recovering overdue reminder",
+				"participantID", participantID,
+				"reminderDueAt", reminderDueAt,
+				"overdueBy", now.Sub(reminderDueAt),
+				"sendingIn", delay)
+		} else {
+			slog.Info("SchedulerTool.RecoverPendingReminders: recovering future reminder",
+				"participantID", participantID,
+				"reminderDueAt", reminderDueAt,
+				"remainingDelay", delay)
+		}
+
+		// Schedule the reminder with the actual callback
+		timerID, err := st.timer.ScheduleAfter(delay, func() {
+			st.sendDailyPromptReminder(participantID, pending.To, pending.SentAt)
+		})
+		if err != nil {
+			slog.Error("SchedulerTool.RecoverPendingReminders: failed to schedule reminder",
+				"participantID", participantID, "error", err)
+			errorCount++
+			continue
+		}
+
+		// Store the recovered timer ID
+		if err := st.stateManager.SetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyDailyPromptReminderTimerID, timerID); err != nil {
+			slog.Warn("SchedulerTool.RecoverPendingReminders: failed to store timer ID",
+				"participantID", participantID, "timerID", timerID, "error", err)
+			// Don't count this as an error since the timer is scheduled
+		}
+
+		recoveredCount++
+		slog.Info("SchedulerTool.RecoverPendingReminders: successfully recovered reminder",
+			"participantID", participantID, "timerID", timerID, "delay", delay)
+	}
+
+	slog.Info("SchedulerTool.RecoverPendingReminders: recovery completed",
+		"recovered", recoveredCount, "skipped", skippedCount, "errors", errorCount, "total", len(participantIDs))
+
+	if errorCount > 0 {
+		return fmt.Errorf("recovered %d reminders with %d errors", recoveredCount, errorCount)
+	}
+	return nil
+}
+
 // GetToolDefinition returns the OpenAI tool definition for the scheduler.
 func (st *SchedulerTool) GetToolDefinition() openai.ChatCompletionToolParam {
 	return openai.ChatCompletionToolParam{

@@ -616,6 +616,11 @@ func (f *ConversationFlow) SetDebugMode(enabled bool) {
 	slog.Debug("ConversationFlow: debug mode set", "enabled", enabled)
 }
 
+// GetSchedulerTool returns the scheduler tool for recovery operations.
+func (f *ConversationFlow) GetSchedulerTool() *SchedulerTool {
+	return f.schedulerTool
+}
+
 // sendDebugMessage sends a debug message to the user if debug mode is enabled.
 func (f *ConversationFlow) sendDebugMessage(ctx context.Context, participantID, message string) {
 	if !f.debugMode || f.msgService == nil {

@@ -8,7 +8,13 @@ import (
 	"github.com/BTreeMap/PromptPipe/internal/models"
 )
 
-// TimerRecoveryHandler provides the callback function for timer recovery infrastructure
+// TimerRecoveryHandler provides the callback function for timer recovery infrastructure.
+// NOTE: This creates timers with DUMMY CALLBACKS that only log - they do NOT restore
+// business logic. For timers that need business logic (like daily prompt reminders),
+// the owning component (e.g., SchedulerTool) should handle recovery directly by
+// rescheduling timers with proper callbacks after initialization.
+// This generic handler is only useful for simple timeout-based state transitions
+// where the timeout itself doesn't need to trigger specific business actions.
 func TimerRecoveryHandler(timer models.Timer) func(TimerRecoveryInfo) (string, error) {
 	return func(info TimerRecoveryInfo) (string, error) {
 		slog.Info("RecoveryManager.TimerRecoveryHandler: recovering timer",

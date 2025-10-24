@@ -64,7 +64,7 @@ func (r *ConversationFlowRecovery) RecoverParticipant(ctx context.Context, parti
 		return fmt.Errorf("invalid participant type for conversation recovery")
 	}
 
-	// Conversation participants only need response handlers (no timers)
+	// Recover response handler for conversation messages
 	handlerInfo := recovery.ResponseHandlerRecoveryInfo{
 		PhoneNumber:   p.PhoneNumber,
 		ParticipantID: participantID,
@@ -76,6 +76,10 @@ func (r *ConversationFlowRecovery) RecoverParticipant(ctx context.Context, parti
 	if err := registry.RecoverResponseHandler(handlerInfo); err != nil {
 		return fmt.Errorf("failed to register response handler: %w", err)
 	}
+
+	// Note: Daily prompt reminder timers are NOT recovered here because RecoverTimer
+	// only creates dummy callbacks without business logic. Instead, the SchedulerTool
+	// handles recovery of pending reminders after it's initialized with all dependencies.
 
 	slog.Debug("Successfully recovered conversation participant",
 		"participantID", participantID, "phone", p.PhoneNumber)
