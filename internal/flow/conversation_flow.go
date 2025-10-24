@@ -303,6 +303,15 @@ func (f *ConversationFlow) processConversationMessage(ctx context.Context, parti
 	}
 	history.Messages = append(history.Messages, userMsg)
 
+	// Check if this is a "Done" poll response and increment success counter
+	if strings.Contains(userMessage, "Q: Did you do it? A: Done") {
+		slog.Debug("ConversationFlow.processConversationMessage: detected 'Done' poll response, incrementing SuccessCount", "participantID", participantID)
+		if err := f.incrementSuccessCount(ctx, participantID); err != nil {
+			slog.Error("ConversationFlow.processConversationMessage: failed to increment SuccessCount", "error", err, "participantID", participantID)
+			// Don't fail the request, just log the error
+		}
+	}
+
 	// Mark daily prompt as replied if a reminder is pending
 	if f.schedulerTool != nil {
 		f.schedulerTool.handleDailyPromptReply(ctx, participantID, userMsg.Timestamp)
@@ -637,6 +646,53 @@ func (f *ConversationFlow) sendDebugInfo(ctx context.Context, participantID stri
 	if debugInfo != "" {
 		f.sendDebugMessage(ctx, participantID, debugInfo)
 	}
+}
+
+// incrementSuccessCount increments the success counter when user completes a habit (clicks "Done" button).
+func (f *ConversationFlow) incrementSuccessCount(ctx context.Context, participantID string) error {
+	if f.stateManager == nil {
+		return fmt.Errorf("state manager not initialized")
+	}
+
+	// Get current profile
+	profileJSON, err := f.stateManager.GetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyUserProfile)
+	if err != nil || profileJSON == "" {
+		slog.Debug("ConversationFlow.incrementSuccessCount: no profile found, creating new one", "participantID", participantID)
+		// Create a new profile if none exists
+		profile := &UserProfile{
+			SuccessCount: 1,
+			CreatedAt:    time.Now(),
+			UpdatedAt:    time.Now(),
+		}
+		profileJSON, err := json.Marshal(profile)
+		if err != nil {
+			return fmt.Errorf("failed to marshal new profile: %w", err)
+		}
+		return f.stateManager.SetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyUserProfile, string(profileJSON))
+	}
+
+	// Parse existing profile
+	var profile UserProfile
+	if err := json.Unmarshal([]byte(profileJSON), &profile); err != nil {
+		return fmt.Errorf("failed to parse user profile: %w", err)
+	}
+
+	// Increment success count
+	profile.SuccessCount++
+	profile.UpdatedAt = time.Now()
+
+	// Save updated profile
+	updatedProfileJSON, err := json.Marshal(profile)
+	if err != nil {
+		return fmt.Errorf("failed to marshal updated profile: %w", err)
+	}
+
+	if err := f.stateManager.SetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyUserProfile, string(updatedProfileJSON)); err != nil {
+		return fmt.Errorf("failed to save updated profile: %w", err)
+	}
+
+	slog.Info("ConversationFlow.incrementSuccessCount: success count incremented", "participantID", participantID, "newCount", profile.SuccessCount)
+	return nil
 }
 
 // buildDebugInfo creates comprehensive debug information as a single message.

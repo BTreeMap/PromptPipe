@@ -127,31 +127,19 @@ func (fm *FeedbackModule) ExecuteFeedbackTrackerWithHistoryAndConversation(ctx c
 		"barrierReason", barrierReason,
 		"suggestedModification", suggestedModification)
 
-	// Get user profile
+	// Get user profile for context in feedback generation
+	// Note: Profile updates are now handled by the LLM via ProfileSaveTool.
+	// Success/failure tracking is handled elsewhere:
+	// - TotalPrompts is incremented when prompts are delivered via scheduler
+	// - SuccessCount is incremented when user clicks "Done" button in poll response
 	profile, err := fm.getUserProfile(ctx, participantID)
 	if err != nil {
 		slog.Error("flow.ExecuteFeedbackTrackerWithHistory: failed to get user profile", "error", err, "participantID", participantID)
 		return "", fmt.Errorf("failed to get user profile: %w", err)
 	}
 
-	// Get the last prompt from state
-	lastPrompt, err := fm.stateManager.GetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyLastHabitPrompt)
-	if err != nil {
-		slog.Debug("flow.ExecuteFeedbackTrackerWithHistory: no last prompt found in state", "participantID", participantID)
-		lastPrompt = "" // Use empty string if no last prompt is found
-	}
-
-	// Update profile with feedback
-	updatedProfile := fm.updateProfileWithFeedback(profile, userResponse, completionStatus, barrierReason, suggestedModification, lastPrompt)
-
-	// Save updated profile
-	if err := fm.saveUserProfile(ctx, participantID, updatedProfile); err != nil {
-		slog.Error("flow.ExecuteFeedbackTrackerWithHistory: failed to save updated profile", "error", err, "participantID", participantID)
-		return "", fmt.Errorf("failed to save updated profile: %w", err)
-	}
-
 	// Generate personalized feedback response using GenAI with conversation history
-	response, err := fm.generatePersonalizedFeedback(ctx, participantID, updatedProfile, completionStatus, userResponse, barrierReason, suggestedModification, chatHistory)
+	response, err := fm.generatePersonalizedFeedback(ctx, participantID, profile, completionStatus, userResponse, barrierReason, suggestedModification, chatHistory)
 	if err != nil {
 		slog.Error("flow.ExecuteFeedbackTrackerWithHistory: failed to generate personalized feedback", "error", err, "participantID", participantID)
 		return "", fmt.Errorf("failed to generate personalized feedback: %w", err)
@@ -159,77 +147,6 @@ func (fm *FeedbackModule) ExecuteFeedbackTrackerWithHistoryAndConversation(ctx c
 
 	slog.Info("flow.ExecuteFeedbackTrackerWithHistory: feedback processed successfully", "participantID", participantID, "completionStatus", completionStatus)
 	return response, nil
-}
-
-// updateProfileWithFeedback updates the user profile based on their feedback
-func (fm *FeedbackModule) updateProfileWithFeedback(profile *UserProfile, userResponse, completionStatus, barrierReason, suggestedModification, lastPrompt string) *UserProfile {
-	// Increment total prompts count
-	profile.TotalPrompts++
-
-	// Update success count for completed attempts
-	if completionStatus == "completed" {
-		profile.SuccessCount++
-		if lastPrompt != "" {
-			profile.LastSuccessfulPrompt = lastPrompt
-		}
-	}
-
-	// Track barriers
-	if barrierReason != "" {
-		profile.LastBarrier = barrierReason
-	}
-
-	// Track suggested modifications
-	if suggestedModification != "" {
-		profile.LastTweak = suggestedModification
-
-		// Try to update profile fields based on suggested modifications
-		fm.applyProfileModifications(profile, suggestedModification)
-	}
-
-	// Update timestamp
-	profile.UpdatedAt = time.Now()
-
-	slog.Debug("flow.updateProfileWithFeedback: profile updated",
-		"totalPrompts", profile.TotalPrompts,
-		"successCount", profile.SuccessCount,
-		"hasBarrier", barrierReason != "",
-		"hasTweak", suggestedModification != "")
-
-	return profile
-}
-
-// applyProfileModifications attempts to update profile fields based on user suggestions
-func (fm *FeedbackModule) applyProfileModifications(profile *UserProfile, modification string) {
-	// Simple keyword-based modification detection
-	// In a production system, this could use NLP or more sophisticated parsing
-
-	modification = strings.ToLower(modification)
-
-	// Time-related modifications
-	if strings.Contains(modification, "morning") || strings.Contains(modification, "am") {
-		if !strings.Contains(profile.PreferredTime, "morning") && !strings.Contains(profile.PreferredTime, "am") {
-			profile.PreferredTime = "morning"
-			slog.Debug("flow.applyProfileModifications: updated preferred time to morning")
-		}
-	} else if strings.Contains(modification, "evening") || strings.Contains(modification, "pm") {
-		if !strings.Contains(profile.PreferredTime, "evening") && !strings.Contains(profile.PreferredTime, "pm") {
-			profile.PreferredTime = "evening"
-			slog.Debug("flow.applyProfileModifications: updated preferred time to evening")
-		}
-	}
-
-	// Anchor-related modifications
-	if strings.Contains(modification, "after") || strings.Contains(modification, "before") {
-		// Extract potential new anchor from the modification
-		if strings.Contains(modification, "coffee") {
-			profile.PromptAnchor = "coffee time"
-			slog.Debug("flow.applyProfileModifications: updated prompt anchor to coffee time")
-		} else if strings.Contains(modification, "work") || strings.Contains(modification, "meeting") {
-			profile.PromptAnchor = "work breaks"
-			slog.Debug("flow.applyProfileModifications: updated prompt anchor to work breaks")
-		}
-	}
 }
 
 // getUserProfile retrieves the user profile from state storage
