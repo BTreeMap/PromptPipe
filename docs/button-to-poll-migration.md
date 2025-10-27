@@ -1,5 +1,7 @@
 # Button to Poll Message Migration
 
+> **Note**: This document describes a specific migration completed on 2025-10-17. It is maintained for historical reference and to document the current poll-based interaction system.
+
 ## Overview
 
 This document describes the migration from WhatsApp's deprecated button messages to poll messages, completed on 2025-10-17.
