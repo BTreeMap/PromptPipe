@@ -532,30 +532,6 @@ func (s *Server) initializeRecovery() error {
 func (s *Server) recoverSchedulerReminders(ctx context.Context) error {
 	slog.Info("Recovering scheduler reminders for active conversation participants")
 
-	// DUAL-SYSTEM MIGRATION SAFETY:
-	// Check if new database-backed timer recovery system has active timers
-	// If so, skip legacy RecoverPendingReminders to avoid duplicate timer creation
-	timers, timerErr := s.st.ListTimers()
-	if timerErr == nil && len(timers) > 0 {
-		slog.Info("Database-backed timer recovery system active, skipping legacy RecoverPendingReminders",
-			"activeTimers", len(timers),
-			"reason", "prevent_duplicate_recovery")
-		// New timer recovery system will handle all timers (including reminders)
-		// This prevents duplicate timer creation during migration period
-		return nil
-	}
-	if timerErr != nil {
-		slog.Warn("Failed to check for active timers, falling back to legacy recovery",
-			"error", timerErr,
-			"reason", "active_timers_table_may_not_exist")
-	} else {
-		slog.Info("No active timers in database, using legacy RecoverPendingReminders",
-			"reason", "timer_persistence_not_yet_active")
-	}
-
-	// Legacy recovery path: Recover reminders from flow_states.state_data
-	// This will be phased out once all timers are migrated to active_timers table
-
 	// Get the conversation flow
 	conversationFlowInterface, exists := flow.Get(models.PromptTypeConversation)
 	if !exists || conversationFlowInterface == nil {
@@ -587,12 +563,12 @@ func (s *Server) recoverSchedulerReminders(ctx context.Context) error {
 		}
 	}
 
-	// Recover reminders for all active participants using legacy method
+	// Recover reminders for all active participants
 	if err := schedulerTool.RecoverPendingReminders(ctx, activeParticipantIDs); err != nil {
 		return fmt.Errorf("scheduler reminder recovery completed with errors: %w", err)
 	}
 
-	slog.Info("Legacy scheduler reminder recovery completed successfully",
+	slog.Info("Scheduler reminder recovery completed successfully",
 		"activeParticipants", len(activeParticipantIDs),
 		"totalParticipants", len(participants))
 	return nil

@@ -67,7 +67,6 @@ CREATE TABLE IF NOT EXISTS conversation_participants (
     gender TEXT,
     ethnicity TEXT,
     background TEXT,
-    timezone TEXT,
     status TEXT NOT NULL,
     enrolled_at TIMESTAMP NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
@@ -89,34 +88,3 @@ CREATE TABLE IF NOT EXISTS registered_hooks (
 
 -- Index for hook type lookups
 CREATE INDEX IF NOT EXISTS idx_registered_hooks_type ON registered_hooks(hook_type);
-
--- SQL migration for active timers (for persistence and recovery)
-CREATE TABLE IF NOT EXISTS active_timers (
-    id TEXT PRIMARY KEY,
-    participant_id TEXT NOT NULL,
-    flow_type TEXT NOT NULL,
-    timer_type TEXT NOT NULL, -- 'once', 'recurring'
-    state_type TEXT,
-    data_key TEXT,
-    callback_type TEXT NOT NULL, -- 'scheduled_prompt', 'feedback_initial', 'feedback_followup', 'state_transition', 'reminder', 'auto_feedback'
-    callback_params JSONB, -- JSON with callback-specific parameters
-    scheduled_at TIMESTAMP NOT NULL,
-    expires_at TIMESTAMP, -- For one-time timers
-    original_delay_seconds INTEGER, -- Original delay for one-time timers
-    schedule_json JSONB, -- JSON for recurring timers (Schedule object)
-    next_run TIMESTAMP, -- Next execution time for recurring timers
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
-);
-
--- Indexes for timer lookups and cleanup
-CREATE INDEX IF NOT EXISTS idx_active_timers_participant ON active_timers(participant_id);
-CREATE INDEX IF NOT EXISTS idx_active_timers_flow_type ON active_timers(flow_type);
-CREATE INDEX IF NOT EXISTS idx_active_timers_callback_type ON active_timers(callback_type);
-CREATE INDEX IF NOT EXISTS idx_active_timers_expires_at ON active_timers(expires_at);
-CREATE INDEX IF NOT EXISTS idx_active_timers_next_run ON active_timers(next_run);
-
--- Schema evolution: Add timezone column to existing conversation_participants table
--- Note: PostgreSQL supports "IF NOT EXISTS" starting from version 9.6
--- For older versions, this will fail if column exists (handled in Go migration code)
-ALTER TABLE conversation_participants ADD COLUMN IF NOT EXISTS timezone TEXT;

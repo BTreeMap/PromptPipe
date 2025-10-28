@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"strings"
 	"time"
 
 	_ "embed"
@@ -88,20 +87,13 @@ func NewSQLiteStore(opts ...Option) (*SQLiteStore, error) {
 		return nil, err
 	}
 	slog.Debug("SQLite ping successful")
+
 	// Run migrations to ensure tables exist
 	slog.Debug("Running SQLite migrations")
 	if _, err := db.Exec(sqliteMigrations); err != nil {
-		// Check if error is due to duplicate column (expected for ALTER TABLE on existing schema)
-		errMsg := err.Error()
-		if strings.Contains(errMsg, "duplicate column") || strings.Contains(errMsg, "duplicate column name") {
-			slog.Debug("SQLite migration produced expected duplicate column warning (schema already up-to-date)", "error", err)
-			// Continue - this is expected when ALTER TABLE runs on updated schema
-		} else {
-			slog.Error("Failed to run migrations", "error", err)
-			return nil, fmt.Errorf("failed to run migrations: %w", err)
-		}
+		slog.Error("Failed to run migrations", "error", err)
+		return nil, fmt.Errorf("failed to run migrations: %w", err)
 	}
-	slog.Debug("SQLite migrations applied successfully")
 	slog.Debug("SQLite migrations applied successfully")
 
 	return &SQLiteStore{db: db}, nil
@@ -287,11 +279,11 @@ func (s *SQLiteStore) DeleteFlowState(participantID, flowType string) error {
 // SaveConversationParticipant stores or updates a conversation participant.
 func (s *SQLiteStore) SaveConversationParticipant(participant models.ConversationParticipant) error {
 	query := `
-		INSERT OR REPLACE INTO conversation_participants (id, phone_number, name, gender, ethnicity, background, timezone, status, enrolled_at, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		INSERT OR REPLACE INTO conversation_participants (id, phone_number, name, gender, ethnicity, background, status, enrolled_at, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 	_, err := s.db.Exec(query, participant.ID, participant.PhoneNumber, participant.Name, participant.Gender,
-		participant.Ethnicity, participant.Background, participant.Timezone, string(participant.Status), participant.EnrolledAt,
+		participant.Ethnicity, participant.Background, string(participant.Status), participant.EnrolledAt,
 		participant.CreatedAt, participant.UpdatedAt)
 	if err != nil {
 		slog.Error("SQLiteStore SaveConversationParticipant failed", "error", err, "id", participant.ID)
@@ -303,7 +295,7 @@ func (s *SQLiteStore) SaveConversationParticipant(participant models.Conversatio
 
 // GetConversationParticipant retrieves a conversation participant by ID.
 func (s *SQLiteStore) GetConversationParticipant(id string) (*models.ConversationParticipant, error) {
-	query := `SELECT id, phone_number, name, gender, ethnicity, background, timezone, status, enrolled_at, created_at, updated_at 
+	query := `SELECT id, phone_number, name, gender, ethnicity, background, status, enrolled_at, created_at, updated_at 
 			  FROM conversation_participants WHERE id = ?`
 
 	var participant models.ConversationParticipant
@@ -311,7 +303,7 @@ func (s *SQLiteStore) GetConversationParticipant(id string) (*models.Conversatio
 
 	err := s.db.QueryRow(query, id).Scan(
 		&participant.ID, &participant.PhoneNumber, &participant.Name, &participant.Gender,
-		&participant.Ethnicity, &participant.Background, &participant.Timezone, &status, &participant.EnrolledAt,
+		&participant.Ethnicity, &participant.Background, &status, &participant.EnrolledAt,
 		&participant.CreatedAt, &participant.UpdatedAt)
 
 	if err == sql.ErrNoRows {
@@ -330,7 +322,7 @@ func (s *SQLiteStore) GetConversationParticipant(id string) (*models.Conversatio
 
 // GetConversationParticipantByPhone retrieves a conversation participant by phone number.
 func (s *SQLiteStore) GetConversationParticipantByPhone(phoneNumber string) (*models.ConversationParticipant, error) {
-	query := `SELECT id, phone_number, name, gender, ethnicity, background, timezone, status, enrolled_at, created_at, updated_at 
+	query := `SELECT id, phone_number, name, gender, ethnicity, background, status, enrolled_at, created_at, updated_at 
 			  FROM conversation_participants WHERE phone_number = ?`
 
 	var participant models.ConversationParticipant
@@ -338,7 +330,7 @@ func (s *SQLiteStore) GetConversationParticipantByPhone(phoneNumber string) (*mo
 
 	err := s.db.QueryRow(query, phoneNumber).Scan(
 		&participant.ID, &participant.PhoneNumber, &participant.Name, &participant.Gender,
-		&participant.Ethnicity, &participant.Background, &participant.Timezone, &status, &participant.EnrolledAt,
+		&participant.Ethnicity, &participant.Background, &status, &participant.EnrolledAt,
 		&participant.CreatedAt, &participant.UpdatedAt)
 
 	if err == sql.ErrNoRows {
@@ -357,7 +349,7 @@ func (s *SQLiteStore) GetConversationParticipantByPhone(phoneNumber string) (*mo
 
 // ListConversationParticipants retrieves all conversation participants.
 func (s *SQLiteStore) ListConversationParticipants() ([]models.ConversationParticipant, error) {
-	query := `SELECT id, phone_number, name, gender, ethnicity, background, timezone, status, enrolled_at, created_at, updated_at 
+	query := `SELECT id, phone_number, name, gender, ethnicity, background, status, enrolled_at, created_at, updated_at 
 			  FROM conversation_participants ORDER BY created_at DESC`
 
 	rows, err := s.db.Query(query)
@@ -374,7 +366,7 @@ func (s *SQLiteStore) ListConversationParticipants() ([]models.ConversationParti
 
 		err := rows.Scan(
 			&participant.ID, &participant.PhoneNumber, &participant.Name, &participant.Gender,
-			&participant.Ethnicity, &participant.Background, &participant.Timezone, &status, &participant.EnrolledAt,
+			&participant.Ethnicity, &participant.Background, &status, &participant.EnrolledAt,
 			&participant.CreatedAt, &participant.UpdatedAt)
 		if err != nil {
 			slog.Error("SQLiteStore ListConversationParticipants scan failed", "error", err)
@@ -525,298 +517,6 @@ func (s *SQLiteStore) DeleteRegisteredHook(phoneNumber string) error {
 		slog.Debug("SQLiteStore registered hook not found for deletion", "phoneNumber", phoneNumber)
 	} else {
 		slog.Debug("SQLiteStore registered hook deleted", "phoneNumber", phoneNumber)
-	}
-
-	return nil
-}
-
-// SaveTimer stores or updates a timer record.
-func (s *SQLiteStore) SaveTimer(timer models.TimerRecord) error {
-	// Convert callback params map to JSON
-	var paramsJSON string
-	if len(timer.CallbackParams) > 0 {
-		jsonBytes, err := json.Marshal(timer.CallbackParams)
-		if err != nil {
-			return fmt.Errorf("failed to marshal callback params: %w", err)
-		}
-		paramsJSON = string(jsonBytes)
-	}
-
-	query := `
-		INSERT OR REPLACE INTO active_timers 
-		(id, participant_id, flow_type, timer_type, state_type, data_key, callback_type, callback_params, 
-		 scheduled_at, expires_at, original_delay_seconds, schedule_json, next_run, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-
-	_, err := s.db.Exec(query,
-		timer.ID, timer.ParticipantID, timer.FlowType, timer.TimerType, timer.StateType, timer.DataKey,
-		timer.CallbackType, paramsJSON, timer.ScheduledAt, timer.ExpiresAt, timer.OriginalDelaySeconds,
-		timer.ScheduleJSON, timer.NextRun, timer.CreatedAt, timer.UpdatedAt)
-	if err != nil {
-		slog.Error("SQLiteStore SaveTimer failed", "error", err, "id", timer.ID)
-		return fmt.Errorf("failed to save timer: %w", err)
-	}
-	slog.Debug("SQLiteStore SaveTimer succeeded", "id", timer.ID, "participantID", timer.ParticipantID)
-	return nil
-}
-
-// GetTimer retrieves a timer record by ID.
-func (s *SQLiteStore) GetTimer(id string) (*models.TimerRecord, error) {
-	query := `
-		SELECT id, participant_id, flow_type, timer_type, state_type, data_key, callback_type, callback_params,
-		       scheduled_at, expires_at, original_delay_seconds, schedule_json, next_run, created_at, updated_at
-		FROM active_timers WHERE id = ?`
-
-	var timer models.TimerRecord
-	var paramsJSON string
-	var stateType, dataKey sql.NullString
-
-	err := s.db.QueryRow(query, id).Scan(
-		&timer.ID, &timer.ParticipantID, &timer.FlowType, &timer.TimerType, &stateType, &dataKey,
-		&timer.CallbackType, &paramsJSON, &timer.ScheduledAt, &timer.ExpiresAt, &timer.OriginalDelaySeconds,
-		&timer.ScheduleJSON, &timer.NextRun, &timer.CreatedAt, &timer.UpdatedAt)
-
-	if err == sql.ErrNoRows {
-		slog.Debug("SQLiteStore GetTimer not found", "id", id)
-		return nil, nil
-	}
-	if err != nil {
-		slog.Error("SQLiteStore GetTimer failed", "error", err, "id", id)
-		return nil, fmt.Errorf("failed to get timer: %w", err)
-	}
-
-	// Handle nullable fields
-	if stateType.Valid {
-		timer.StateType = models.StateType(stateType.String)
-	}
-	if dataKey.Valid {
-		timer.DataKey = models.DataKey(dataKey.String)
-	}
-
-	// Parse callback params JSON
-	if paramsJSON != "" {
-		timer.CallbackParams = make(map[string]string)
-		if err := json.Unmarshal([]byte(paramsJSON), &timer.CallbackParams); err != nil {
-			slog.Warn("SQLiteStore GetTimer: failed to unmarshal callback params", "error", err, "id", id)
-		}
-	}
-
-	slog.Debug("SQLiteStore GetTimer found", "id", id)
-	return &timer, nil
-}
-
-// ListTimers retrieves all timer records.
-func (s *SQLiteStore) ListTimers() ([]models.TimerRecord, error) {
-	query := `
-		SELECT id, participant_id, flow_type, timer_type, state_type, data_key, callback_type, callback_params,
-		       scheduled_at, expires_at, original_delay_seconds, schedule_json, next_run, created_at, updated_at
-		FROM active_timers ORDER BY created_at DESC`
-
-	rows, err := s.db.Query(query)
-	if err != nil {
-		slog.Error("SQLiteStore ListTimers failed", "error", err)
-		return nil, fmt.Errorf("failed to list timers: %w", err)
-	}
-	defer rows.Close()
-
-	var timers []models.TimerRecord
-	for rows.Next() {
-		var timer models.TimerRecord
-		var paramsJSON string
-		var stateType, dataKey sql.NullString
-
-		err := rows.Scan(
-			&timer.ID, &timer.ParticipantID, &timer.FlowType, &timer.TimerType, &stateType, &dataKey,
-			&timer.CallbackType, &paramsJSON, &timer.ScheduledAt, &timer.ExpiresAt, &timer.OriginalDelaySeconds,
-			&timer.ScheduleJSON, &timer.NextRun, &timer.CreatedAt, &timer.UpdatedAt)
-		if err != nil {
-			slog.Error("SQLiteStore ListTimers scan failed", "error", err)
-			return nil, fmt.Errorf("failed to scan timer: %w", err)
-		}
-
-		// Handle nullable fields
-		if stateType.Valid {
-			timer.StateType = models.StateType(stateType.String)
-		}
-		if dataKey.Valid {
-			timer.DataKey = models.DataKey(dataKey.String)
-		}
-
-		// Parse callback params JSON
-		if paramsJSON != "" {
-			timer.CallbackParams = make(map[string]string)
-			if err := json.Unmarshal([]byte(paramsJSON), &timer.CallbackParams); err != nil {
-				slog.Warn("SQLiteStore ListTimers: failed to unmarshal callback params", "error", err, "id", timer.ID)
-			}
-		}
-
-		timers = append(timers, timer)
-	}
-
-	if err := rows.Err(); err != nil {
-		slog.Error("SQLiteStore ListTimers rows error", "error", err)
-		return nil, fmt.Errorf("error reading timers: %w", err)
-	}
-
-	slog.Debug("SQLiteStore ListTimers succeeded", "count", len(timers))
-	return timers, nil
-}
-
-// ListTimersByParticipant retrieves all timer records for a participant.
-func (s *SQLiteStore) ListTimersByParticipant(participantID string) ([]models.TimerRecord, error) {
-	query := `
-		SELECT id, participant_id, flow_type, timer_type, state_type, data_key, callback_type, callback_params,
-		       scheduled_at, expires_at, original_delay_seconds, schedule_json, next_run, created_at, updated_at
-		FROM active_timers WHERE participant_id = ? ORDER BY created_at DESC`
-
-	rows, err := s.db.Query(query, participantID)
-	if err != nil {
-		slog.Error("SQLiteStore ListTimersByParticipant failed", "error", err, "participantID", participantID)
-		return nil, fmt.Errorf("failed to list timers by participant: %w", err)
-	}
-	defer rows.Close()
-
-	var timers []models.TimerRecord
-	for rows.Next() {
-		var timer models.TimerRecord
-		var paramsJSON string
-		var stateType, dataKey sql.NullString
-
-		err := rows.Scan(
-			&timer.ID, &timer.ParticipantID, &timer.FlowType, &timer.TimerType, &stateType, &dataKey,
-			&timer.CallbackType, &paramsJSON, &timer.ScheduledAt, &timer.ExpiresAt, &timer.OriginalDelaySeconds,
-			&timer.ScheduleJSON, &timer.NextRun, &timer.CreatedAt, &timer.UpdatedAt)
-		if err != nil {
-			slog.Error("SQLiteStore ListTimersByParticipant scan failed", "error", err)
-			return nil, fmt.Errorf("failed to scan timer: %w", err)
-		}
-
-		// Handle nullable fields
-		if stateType.Valid {
-			timer.StateType = models.StateType(stateType.String)
-		}
-		if dataKey.Valid {
-			timer.DataKey = models.DataKey(dataKey.String)
-		}
-
-		// Parse callback params JSON
-		if paramsJSON != "" {
-			timer.CallbackParams = make(map[string]string)
-			if err := json.Unmarshal([]byte(paramsJSON), &timer.CallbackParams); err != nil {
-				slog.Warn("SQLiteStore ListTimersByParticipant: failed to unmarshal callback params", "error", err, "id", timer.ID)
-			}
-		}
-
-		timers = append(timers, timer)
-	}
-
-	if err := rows.Err(); err != nil {
-		slog.Error("SQLiteStore ListTimersByParticipant rows error", "error", err)
-		return nil, fmt.Errorf("error reading timers: %w", err)
-	}
-
-	slog.Debug("SQLiteStore ListTimersByParticipant succeeded", "participantID", participantID, "count", len(timers))
-	return timers, nil
-}
-
-// ListTimersByFlowType retrieves all timer records for a flow type.
-func (s *SQLiteStore) ListTimersByFlowType(flowType string) ([]models.TimerRecord, error) {
-	query := `
-		SELECT id, participant_id, flow_type, timer_type, state_type, data_key, callback_type, callback_params,
-		       scheduled_at, expires_at, original_delay_seconds, schedule_json, next_run, created_at, updated_at
-		FROM active_timers WHERE flow_type = ? ORDER BY created_at DESC`
-
-	rows, err := s.db.Query(query, flowType)
-	if err != nil {
-		slog.Error("SQLiteStore ListTimersByFlowType failed", "error", err, "flowType", flowType)
-		return nil, fmt.Errorf("failed to list timers by flow type: %w", err)
-	}
-	defer rows.Close()
-
-	var timers []models.TimerRecord
-	for rows.Next() {
-		var timer models.TimerRecord
-		var paramsJSON string
-		var stateType, dataKey sql.NullString
-
-		err := rows.Scan(
-			&timer.ID, &timer.ParticipantID, &timer.FlowType, &timer.TimerType, &stateType, &dataKey,
-			&timer.CallbackType, &paramsJSON, &timer.ScheduledAt, &timer.ExpiresAt, &timer.OriginalDelaySeconds,
-			&timer.ScheduleJSON, &timer.NextRun, &timer.CreatedAt, &timer.UpdatedAt)
-		if err != nil {
-			slog.Error("SQLiteStore ListTimersByFlowType scan failed", "error", err)
-			return nil, fmt.Errorf("failed to scan timer: %w", err)
-		}
-
-		// Handle nullable fields
-		if stateType.Valid {
-			timer.StateType = models.StateType(stateType.String)
-		}
-		if dataKey.Valid {
-			timer.DataKey = models.DataKey(dataKey.String)
-		}
-
-		// Parse callback params JSON
-		if paramsJSON != "" {
-			timer.CallbackParams = make(map[string]string)
-			if err := json.Unmarshal([]byte(paramsJSON), &timer.CallbackParams); err != nil {
-				slog.Warn("SQLiteStore ListTimersByFlowType: failed to unmarshal callback params", "error", err, "id", timer.ID)
-			}
-		}
-
-		timers = append(timers, timer)
-	}
-
-	if err := rows.Err(); err != nil {
-		slog.Error("SQLiteStore ListTimersByFlowType rows error", "error", err)
-		return nil, fmt.Errorf("error reading timers: %w", err)
-	}
-
-	slog.Debug("SQLiteStore ListTimersByFlowType succeeded", "flowType", flowType, "count", len(timers))
-	return timers, nil
-}
-
-// DeleteTimer removes a timer record.
-func (s *SQLiteStore) DeleteTimer(id string) error {
-	query := `DELETE FROM active_timers WHERE id = ?`
-
-	result, err := s.db.Exec(query, id)
-	if err != nil {
-		slog.Error("SQLiteStore DeleteTimer failed", "error", err, "id", id)
-		return fmt.Errorf("failed to delete timer: %w", err)
-	}
-
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("failed to get rows affected: %w", err)
-	}
-
-	if rowsAffected == 0 {
-		slog.Debug("SQLiteStore DeleteTimer: timer not found", "id", id)
-	} else {
-		slog.Debug("SQLiteStore DeleteTimer succeeded", "id", id)
-	}
-
-	return nil
-}
-
-// DeleteExpiredTimers removes expired one-time timers.
-func (s *SQLiteStore) DeleteExpiredTimers() error {
-	query := `DELETE FROM active_timers WHERE timer_type = 'once' AND expires_at < ?`
-
-	result, err := s.db.Exec(query, time.Now())
-	if err != nil {
-		slog.Error("SQLiteStore DeleteExpiredTimers failed", "error", err)
-		return fmt.Errorf("failed to delete expired timers: %w", err)
-	}
-
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("failed to get rows affected: %w", err)
-	}
-
-	if rowsAffected > 0 {
-		slog.Debug("SQLiteStore DeleteExpiredTimers succeeded", "deleted", rowsAffected)
 	}
 
 	return nil
