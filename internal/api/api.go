@@ -61,12 +61,13 @@ type Server struct {
 	debugMode                      bool   // enable debug mode for user-facing debug messages
 	schedulerPrepTimeMinutes       int    // preparation time in minutes before scheduled habit reminders
 	autoFeedbackAfterPromptEnabled bool   // enable auto feedback session enforcement after scheduled prompt inactivity
+	autoEnrollNewUsers             bool   // enable automatic enrollment of new users on first message
 }
 
 // NewServer creates a new API server instance with the provided dependencies.
 func NewServer(msgService messaging.Service, st store.Store, timer models.Timer, defaultSchedule *models.Schedule, gaClient *genai.Client) *Server {
-	// Create response handler
-	respHandler := messaging.NewResponseHandler(msgService, st)
+	// Create response handler with auto-enrollment disabled by default
+	respHandler := messaging.NewResponseHandler(msgService, st, false)
 
 	return &Server{
 		msgService:      msgService,
@@ -91,6 +92,7 @@ type Opts struct {
 	DebugMode                      bool             // enable debug mode for user-facing debug messages
 	SchedulerPrepTimeMinutes       int              // preparation time in minutes before scheduled habit reminders
 	AutoFeedbackAfterPromptEnabled bool             // enable auto feedback session enforcement after scheduled prompt inactivity
+	AutoEnrollNewUsers             bool             // enable automatic enrollment of new users on first message
 }
 
 // Option defines a configuration option for the API server.
@@ -188,6 +190,13 @@ func WithAutoFeedbackAfterPromptEnabled(enabled bool) Option {
 	}
 }
 
+// WithAutoEnrollNewUsers enables/disables automatic enrollment of new users on first message.
+func WithAutoEnrollNewUsers(enabled bool) Option {
+	return func(o *Opts) {
+		o.AutoEnrollNewUsers = enabled
+	}
+}
+
 // Run starts the API server and initializes dependencies, applying module options.
 // It returns an error if initialization fails.
 func Run(waOpts []whatsapp.Option, storeOpts []store.Option, genaiOpts []genai.Option, apiOpts []Option) error {
@@ -227,6 +236,7 @@ func createAndConfigureServer(waOpts []whatsapp.Option, storeOpts []store.Option
 	server.debugMode = apiCfg.DebugMode
 	server.schedulerPrepTimeMinutes = apiCfg.SchedulerPrepTimeMinutes
 	server.autoFeedbackAfterPromptEnabled = apiCfg.AutoFeedbackAfterPromptEnabled
+	server.autoEnrollNewUsers = apiCfg.AutoEnrollNewUsers
 
 	// Determine server address with priority: CLI options > default
 	addr := apiCfg.Addr
@@ -250,8 +260,8 @@ func createAndConfigureServer(waOpts []whatsapp.Option, storeOpts []store.Option
 	}
 
 	// Create response handler (after store is initialized)
-	server.respHandler = messaging.NewResponseHandler(server.msgService, server.st)
-	slog.Debug("Response handler initialized")
+	server.respHandler = messaging.NewResponseHandler(server.msgService, server.st, server.autoEnrollNewUsers)
+	slog.Debug("Response handler initialized", "autoEnrollNewUsers", server.autoEnrollNewUsers)
 
 	// Start messaging service
 	if err := server.msgService.Start(context.Background()); err != nil {

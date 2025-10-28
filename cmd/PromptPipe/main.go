@@ -170,9 +170,13 @@ type Config struct {
 	// Environment variable: SCHEDULER_PREP_TIME_MINUTES
 	SchedulerPrepTimeMinutes int
 
-	// AutoFeedbackAfterPromptEnabled enables auto feedback enforcement after a scheduled prompt if no response within threshold
+	// AutoFeedbackAfterPromptEnabled enables auto feedback enforcement after scheduled prompts
 	// Environment variable: AUTO_FEEDBACK_AFTER_PROMPT_ENABLED
 	AutoFeedbackAfterPromptEnabled bool
+
+	// AutoEnrollNewUsers enables automatic enrollment of new users when they send their first message
+	// Environment variable: AUTO_ENROLL_NEW_USERS
+	AutoEnrollNewUsers bool
 }
 
 // Flags holds command line flag values for database and other configuration.
@@ -197,6 +201,7 @@ type Flags struct {
 	genaiModel                     *string  // GenAI model for chat completions
 	schedulerPrepTimeMinutes       *int     // Preparation time in minutes before scheduled habit reminders
 	autoFeedbackAfterPromptEnabled *bool    // Enable auto feedback enforcement after scheduled prompts
+	autoEnrollNewUsers             *bool    // Enable automatic enrollment of new users on first message
 }
 
 // initializeLogger sets up structured logging with debug level
@@ -245,6 +250,7 @@ func loadEnvironmentConfig() Config {
 		FeedbackFollowupDelay:          pputil.GetEnvWithDefault("FEEDBACK_FOLLOWUP_DELAY", "3h"),
 		SchedulerPrepTimeMinutes:       pputil.ParseIntEnv("SCHEDULER_PREP_TIME_MINUTES", 10),
 		AutoFeedbackAfterPromptEnabled: pputil.ParseBoolEnv("AUTO_FEEDBACK_AFTER_PROMPT_ENABLED", true),
+		AutoEnrollNewUsers:             pputil.ParseBoolEnv("AUTO_ENROLL_NEW_USERS", false),
 	}
 
 	// Set default state directory if not specified
@@ -313,6 +319,7 @@ func parseCommandLineFlags(config Config) Flags {
 		genaiModel:                     flag.String("genai-model", config.GenAIModel, "GenAI model for chat completions (overrides $GENAI_MODEL)"),
 		schedulerPrepTimeMinutes:       flag.Int("scheduler-prep-time-minutes", config.SchedulerPrepTimeMinutes, "preparation time in minutes before scheduled habit reminders (overrides $SCHEDULER_PREP_TIME_MINUTES)"),
 		autoFeedbackAfterPromptEnabled: flag.Bool("auto-feedback-after-prompt-enabled", config.AutoFeedbackAfterPromptEnabled, "enable auto feedback session enforcement after scheduled prompt inactivity (overrides $AUTO_FEEDBACK_AFTER_PROMPT_ENABLED)"),
+		autoEnrollNewUsers:             flag.Bool("auto-enroll-new-users", config.AutoEnrollNewUsers, "enable automatic enrollment of new users on first message (overrides $AUTO_ENROLL_NEW_USERS)"),
 	}
 
 	flag.Parse()
@@ -482,6 +489,8 @@ func buildAPIOptions(flags Flags) []api.Option {
 	apiOpts = append(apiOpts, api.WithSchedulerPrepTimeMinutes(*flags.schedulerPrepTimeMinutes))
 	// Always pass auto feedback flag (defaults true)
 	apiOpts = append(apiOpts, api.WithAutoFeedbackAfterPromptEnabled(*flags.autoFeedbackAfterPromptEnabled))
+	// Always pass auto enroll new users flag (defaults false)
+	apiOpts = append(apiOpts, api.WithAutoEnrollNewUsers(*flags.autoEnrollNewUsers))
 	return apiOpts
 }
 

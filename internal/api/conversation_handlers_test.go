@@ -27,7 +27,7 @@ func TestEnrollConversationParticipant(t *testing.T) {
 	// Create server
 	server := &Server{
 		msgService:  mockMsgService,
-		respHandler: messaging.NewResponseHandler(mockMsgService, st),
+		respHandler: messaging.NewResponseHandler(mockMsgService, st, false),
 		st:          st,
 		timer:       flow.NewSimpleTimer(),
 		gaClient:    nil, // GenAI client can be nil for this test
@@ -114,7 +114,7 @@ func TestListConversationParticipants(t *testing.T) {
 	// Create server
 	server := &Server{
 		msgService:  mockMsgService,
-		respHandler: messaging.NewResponseHandler(mockMsgService, st),
+		respHandler: messaging.NewResponseHandler(mockMsgService, st, false),
 		st:          st,
 		timer:       flow.NewSimpleTimer(),
 	}
@@ -194,7 +194,7 @@ func TestGetConversationParticipant(t *testing.T) {
 	// Create server
 	server := &Server{
 		msgService:  mockMsgService,
-		respHandler: messaging.NewResponseHandler(mockMsgService, st),
+		respHandler: messaging.NewResponseHandler(mockMsgService, st, false),
 		st:          st,
 		timer:       flow.NewSimpleTimer(),
 	}
@@ -274,7 +274,7 @@ func TestDeleteConversationParticipant(t *testing.T) {
 	server := &Server{
 		st:          st,
 		msgService:  mockMessaging,
-		respHandler: messaging.NewResponseHandler(mockMessaging, st),
+		respHandler: messaging.NewResponseHandler(mockMessaging, st, false),
 	}
 
 	// Add a test participant to the store

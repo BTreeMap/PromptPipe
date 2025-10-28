@@ -12,6 +12,7 @@ import (
 	"github.com/BTreeMap/PromptPipe/internal/flow"
 	"github.com/BTreeMap/PromptPipe/internal/models"
 	"github.com/BTreeMap/PromptPipe/internal/store"
+	"github.com/BTreeMap/PromptPipe/internal/util"
 )
 
 // ResponseAction defines a hook function that processes a participant's response.
@@ -38,16 +39,19 @@ type ResponseHandler struct {
 	stateManager flow.StateManager
 	// timer is used for creating hooks that require timer functionality
 	timer models.Timer
+	// autoEnrollNewUsers enables automatic enrollment of new users on first message
+	autoEnrollNewUsers bool
 }
 
 // NewResponseHandler creates a new ResponseHandler with the given messaging service.
-func NewResponseHandler(msgService Service, store store.Store) *ResponseHandler {
+func NewResponseHandler(msgService Service, store store.Store, autoEnrollNewUsers bool) *ResponseHandler {
 	return &ResponseHandler{
-		hooks:          make(map[string]ResponseAction),
-		msgService:     msgService,
-		defaultMessage: "📝 Your message has been recorded. Thank you for your response!",
-		store:          store,
-		hookRegistry:   NewHookRegistry(),
+		hooks:              make(map[string]ResponseAction),
+		msgService:         msgService,
+		defaultMessage:     "📝 Your message has been recorded. Thank you for your response!",
+		store:              store,
+		hookRegistry:       NewHookRegistry(),
+		autoEnrollNewUsers: autoEnrollNewUsers,
 	}
 }
 
@@ -113,6 +117,14 @@ func (rh *ResponseHandler) ProcessResponse(ctx context.Context, response models.
 
 	slog.Debug("ResponseHandler processing response", "from", canonicalFrom, "body_length", len(response.Body))
 
+	// Auto-enroll new users if enabled and they're not already enrolled
+	if rh.autoEnrollNewUsers {
+		if err := rh.autoEnrollIfNeeded(ctx, canonicalFrom); err != nil {
+			slog.Error("ResponseHandler auto-enrollment failed", "error", err, "from", canonicalFrom)
+			// Don't fail the entire response processing, just log the error
+		}
+	}
+
 	// Check for registered hook
 	rh.mu.RLock()
 	action, hasHook := rh.hooks[canonicalFrom]
@@ -147,6 +159,73 @@ func (rh *ResponseHandler) ProcessResponse(ctx context.Context, response models.
 	}
 
 	slog.Info("ResponseHandler sent default response", "from", canonicalFrom)
+	return nil
+}
+
+// autoEnrollIfNeeded checks if a user is enrolled in the conversation flow,
+// and if not, automatically enrolls them with an empty profile.
+func (rh *ResponseHandler) autoEnrollIfNeeded(ctx context.Context, canonicalPhone string) error {
+	// Check if participant already exists
+	existing, err := rh.store.GetConversationParticipantByPhone(canonicalPhone)
+	if err != nil {
+		slog.Error("ResponseHandler autoEnrollIfNeeded: failed to check existing participant", "error", err, "phone", canonicalPhone)
+		return fmt.Errorf("failed to check existing participant: %w", err)
+	}
+
+	// If participant already exists, no need to enroll
+	if existing != nil {
+		slog.Debug("ResponseHandler autoEnrollIfNeeded: participant already enrolled", "phone", canonicalPhone, "id", existing.ID)
+		return nil
+	}
+
+	// Generate participant ID
+	participantID := util.GenerateParticipantID()
+	now := time.Now()
+
+	// Create participant with empty profile
+	participant := models.ConversationParticipant{
+		ID:          participantID,
+		PhoneNumber: canonicalPhone,
+		Name:        "",
+		Gender:      "",
+		Ethnicity:   "",
+		Background:  "",
+		Status:      models.ConversationStatusActive,
+		EnrolledAt:  now,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+
+	// Save participant
+	if err := rh.store.SaveConversationParticipant(participant); err != nil {
+		slog.Error("ResponseHandler autoEnrollIfNeeded: save failed", "error", err, "phone", canonicalPhone)
+		return fmt.Errorf("failed to save participant: %w", err)
+	}
+
+	slog.Info("ResponseHandler auto-enrolled new participant", "participantID", participantID, "phone", canonicalPhone)
+
+	// Initialize flow state to CONVERSATION_ACTIVE
+	stateManager := flow.NewStoreBasedStateManager(rh.store)
+	if err := stateManager.SetCurrentState(ctx, participantID, models.FlowTypeConversation, models.StateConversationActive); err != nil {
+		slog.Error("ResponseHandler autoEnrollIfNeeded: state init failed", "error", err, "participantID", participantID)
+		// Don't fail enrollment if state init fails
+	}
+
+	// Register persistent response hook for this participant
+	hookParams := map[string]string{
+		"participant_id": participantID,
+	}
+	if err := rh.RegisterPersistentHook(canonicalPhone, models.HookTypeConversation, hookParams); err != nil {
+		slog.Error("ResponseHandler autoEnrollIfNeeded: persistent hook registration failed", "error", err, "participantID", participantID)
+		// Don't fail enrollment if hook registration fails
+	} else {
+		slog.Debug("ResponseHandler auto-enrollment: persistent conversation hook registered", "participantID", participantID, "phone", canonicalPhone)
+	}
+
+	// Send a welcome message using the conversation flow
+	// We'll let the registered hook handle the incoming message as the first interaction
+	slog.Debug("ResponseHandler auto-enrollment complete, conversation flow will handle first message", "participantID", participantID)
+
 	return nil
 }
 

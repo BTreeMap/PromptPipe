@@ -17,7 +17,7 @@ func TestAPIIntegration_BranchPromptResponseFlow(t *testing.T) {
 	msgService := NewWhatsAppService(mockClient)
 
 	// Create response handler
-	respHandler := NewResponseHandler(msgService, store.NewInMemoryStore())
+	respHandler := NewResponseHandler(msgService, store.NewInMemoryStore(), false)
 
 	// Create a branch prompt
 	branchPrompt := models.Prompt{
@@ -75,7 +75,7 @@ func TestAPIIntegration_GenAIPromptResponseFlow(t *testing.T) {
 	msgService := NewWhatsAppService(mockClient)
 
 	// Create response handler
-	respHandler := NewResponseHandler(msgService, store.NewInMemoryStore())
+	respHandler := NewResponseHandler(msgService, store.NewInMemoryStore(), false)
 
 	// Create a GenAI prompt
 	genaiPrompt := models.Prompt{
@@ -125,7 +125,7 @@ func TestAPIIntegration_StaticPromptNoAutoHandler(t *testing.T) {
 	msgService := NewWhatsAppService(mockClient)
 
 	// Create response handler
-	respHandler := NewResponseHandler(msgService, store.NewInMemoryStore())
+	respHandler := NewResponseHandler(msgService, store.NewInMemoryStore(), false)
 
 	// Create a static prompt that doesn't expect responses
 	staticPrompt := models.Prompt{
@@ -179,7 +179,7 @@ func TestAPIIntegration_InteractiveStaticPromptWithHandler(t *testing.T) {
 	msgService := NewWhatsAppService(mockClient)
 
 	// Create response handler
-	respHandler := NewResponseHandler(msgService, store.NewInMemoryStore())
+	respHandler := NewResponseHandler(msgService, store.NewInMemoryStore(), false)
 
 	// Create a static prompt that expects responses (has question)
 	staticPrompt := models.Prompt{
