@@ -67,6 +67,7 @@ CREATE TABLE IF NOT EXISTS conversation_participants (
     gender TEXT,
     ethnicity TEXT,
     background TEXT,
+    timezone TEXT,
     status TEXT NOT NULL,
     enrolled_at DATETIME NOT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -88,3 +89,34 @@ CREATE TABLE IF NOT EXISTS registered_hooks (
 
 -- Index for hook type lookups
 CREATE INDEX IF NOT EXISTS idx_registered_hooks_type ON registered_hooks(hook_type);
+
+-- SQL migration for active timers (for persistence and recovery)
+CREATE TABLE IF NOT EXISTS active_timers (
+    id TEXT PRIMARY KEY,
+    participant_id TEXT NOT NULL,
+    flow_type TEXT NOT NULL,
+    timer_type TEXT NOT NULL, -- 'once', 'recurring'
+    state_type TEXT,
+    data_key TEXT,
+    callback_type TEXT NOT NULL, -- 'scheduled_prompt', 'feedback_initial', 'feedback_followup', 'state_transition', 'reminder', 'auto_feedback'
+    callback_params TEXT, -- JSON string with callback-specific parameters
+    scheduled_at DATETIME NOT NULL,
+    expires_at DATETIME, -- For one-time timers
+    original_delay_seconds INTEGER, -- Original delay for one-time timers
+    schedule_json TEXT, -- JSON string for recurring timers (Schedule object)
+    next_run DATETIME, -- Next execution time for recurring timers
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Indexes for timer lookups and cleanup
+CREATE INDEX IF NOT EXISTS idx_active_timers_participant ON active_timers(participant_id);
+CREATE INDEX IF NOT EXISTS idx_active_timers_flow_type ON active_timers(flow_type);
+CREATE INDEX IF NOT EXISTS idx_active_timers_callback_type ON active_timers(callback_type);
+CREATE INDEX IF NOT EXISTS idx_active_timers_expires_at ON active_timers(expires_at);
+CREATE INDEX IF NOT EXISTS idx_active_timers_next_run ON active_timers(next_run);
+
+-- Schema evolution: Add timezone column to existing conversation_participants table
+-- Note: This will fail silently if column already exists (handled in Go migration code)
+-- SQLite doesn't support "IF NOT EXISTS" for ALTER TABLE, so errors are expected on re-run
+ALTER TABLE conversation_participants ADD COLUMN timezone TEXT;

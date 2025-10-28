@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/BTreeMap/PromptPipe/internal/models"
 )
@@ -38,6 +39,14 @@ type Store interface {
 	GetRegisteredHook(phoneNumber string) (*models.RegisteredHook, error)
 	ListRegisteredHooks() ([]models.RegisteredHook, error)
 	DeleteRegisteredHook(phoneNumber string) error
+	// Timer persistence management
+	SaveTimer(timer models.TimerRecord) error
+	GetTimer(id string) (*models.TimerRecord, error)
+	ListTimers() ([]models.TimerRecord, error)
+	ListTimersByParticipant(participantID string) ([]models.TimerRecord, error)
+	ListTimersByFlowType(flowType string) ([]models.TimerRecord, error)
+	DeleteTimer(id string) error
+	DeleteExpiredTimers() error // Cleanup expired one-time timers
 }
 
 // Opts holds configuration options for store implementations.
@@ -123,6 +132,7 @@ type InMemoryStore struct {
 	flowStates               map[string]models.FlowState               // key: participantID_flowType
 	conversationParticipants map[string]models.ConversationParticipant // key: participant ID
 	registeredHooks          map[string]models.RegisteredHook          // key: phone number
+	timers                   map[string]models.TimerRecord             // key: timer ID
 	mu                       sync.RWMutex
 }
 
@@ -135,6 +145,7 @@ func NewInMemoryStore() *InMemoryStore {
 		flowStates:               make(map[string]models.FlowState),
 		conversationParticipants: make(map[string]models.ConversationParticipant),
 		registeredHooks:          make(map[string]models.RegisteredHook),
+		timers:                   make(map[string]models.TimerRecord),
 	}
 }
 
@@ -338,5 +349,92 @@ func (s *InMemoryStore) DeleteRegisteredHook(phoneNumber string) error {
 	defer s.mu.Unlock()
 	delete(s.registeredHooks, phoneNumber)
 	slog.Debug("InMemoryStore DeleteRegisteredHook succeeded", "phoneNumber", phoneNumber)
+	return nil
+}
+
+// SaveTimer stores a timer record.
+func (s *InMemoryStore) SaveTimer(timer models.TimerRecord) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.timers[timer.ID] = timer
+	slog.Debug("InMemoryStore SaveTimer succeeded", "id", timer.ID, "participantID", timer.ParticipantID)
+	return nil
+}
+
+// GetTimer retrieves a timer record by ID.
+func (s *InMemoryStore) GetTimer(id string) (*models.TimerRecord, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if timer, exists := s.timers[id]; exists {
+		slog.Debug("InMemoryStore GetTimer found", "id", id)
+		timerCopy := timer
+		return &timerCopy, nil
+	}
+	slog.Debug("InMemoryStore GetTimer not found", "id", id)
+	return nil, nil
+}
+
+// ListTimers retrieves all timer records.
+func (s *InMemoryStore) ListTimers() ([]models.TimerRecord, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	result := make([]models.TimerRecord, 0, len(s.timers))
+	for _, timer := range s.timers {
+		result = append(result, timer)
+	}
+	slog.Debug("InMemoryStore ListTimers succeeded", "count", len(result))
+	return result, nil
+}
+
+// ListTimersByParticipant retrieves all timer records for a participant.
+func (s *InMemoryStore) ListTimersByParticipant(participantID string) ([]models.TimerRecord, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	result := make([]models.TimerRecord, 0)
+	for _, timer := range s.timers {
+		if timer.ParticipantID == participantID {
+			result = append(result, timer)
+		}
+	}
+	slog.Debug("InMemoryStore ListTimersByParticipant succeeded", "participantID", participantID, "count", len(result))
+	return result, nil
+}
+
+// ListTimersByFlowType retrieves all timer records for a flow type.
+func (s *InMemoryStore) ListTimersByFlowType(flowType string) ([]models.TimerRecord, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	result := make([]models.TimerRecord, 0)
+	for _, timer := range s.timers {
+		if string(timer.FlowType) == flowType {
+			result = append(result, timer)
+		}
+	}
+	slog.Debug("InMemoryStore ListTimersByFlowType succeeded", "flowType", flowType, "count", len(result))
+	return result, nil
+}
+
+// DeleteTimer removes a timer record.
+func (s *InMemoryStore) DeleteTimer(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.timers, id)
+	slog.Debug("InMemoryStore DeleteTimer succeeded", "id", id)
+	return nil
+}
+
+// DeleteExpiredTimers removes expired one-time timers.
+func (s *InMemoryStore) DeleteExpiredTimers() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now()
+	deleted := 0
+	for id, timer := range s.timers {
+		if timer.TimerType == "once" && timer.ExpiresAt != nil && timer.ExpiresAt.Before(now) {
+			delete(s.timers, id)
+			deleted++
+		}
+	}
+	slog.Debug("InMemoryStore DeleteExpiredTimers succeeded", "deleted", deleted)
 	return nil
 }
