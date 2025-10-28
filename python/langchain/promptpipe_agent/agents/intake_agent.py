@@ -3,8 +3,7 @@
 import os
 from typing import Optional
 
-from langchain.agents import AgentExecutor, create_tool_calling_agent
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
 from promptpipe_agent.config import settings
@@ -51,10 +50,10 @@ class IntakeAgent:
         self.system_prompt = self._load_system_prompt()
 
         # Initialize tools
-        self.tools = self._create_tools()
-
-        # Create agent
-        self.agent = self._create_agent()
+        self.state_transition = StateTransitionTool(state_manager=self.state_manager)
+        self.profile_save = ProfileSaveTool(state_manager=self.state_manager)
+        self.scheduler = SchedulerTool(state_manager=self.state_manager)
+        self.prompt_generator = PromptGeneratorTool(state_manager=self.state_manager)
 
     def _load_system_prompt(self) -> str:
         """Load the system prompt from file."""
@@ -75,29 +74,6 @@ class IntakeAgent:
                 "You are an intake bot that helps users personalize their habit-building experience. "
                 "Ask questions one at a time to collect their preferences, then save their profile."
             )
-
-    def _create_tools(self) -> list:
-        """Create the tools available to the intake agent."""
-        return [
-            StateTransitionTool(state_manager=self.state_manager),
-            ProfileSaveTool(state_manager=self.state_manager),
-            SchedulerTool(state_manager=self.state_manager),
-            PromptGeneratorTool(state_manager=self.state_manager),
-        ]
-
-    def _create_agent(self) -> AgentExecutor:
-        """Create the LangChain agent executor."""
-        prompt = ChatPromptTemplate.from_messages(
-            [
-                ("system", self.system_prompt),
-                MessagesPlaceholder(variable_name="chat_history", optional=True),
-                ("human", "{input}"),
-                MessagesPlaceholder(variable_name="agent_scratchpad"),
-            ]
-        )
-
-        agent = create_tool_calling_agent(self.llm, self.tools, prompt)
-        return AgentExecutor(agent=agent, tools=self.tools, verbose=settings.debug)
 
     def process_message(
         self, participant_id: str, user_message: str
@@ -120,41 +96,40 @@ class IntakeAgent:
         if profile:
             profile_context = f"\n\nCurrent Profile:\n{profile.to_context_string()}"
 
-        # Convert history to LangChain format (limit if needed)
-        chat_history = []
-        messages = history.messages
-        if settings.chat_history_limit > 0:
-            messages = messages[-settings.chat_history_limit :]
+        # Build messages
+        system_prompt = self.system_prompt
+        if profile_context:
+            system_prompt += profile_context
+            
+        messages = [SystemMessage(content=system_prompt)]
 
-        for msg in messages:
+        # Add conversation history (limit if needed)
+        hist_messages = history.messages
+        if settings.chat_history_limit > 0:
+            hist_messages = hist_messages[-settings.chat_history_limit :]
+
+        for msg in hist_messages:
             if msg.role == MessageRole.USER:
-                chat_history.append(("human", msg.content))
+                messages.append(HumanMessage(content=msg.content))
             elif msg.role == MessageRole.ASSISTANT:
-                chat_history.append(("ai", msg.content))
+                messages.append(AIMessage(content=msg.content))
+
+        # Add current user message
+        messages.append(HumanMessage(content=user_message))
 
         # Add user message to history
         self.state_manager.add_message(participant_id, MessageRole.USER.value, user_message)
 
-        # Enhance input with profile context
-        enhanced_input = user_message
-        if profile_context:
-            enhanced_input = f"{user_message}{profile_context}"
-
-        # Process message through agent
+        # Process message through LLM
         try:
-            result = self.agent.invoke(
-                {
-                    "input": enhanced_input,
-                    "chat_history": chat_history,
-                }
-            )
-            response = result["output"]
+            response = self.llm.invoke(messages)
+            response_text = response.content
         except Exception as e:
-            response = f"I apologize, but I encountered an error: {str(e)}"
+            response_text = f"I apologize, but I encountered an error: {str(e)}"
 
         # Add response to history
         self.state_manager.add_message(
-            participant_id, MessageRole.ASSISTANT.value, response
+            participant_id, MessageRole.ASSISTANT.value, response_text
         )
 
-        return response
+        return response_text

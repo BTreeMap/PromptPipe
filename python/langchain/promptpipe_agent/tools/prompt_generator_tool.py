@@ -1,7 +1,7 @@
 """Prompt generator tool for creating personalized habit prompts."""
 
 import os
-from typing import Optional
+from typing import Any, Optional
 
 from langchain.tools import BaseTool
 from langchain_openai import ChatOpenAI
