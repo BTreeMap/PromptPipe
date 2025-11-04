@@ -1,7 +1,7 @@
 Notes on the Twilio update
 ================
 
-I’ve added tests for the new components (along with test):
+I’ve added the following new components (along with test):
 
 `internal/twiliowhatsapp/` new package for Twilio WhatsApp client
 similar to `internal/whatsapp/`
