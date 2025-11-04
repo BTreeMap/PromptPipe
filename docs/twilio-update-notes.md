@@ -19,4 +19,4 @@ since the Twilio client doesn’t setup all the functionality needed for
 the existing tests. -In my testing, I found that outbound messages
 always come with a poll. I believe this is working as intended given my
 understanding of how the codebase works. If it is not let me know I can
-attempt to fix it. —
+attempt to fix it.
