@@ -11,7 +11,6 @@ import (
 	twilioApi "github.com/twilio/twilio-go/rest/api/v2010"
 )
 
-// TODO
 type TwilioWhatsAppSender interface {
 	SendMessage(ctx context.Context, to string, body string) error
 	SendTypingIndicator(ctx context.Context, to string, typing bool) error
@@ -29,7 +28,6 @@ type Opts struct {
 // Option defines a configuration option for the Twilio WhatsApp client.
 type Option func(*Opts)
 
-// TODO: add comments for these
 func WithAccountSID(sid string) Option {
 	return func(o *Opts) { o.AccountSID = sid }
 }
@@ -48,6 +46,7 @@ type Client struct {
 	fromWhats string // WhatsApp number in "whatsapp:+1234567890" format
 }
 
+// NewClient creates a new Twilio client,
 func NewClient(opts ...Option) (*Client, error) {
 	var cfg Opts
 	for _, opt := range opts {
@@ -88,36 +87,6 @@ func NewClient(opts ...Option) (*Client, error) {
 		fromWhats: cfg.FromWhats,
 	}, nil
 }
-
-//TODO: old version
-// func NewClient(opts ...Option) (*Client, error) {
-// 	var cfg Opts
-
-// 	// Apply all options
-// 	for _, opt := range opts {
-// 		opt(&cfg)
-// 	}
-
-// 	// Create default Twilio REST client if not injected
-// 	//TODO: redo error checking
-// 	if cfg.Client == nil {
-// 		if cfg.AccountSID == "" || cfg.AuthToken == "" {
-// 			return nil, fmt.Errorf("account SID and auth token must be provided")
-// 		}
-// 		cfg.Client = twilio.NewRestClientWithParams(
-// 			twilio.ClientParams{Username: cfg.AccountSID, Password: cfg.AuthToken},
-// 		)
-// 	}
-
-// 	if cfg.FromWhats == "" {
-// 		return nil, fmt.Errorf("fromWhats number must be provided")
-// 	}
-
-// 	return &Client{
-// 		client:    cfg.Client,
-// 		fromWhats: cfg.FromWhats,
-// 	}, nil
-// }
 
 // SendMessage sends a WhatsApp message using Twilio API
 func (c *Client) SendMessage(ctx context.Context, to string, body string) error {

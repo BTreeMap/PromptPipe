@@ -40,6 +40,14 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Uses --use-twilio flag (overrides environment)
+	if *flags.useTwilio {
+		os.Setenv("USE_TWILIO", "true")
+		slog.Info("Running with Twilio client (USE_TWILIO=true)")
+	} else {
+		slog.Info("Running with native WhatsApp client (USE_TWILIO=false)")
+	}
+
 	// Acquire lock on state directory to prevent multiple instances
 	lock, err := lockfile.AcquireLock(*flags.stateDir)
 	if err != nil {
@@ -202,6 +210,8 @@ type Flags struct {
 	schedulerPrepTimeMinutes       *int     // Preparation time in minutes before scheduled habit reminders
 	autoFeedbackAfterPromptEnabled *bool    // Enable auto feedback enforcement after scheduled prompts
 	autoEnrollNewUsers             *bool    // Enable automatic enrollment of new users on first message
+	useTwilio                      *bool    // Choose Twilio backend instead of WhatsApp
+
 }
 
 // initializeLogger sets up structured logging with debug level
@@ -320,6 +330,7 @@ func parseCommandLineFlags(config Config) Flags {
 		schedulerPrepTimeMinutes:       flag.Int("scheduler-prep-time-minutes", config.SchedulerPrepTimeMinutes, "preparation time in minutes before scheduled habit reminders (overrides $SCHEDULER_PREP_TIME_MINUTES)"),
 		autoFeedbackAfterPromptEnabled: flag.Bool("auto-feedback-after-prompt-enabled", config.AutoFeedbackAfterPromptEnabled, "enable auto feedback session enforcement after scheduled prompt inactivity (overrides $AUTO_FEEDBACK_AFTER_PROMPT_ENABLED)"),
 		autoEnrollNewUsers:             flag.Bool("auto-enroll-new-users", config.AutoEnrollNewUsers, "enable automatic enrollment of new users on first message (overrides $AUTO_ENROLL_NEW_USERS)"),
+		useTwilio:                      flag.Bool("use-twilio", pputil.ParseBoolEnv("USE_TWILIO", false), "use Twilio WhatsApp API instead of the native WhatsApp client"),
 	}
 
 	flag.Parse()
@@ -414,6 +425,11 @@ func buildWhatsAppOptions(flags Flags) []whatsapp.Option {
 	}
 	if *flags.whatsappDBDSN != "" {
 		waOpts = append(waOpts, whatsapp.WithDBDSN(*flags.whatsappDBDSN))
+	}
+	// Skip WhatsApp setup when Twilio mode is active
+	if (flags.useTwilio != nil && *flags.useTwilio) || os.Getenv("USE_TWILIO") == "true" {
+		slog.Debug("Using Twilio. Skipping WhatsApp initialization")
+		return nil
 	}
 	return waOpts
 }

@@ -23,6 +23,7 @@ import (
 	"github.com/BTreeMap/PromptPipe/internal/models"
 	"github.com/BTreeMap/PromptPipe/internal/recovery"
 	"github.com/BTreeMap/PromptPipe/internal/store"
+	"github.com/BTreeMap/PromptPipe/internal/twiliowhatsapp"
 	"github.com/BTreeMap/PromptPipe/internal/whatsapp"
 )
 
@@ -244,15 +245,25 @@ func createAndConfigureServer(waOpts []whatsapp.Option, storeOpts []store.Option
 		addr = DefaultServerAddress
 	}
 
-	// Initialize WhatsApp client and wrap in messaging service
-	whClient, err := whatsapp.NewClient(waOpts...)
-	if err != nil {
-		slog.Error("Failed to create WhatsApp client", "error", err)
-		return nil, "", fmt.Errorf("failed to create WhatsApp client: %w", err)
+	// Initialize WhatsApp or Twilio client and wrap in messaging service
+	if len(waOpts) > 0 {
+		whClient, err := whatsapp.NewClient(waOpts...)
+
+		if err != nil {
+			return nil, "", fmt.Errorf("failed to create WhatsApp client: %w", err)
+		}
+		slog.Debug("WhatsApp client created successfully")
+		server.msgService = messaging.NewWhatsAppService(whClient)
+	} else if os.Getenv("USE_TWILIO") == "true" {
+		twClient, err := twiliowhatsapp.NewClient()
+		if err != nil {
+			return nil, "", fmt.Errorf("failed to create Twilio client: %w", err)
+		}
+		slog.Debug("Twilio client created successfully")
+		server.msgService = messaging.NewTwilioService(twClient)
+	} else {
+		return nil, "", fmt.Errorf("no messaging provider configured (set USE_TWILIO=true or provide WhatsApp options)")
 	}
-	slog.Debug("WhatsApp client created successfully")
-	server.msgService = messaging.NewWhatsAppService(whClient)
-	slog.Debug("Messaging service initialized")
 
 	// Initialize store
 	if err := server.initializeStore(storeOpts); err != nil {
@@ -592,6 +603,12 @@ func startHTTPServer(addr string, server *Server) *http.Server {
 
 	// Conversation management endpoints with proper routing
 	http.HandleFunc("/conversation/", server.conversationRouter)
+
+	// Register Twilio webhook endpoint only when using Twilio messaging service
+	if ts, ok := server.msgService.(*messaging.TwilioService); ok {
+		http.HandleFunc("/twilio/webhook", ts.TwilioWebhookHandler)
+		slog.Info("Twilio webhook endpoint registered at /twilio/webhook")
+	}
 
 	slog.Debug("HTTP handlers registered")
 
