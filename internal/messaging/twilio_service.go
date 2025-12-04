@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	//TODO: both of these need to be imported differently
 	"github.com/BTreeMap/PromptPipe/internal/twiliowhatsapp"
 
 	"github.com/BTreeMap/PromptPipe/internal/models"
@@ -189,7 +188,7 @@ func (s *TwilioService) TwilioWebhookHandler(w http.ResponseWriter, r *http.Requ
 	response := models.Response{
 		From: from,
 		Body: body,
-		Time: time.Now().Unix(), // ✅ matches struct definition
+		Time: time.Now().Unix(),
 	}
 
 	s.safeEmitResponse(response)
