@@ -262,11 +262,15 @@ func (c *Client) SendMessage(ctx context.Context, to string, body string) error 
 	// Note: Phone number validation and canonicalization should be handled by the service layer.
 	// The recipient should already be validated and canonicalized when this method is called.
 
-	slog.Debug("Sending WhatsApp message", "to", to, "body_length", len(body))
-	jid := types.NewJID(to, JIDSuffix)
+	jid, err := parseRecipientJID(to)
+	if err != nil {
+		return err
+	}
+
+	slog.Debug("Sending WhatsApp message", "to", jid.String(), "body_length", len(body))
 	msg := &waE2E.Message{Conversation: &body}
 
-	_, err := c.waClient.SendMessage(ctx, jid, msg)
+	_, err = c.waClient.SendMessage(ctx, jid, msg)
 	if err != nil {
 		slog.Error("Failed to send WhatsApp message", "error", err, "to", to)
 		return fmt.Errorf("failed to send message to %s: %w", to, err)
@@ -292,12 +296,16 @@ func (c *Client) SendPromptButtons(ctx context.Context, to string, body string) 
 		return fmt.Errorf("message body cannot be empty")
 	}
 
-	slog.Debug("Sending WhatsApp prompt with poll", "to", to, "body_length", len(body))
-	jid := types.NewJID(to, JIDSuffix)
+	jid, err := parseRecipientJID(to)
+	if err != nil {
+		return err
+	}
+
+	slog.Debug("Sending WhatsApp prompt with poll", "to", jid.String(), "body_length", len(body))
 
 	// First send the main prompt message
 	mainMsg := &waE2E.Message{Conversation: &body}
-	_, err := c.waClient.SendMessage(ctx, jid, mainMsg)
+	_, err = c.waClient.SendMessage(ctx, jid, mainMsg)
 	if err != nil {
 		slog.Error("Failed to send WhatsApp prompt message", "error", err, "to", to)
 		return fmt.Errorf("failed to send prompt message to %s: %w", to, err)
@@ -340,8 +348,12 @@ func (c *Client) SendIntensityAdjustmentPoll(ctx context.Context, to string, cur
 		return fmt.Errorf("invalid intensity level: %s", currentIntensity)
 	}
 
-	slog.Debug("Sending intensity adjustment poll", "to", to, "currentIntensity", currentIntensity, "options", options)
-	jid := types.NewJID(to, JIDSuffix)
+	jid, err := parseRecipientJID(to)
+	if err != nil {
+		return err
+	}
+
+	slog.Debug("Sending intensity adjustment poll", "to", jid.String(), "currentIntensity", currentIntensity, "options", options)
 
 	// Send poll using Whatsmeow's built-in helper
 	pollMsg := c.waClient.BuildPollCreation(
@@ -350,7 +362,7 @@ func (c *Client) SendIntensityAdjustmentPoll(ctx context.Context, to string, cur
 		1, // single-select
 	)
 
-	_, err := c.waClient.SendMessage(ctx, jid, pollMsg)
+	_, err = c.waClient.SendMessage(ctx, jid, pollMsg)
 	if err != nil {
 		slog.Error("Failed to send intensity adjustment poll", "error", err, "to", to)
 		return fmt.Errorf("failed to send intensity poll to %s: %w", to, err)
@@ -375,7 +387,10 @@ func (c *Client) SendTypingIndicator(ctx context.Context, to string, typing bool
 	default:
 	}
 
-	jid := types.NewJID(to, JIDSuffix)
+	jid, err := parseRecipientJID(to)
+	if err != nil {
+		return err
+	}
 	presence := types.ChatPresencePaused
 	if typing {
 		presence = types.ChatPresenceComposing
@@ -388,6 +403,18 @@ func (c *Client) SendTypingIndicator(ctx context.Context, to string, typing bool
 
 	slog.Debug("WhatsApp typing indicator sent", "to", to, "typing", typing)
 	return nil
+}
+
+func parseRecipientJID(to string) (types.JID, error) {
+	if strings.Contains(to, "@") {
+		jid, err := types.ParseJID(to)
+		if err != nil {
+			return types.JID{}, fmt.Errorf("invalid recipient JID %q: %w", to, err)
+		}
+		return jid.ToNonAD(), nil
+	}
+
+	return types.NewJID(to, JIDSuffix), nil
 }
 
 // GetClient returns the underlying whatsmeow client for event handling

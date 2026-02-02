@@ -42,6 +42,8 @@ type WhatsAppService struct {
 	done      chan struct{}
 	mu        sync.RWMutex
 	stopped   bool
+	lidMu     sync.RWMutex
+	lidByPhone map[string]string // canonical phone -> JID string for LID addressing
 }
 
 // NewWhatsAppService creates a new WhatsAppService wrapping the given WhatsAppSender.
@@ -51,6 +53,7 @@ func NewWhatsAppService(client whatsapp.WhatsAppSender) *WhatsAppService {
 		receipts:  make(chan models.Receipt, DefaultChannelBufferSize),
 		responses: make(chan models.Response, DefaultChannelBufferSize),
 		done:      make(chan struct{}),
+		lidByPhone: make(map[string]string),
 	}
 
 	// If the client is a full Client (not just an interface), store it for event handling
@@ -62,6 +65,33 @@ func NewWhatsAppService(client whatsapp.WhatsAppSender) *WhatsAppService {
 	}
 
 	return service
+}
+
+func (s *WhatsAppService) storeRecipientLID(canonicalPhone string, lidJID string) {
+	if canonicalPhone == "" || lidJID == "" {
+		return
+	}
+
+	s.lidMu.Lock()
+	defer s.lidMu.Unlock()
+
+	if existing, ok := s.lidByPhone[canonicalPhone]; ok && existing == lidJID {
+		return
+	}
+
+	s.lidByPhone[canonicalPhone] = lidJID
+	slog.Debug("WhatsAppService stored LID mapping", "phone", canonicalPhone, "lid", lidJID)
+}
+
+func (s *WhatsAppService) resolveRecipientAddress(canonicalPhone string) string {
+	s.lidMu.RLock()
+	defer s.lidMu.RUnlock()
+
+	if lidJID, ok := s.lidByPhone[canonicalPhone]; ok && lidJID != "" {
+		return lidJID
+	}
+
+	return canonicalPhone
 }
 
 // ValidateAndCanonicalizeRecipient validates and canonicalizes a WhatsApp phone number.
@@ -148,10 +178,15 @@ func (s *WhatsAppService) SendMessage(ctx context.Context, to string, body strin
 		return err
 	}
 
-	slog.Debug("WhatsAppService SendMessage invoked", "to", canonicalTo, "body_length", len(body))
-	err = s.client.SendMessage(ctx, canonicalTo, body)
+	sendTo := s.resolveRecipientAddress(canonicalTo)
+	if sendTo != canonicalTo {
+		slog.Debug("WhatsAppService SendMessage using LID recipient", "to", sendTo, "phone", canonicalTo)
+	} else {
+		slog.Debug("WhatsAppService SendMessage invoked", "to", canonicalTo, "body_length", len(body))
+	}
+	err = s.client.SendMessage(ctx, sendTo, body)
 	if err != nil {
-		slog.Error("WhatsAppService SendMessage error", "error", err, "to", canonicalTo)
+		slog.Error("WhatsAppService SendMessage error", "error", err, "to", sendTo, "phone", canonicalTo)
 		return err
 	}
 
@@ -183,21 +218,23 @@ func (s *WhatsAppService) SendPromptWithButtons(ctx context.Context, to string, 
 		return err
 	}
 
+	sendTo := s.resolveRecipientAddress(canonicalTo)
+
 	var sendErr error
 	if sender, ok := s.client.(promptButtonsClient); ok {
-		slog.Debug("WhatsAppService SendPromptWithButtons using poll message", "to", canonicalTo)
-		sendErr = sender.SendPromptButtons(ctx, canonicalTo, body)
+		slog.Debug("WhatsAppService SendPromptWithButtons using poll message", "to", sendTo, "phone", canonicalTo)
+		sendErr = sender.SendPromptButtons(ctx, sendTo, body)
 	} else {
-		slog.Debug("WhatsAppService SendPromptWithButtons falling back to text message", "to", canonicalTo)
-		sendErr = s.client.SendMessage(ctx, canonicalTo, body)
+		slog.Debug("WhatsAppService SendPromptWithButtons falling back to text message", "to", sendTo, "phone", canonicalTo)
+		sendErr = s.client.SendMessage(ctx, sendTo, body)
 	}
 
 	if sendErr != nil {
-		slog.Error("WhatsAppService SendPromptWithButtons error", "error", sendErr, "to", canonicalTo)
+		slog.Error("WhatsAppService SendPromptWithButtons error", "error", sendErr, "to", sendTo, "phone", canonicalTo)
 		return sendErr
 	}
 	s.safeEmitReceipt(models.Receipt{To: canonicalTo, Status: models.MessageStatusSent, Time: time.Now().Unix()})
-	slog.Info("WhatsAppService prompt with poll sent and receipt emitted", "to", canonicalTo)
+	slog.Info("WhatsAppService prompt with poll sent and receipt emitted", "to", sendTo, "phone", canonicalTo)
 	return nil
 }
 
@@ -217,23 +254,25 @@ func (s *WhatsAppService) SendIntensityAdjustmentPoll(ctx context.Context, to st
 		return err
 	}
 
+	sendTo := s.resolveRecipientAddress(canonicalTo)
+
 	var sendErr error
 	if sender, ok := s.client.(promptButtonsClient); ok {
-		slog.Debug("WhatsAppService SendIntensityAdjustmentPoll using poll message", "to", canonicalTo, "currentIntensity", currentIntensity)
-		sendErr = sender.SendIntensityAdjustmentPoll(ctx, canonicalTo, currentIntensity)
+		slog.Debug("WhatsAppService SendIntensityAdjustmentPoll using poll message", "to", sendTo, "phone", canonicalTo, "currentIntensity", currentIntensity)
+		sendErr = sender.SendIntensityAdjustmentPoll(ctx, sendTo, currentIntensity)
 	} else {
 		// Fallback: send text message asking about intensity
-		slog.Debug("WhatsAppService SendIntensityAdjustmentPoll falling back to text message", "to", canonicalTo)
-		sendErr = s.client.SendMessage(ctx, canonicalTo, "How's the intensity? Reply with 'low', 'normal', or 'high'.")
+		slog.Debug("WhatsAppService SendIntensityAdjustmentPoll falling back to text message", "to", sendTo, "phone", canonicalTo)
+		sendErr = s.client.SendMessage(ctx, sendTo, "How's the intensity? Reply with 'low', 'normal', or 'high'.")
 	}
 
 	if sendErr != nil {
-		slog.Error("WhatsAppService SendIntensityAdjustmentPoll error", "error", sendErr, "to", canonicalTo)
+		slog.Error("WhatsAppService SendIntensityAdjustmentPoll error", "error", sendErr, "to", sendTo, "phone", canonicalTo)
 		return sendErr
 	}
 
 	s.safeEmitReceipt(models.Receipt{To: canonicalTo, Status: models.MessageStatusSent, Time: time.Now().Unix()})
-	slog.Info("WhatsAppService intensity adjustment poll sent and receipt emitted", "to", canonicalTo, "currentIntensity", currentIntensity)
+	slog.Info("WhatsAppService intensity adjustment poll sent and receipt emitted", "to", sendTo, "phone", canonicalTo, "currentIntensity", currentIntensity)
 	return nil
 }
 
@@ -253,9 +292,11 @@ func (s *WhatsAppService) SendTypingIndicator(ctx context.Context, to string, ty
 		return err
 	}
 
-	slog.Debug("WhatsAppService SendTypingIndicator invoked", "to", canonicalTo, "typing", typing)
-	if err := s.client.SendTypingIndicator(ctx, canonicalTo, typing); err != nil {
-		slog.Warn("WhatsAppService SendTypingIndicator error", "error", err, "to", canonicalTo, "typing", typing)
+	sendTo := s.resolveRecipientAddress(canonicalTo)
+
+	slog.Debug("WhatsAppService SendTypingIndicator invoked", "to", sendTo, "phone", canonicalTo, "typing", typing)
+	if err := s.client.SendTypingIndicator(ctx, sendTo, typing); err != nil {
+		slog.Warn("WhatsAppService SendTypingIndicator error", "error", err, "to", sendTo, "phone", canonicalTo, "typing", typing)
 		return err
 	}
 
@@ -364,10 +405,47 @@ func (s *WhatsAppService) handleIncomingMessage(evt *events.Message) {
 		return
 	}
 
-	// Convert JID to E.164 format (remove @s.whatsapp.net suffix)
-	fromNumber := strings.TrimSuffix(evt.Info.Sender.User, "")
-	if !strings.HasPrefix(fromNumber, "+") {
-		fromNumber = "+" + fromNumber
+	// Convert JID to E.164 format and store LID mapping if available
+	fromNumber := ""
+	canonicalPhone := ""
+
+	sender := evt.Info.Sender.ToNonAD()
+	senderAlt := evt.Info.SenderAlt.ToNonAD()
+
+	var phoneJID types.JID
+	var lidJID types.JID
+
+	if evt.Info.AddressingMode == types.AddressingModeLID {
+		lidJID = sender
+		phoneJID = senderAlt
+	} else {
+		phoneJID = sender
+		lidJID = senderAlt
+	}
+
+	if phoneJID.User == "" || phoneJID.Server != types.DefaultUserServer {
+		phoneJID = sender
+	}
+
+	if phoneJID.User != "" {
+		fromNumber = phoneJID.User
+		if !strings.HasPrefix(fromNumber, "+") {
+			fromNumber = "+" + fromNumber
+		}
+	}
+
+	if fromNumber == "" {
+		fromNumber = sender.User
+		if !strings.HasPrefix(fromNumber, "+") {
+			fromNumber = "+" + fromNumber
+		}
+	}
+
+	if canonical, err := s.ValidateAndCanonicalizeRecipient(fromNumber); err == nil {
+		canonicalPhone = canonical
+		if lidJID.User != "" && lidJID.Server == types.HiddenUserServer {
+			s.storeRecipientLID(canonicalPhone, lidJID.String())
+		}
 	}
 
 	response := models.Response{
@@ -376,7 +454,7 @@ func (s *WhatsAppService) handleIncomingMessage(evt *events.Message) {
 		Time: evt.Info.Timestamp.Unix(),
 	}
 
-	slog.Debug("WhatsAppService processing incoming message", "from", response.From, "body_length", len(response.Body))
+	slog.Debug("WhatsAppService processing incoming message", "from", response.From, "body_length", len(response.Body), "addressingMode", evt.Info.AddressingMode, "canonicalPhone", canonicalPhone)
 
 	// Send to responses channel (non-blocking)
 	s.safeEmitResponse(response)
