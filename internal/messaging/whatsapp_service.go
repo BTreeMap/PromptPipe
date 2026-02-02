@@ -35,24 +35,24 @@ var phoneNumberRegex = regexp.MustCompile(`[^0-9]`)
 
 // WhatsAppService implements Service using the Whatsmeow-based whatsapp client.
 type WhatsAppService struct {
-	client    whatsapp.WhatsAppSender
-	waClient  *whatsapp.Client // Access to underlying client for event handling
-	receipts  chan models.Receipt
-	responses chan models.Response
-	done      chan struct{}
-	mu        sync.RWMutex
-	stopped   bool
-	lidMu     sync.RWMutex
+	client     whatsapp.WhatsAppSender
+	waClient   *whatsapp.Client // Access to underlying client for event handling
+	receipts   chan models.Receipt
+	responses  chan models.Response
+	done       chan struct{}
+	mu         sync.RWMutex
+	stopped    bool
+	lidMu      sync.RWMutex
 	lidByPhone map[string]string // canonical phone -> JID string for LID addressing
 }
 
 // NewWhatsAppService creates a new WhatsAppService wrapping the given WhatsAppSender.
 func NewWhatsAppService(client whatsapp.WhatsAppSender) *WhatsAppService {
 	service := &WhatsAppService{
-		client:    client,
-		receipts:  make(chan models.Receipt, DefaultChannelBufferSize),
-		responses: make(chan models.Response, DefaultChannelBufferSize),
-		done:      make(chan struct{}),
+		client:     client,
+		receipts:   make(chan models.Receipt, DefaultChannelBufferSize),
+		responses:  make(chan models.Response, DefaultChannelBufferSize),
+		done:       make(chan struct{}),
 		lidByPhone: make(map[string]string),
 	}
 
@@ -423,7 +423,7 @@ func (s *WhatsAppService) handleIncomingMessage(evt *events.Message) {
 		lidJID = senderAlt
 	}
 
-	if phoneJID.User == "" || phoneJID.Server != types.DefaultUserServer {
+	if phoneJID.User == "" || (phoneJID.Server != types.DefaultUserServer && phoneJID.Server != types.LegacyUserServer) {
 		phoneJID = sender
 	}
 
