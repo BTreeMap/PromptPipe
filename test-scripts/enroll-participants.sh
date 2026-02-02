@@ -23,22 +23,70 @@ CURRENT_TIME=$(date +%s)
 PARTICIPANT_1_PHONE="${PARTICIPANT_1_PHONE:-+1555${CURRENT_TIME}001}"
 PARTICIPANT_2_PHONE="${PARTICIPANT_2_PHONE:-+1555${CURRENT_TIME}002}"
 PARTICIPANT_3_PHONE="${PARTICIPANT_3_PHONE:-+1555${CURRENT_TIME}003}"
+DEFAULT_TIMEZONE="${PARTICIPANT_TIMEZONE:-America/Toronto}"
+
+# Helper to get participant-specific fields from .env with defaults
+get_participant_field() {
+    local participant_num="$1"
+    local field="$2"
+    local default_value="$3"
+    local var_name="PARTICIPANT_${participant_num}_${field}"
+    local value="${!var_name}"
+
+    if [ -z "$value" ]; then
+        value="$default_value"
+    fi
+
+    echo "$value"
+}
 
 # Function to enroll a participant
 enroll_participant() {
     local phone="$1"
-    local name="$2"
-    local participant_num="$3"
-    
-    log "Enrolling participant $participant_num with phone: $phone"
-    
+    local participant_num="$2"
+
+    local default_name
+    case "$participant_num" in
+        1) default_name="Test Participant One" ;;
+        2) default_name="Test Participant Two" ;;
+        3) default_name="Test Participant Three" ;;
+        *) default_name="Test Participant $participant_num" ;;
+    esac
+
+    local name
+    local gender
+    local ethnicity
+    local background
+    local timezone
+
+    name="$(get_participant_field "$participant_num" "NAME" "$default_name")"
+    gender="$(get_participant_field "$participant_num" "GENDER" "")"
+    ethnicity="$(get_participant_field "$participant_num" "ETHNICITY" "")"
+    background="$(get_participant_field "$participant_num" "BACKGROUND" "")"
+    timezone="$(get_participant_field "$participant_num" "TIMEZONE" "$DEFAULT_TIMEZONE")"
+
+    log "Enrolling participant $participant_num with phone: $phone (name: $name)"
+
+    payload=$(jq -n \
+        --arg phone_number "$phone" \
+        --arg name "$name" \
+        --arg gender "$gender" \
+        --arg ethnicity "$ethnicity" \
+        --arg background "$background" \
+        --arg timezone "$timezone" \
+        '{
+            phone_number: $phone_number
+        }
+        + (if ($name | length) > 0 then {name: $name} else {} end)
+        + (if ($gender | length) > 0 then {gender: $gender} else {} end)
+        + (if ($ethnicity | length) > 0 then {ethnicity: $ethnicity} else {} end)
+        + (if ($background | length) > 0 then {background: $background} else {} end)
+        + (if ($timezone | length) > 0 then {timezone: $timezone} else {} end)
+        ')
+
     response=$(curl -s -w "HTTPSTATUS:%{http_code}" -X POST \
         -H "Content-Type: application/json" \
-        -d "{
-            \"phone_number\": \"$phone\",
-            \"name\": \"$name\",
-            \"timezone\": \"America/Toronto\"
-        }" \
+        -d "$payload" \
         "$API_BASE_URL/conversation/participants")
     
     status=$(echo "$response" | grep -o "HTTPSTATUS:[0-9]*" | cut -d: -f2)
@@ -74,13 +122,13 @@ enroll_participant() {
 }
 
 # Enroll participant 1
-enroll_participant "$PARTICIPANT_1_PHONE" "Test Participant One" "1" || exit 1
+enroll_participant "$PARTICIPANT_1_PHONE" "1" || exit 1
 
 # Enroll participant 2
-enroll_participant "$PARTICIPANT_2_PHONE" "Test Participant Two" "2" || exit 1
+enroll_participant "$PARTICIPANT_2_PHONE" "2" || exit 1
 
 # Enroll participant 3
-enroll_participant "$PARTICIPANT_3_PHONE" "Test Participant Three" "3" || exit 1
+enroll_participant "$PARTICIPANT_3_PHONE" "3" || exit 1
 
 echo
 log "All participants enrolled successfully!"
