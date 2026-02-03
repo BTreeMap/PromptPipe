@@ -94,14 +94,6 @@ func (s *WhatsAppService) resolveRecipientAddress(canonicalPhone string) string 
 	return canonicalPhone
 }
 
-func shouldRetryWithLegacyServer(err error) bool {
-	if err == nil {
-		return false
-	}
-	msg := err.Error()
-	return strings.Contains(msg, "failed to get user info") || strings.Contains(msg, "rate-overlimit")
-}
-
 // ValidateAndCanonicalizeRecipient validates and canonicalizes a WhatsApp phone number.
 // It removes all non-numeric characters and validates the result has at least 6 digits.
 func (s *WhatsAppService) ValidateAndCanonicalizeRecipient(recipient string) (string, error) {
@@ -194,19 +186,6 @@ func (s *WhatsAppService) SendMessage(ctx context.Context, to string, body strin
 	}
 	err = s.client.SendMessage(ctx, sendTo, body)
 	if err != nil {
-		if sendTo == canonicalTo && shouldRetryWithLegacyServer(err) {
-			legacyTo := fmt.Sprintf("%s@%s", canonicalTo, types.LegacyUserServer)
-			slog.Warn("WhatsAppService SendMessage retrying with legacy server", "to", legacyTo, "phone", canonicalTo)
-			retryErr := s.client.SendMessage(ctx, legacyTo, body)
-			if retryErr == nil {
-				s.safeEmitReceipt(models.Receipt{To: canonicalTo, Status: models.MessageStatusSent, Time: time.Now().Unix()})
-				slog.Info("WhatsAppService message sent via legacy server", "to", legacyTo, "phone", canonicalTo)
-				return nil
-			}
-			slog.Error("WhatsAppService SendMessage legacy retry failed", "error", retryErr, "to", legacyTo, "phone", canonicalTo)
-			return retryErr
-		}
-
 		slog.Error("WhatsAppService SendMessage error", "error", err, "to", sendTo, "phone", canonicalTo)
 		return err
 	}
@@ -434,38 +413,35 @@ func (s *WhatsAppService) handleIncomingMessage(evt *events.Message) {
 	senderAlt := evt.Info.SenderAlt.ToNonAD()
 
 	var phoneJID types.JID
-	var lidJID types.JID
-
-	if evt.Info.AddressingMode == types.AddressingModeLID {
-		lidJID = sender
-		phoneJID = senderAlt
-	} else {
-		phoneJID = sender
-		lidJID = senderAlt
-	}
-
-	if phoneJID.User == "" || (phoneJID.Server != types.DefaultUserServer && phoneJID.Server != types.LegacyUserServer) {
-		phoneJID = sender
-	}
-
-	if phoneJID.User != "" {
-		fromNumber = phoneJID.User
-		if !strings.HasPrefix(fromNumber, "+") {
-			fromNumber = "+" + fromNumber
+	for _, candidate := range []types.JID{senderAlt, sender} {
+		if candidate.User == "" {
+			continue
+		}
+		if candidate.Server == types.DefaultUserServer || candidate.Server == types.LegacyUserServer {
+			phoneJID = candidate
+			break
 		}
 	}
 
-	if fromNumber == "" {
-		fromNumber = sender.User
-		if !strings.HasPrefix(fromNumber, "+") {
-			fromNumber = "+" + fromNumber
-		}
+	if phoneJID.User == "" {
+		slog.Warn("WhatsAppService unable to determine phone JID; dropping message",
+			"sender", sender.String(),
+			"senderAlt", senderAlt.String(),
+			"addressingMode", evt.Info.AddressingMode)
+		return
+	}
+
+	fromNumber = phoneJID.User
+	if !strings.HasPrefix(fromNumber, "+") {
+		fromNumber = "+" + fromNumber
 	}
 
 	if canonical, err := s.ValidateAndCanonicalizeRecipient(fromNumber); err == nil {
 		canonicalPhone = canonical
-		if lidJID.User != "" && lidJID.Server == types.HiddenUserServer {
-			s.storeRecipientLID(canonicalPhone, lidJID.String())
+		if sender.Server == types.HiddenUserServer {
+			s.storeRecipientLID(canonicalPhone, sender.String())
+		} else if senderAlt.Server == types.HiddenUserServer {
+			s.storeRecipientLID(canonicalPhone, senderAlt.String())
 		}
 	}
 
