@@ -1,5 +1,7 @@
 # Conversation Flow: Comprehensive Data Flow Architecture
 
+> ⚠️ **Legacy note**: This comprehensive document reflects earlier architecture notes. For current behavior, see [conversation-flow.md](conversation-flow.md).
+
 This document provides a detailed technical overview of the conversation flow system within PromptPipe, focusing on how user data flows across multiple modules and the underlying architecture that enables persistent conversational interactions.
 
 ## Table of Contents

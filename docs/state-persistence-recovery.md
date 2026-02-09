@@ -78,13 +78,12 @@ CREATE TABLE conversation_participants (...);
 ### **Per-Participant Recovery**
 
 1. Query database for active participants by flow type
-2. For each participant, check current state and stored timer IDs
-3. Clear stale timer IDs and recreate timers with shortened timeouts
-4. Register appropriate response handlers for phone numbers
+2. Register response handlers for active conversation participants
+3. Scheduler-specific reminders are recovered separately after initialization (see `recoverSchedulerReminders` in `internal/api/api.go`)
 
 ### **Infrastructure Recovery**
 
-- **Timer Recovery**: Uses shortened timeouts since restart time unknown
+- **Timer Recovery**: Uses a generic callback that logs timeouts (business-specific timer recovery is handled by the owning component)
 - **Response Handler Recovery**: Recreates hooks based on flow type
 - **Error Handling**: Continues recovery even if individual components fail
 

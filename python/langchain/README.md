@@ -1,5 +1,7 @@
 # PromptPipe Agent
 
+> ⚠️ **Experimental**: This Python/LangChain service is not wired into the current Go implementation. The Go service runs its own conversation flow. Use these docs only if you intend to operate the Python agent separately.
+
 LangChain-based agentic conversation flow for PromptPipe. This Python service handles all intelligent conversation processing, while the Go layer acts as a pure message delivery service.
 
 ## Architecture

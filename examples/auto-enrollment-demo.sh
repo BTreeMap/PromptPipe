@@ -59,7 +59,7 @@ if [ "$response" = "y" ] || [ "$response" = "Y" ]; then
     echo "When a user sends their first message, they will be:"
     echo "  1. Automatically enrolled with an empty profile"
     echo "  2. Added to the conversation flow"
-    echo "  3. Greeted by the conversation welcoming bot"
+    echo "  3. Handled by the intake/feedback flow logic"
     echo ""
     echo "Press Ctrl+C to stop"
     echo ""

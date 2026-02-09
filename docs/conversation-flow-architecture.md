@@ -1,5 +1,7 @@
 # Conversation Flow Architecture
 
+> ⚠️ **Legacy note**: This design document is kept for historical context. See [conversation-flow.md](conversation-flow.md) for the current implementation details.
+
 This document focuses on the Conversation Flow within PromptPipe: what components it uses, how they interact, and how messages move through the system. The broader PromptPipe platform (API, messaging, store, recovery) is referenced as a supporting foundation.
 
 ## Scope and goals

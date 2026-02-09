@@ -1,5 +1,7 @@
 # PromptPipe: Complete Beginner's Guide
 
+> ⚠️ **Legacy note**: This guide predates the current Go implementation and may not reflect today’s API or configuration. For current documentation, start with the [README](../README.md) and the docs index.
+
 ## High-Level Overview
 
 **PromptPipe** is a sophisticated messaging service that delivers intelligent, adaptive prompts over WhatsApp. Think of it as a smart chatbot platform that can:

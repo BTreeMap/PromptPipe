@@ -109,7 +109,7 @@ check_api() {
         return 0
     else
         error "API is not reachable at $API_BASE_URL"
-        warn "Please start PromptPipe with: ./PromptPipe -api-addr :8080"
+        warn "Please start PromptPipe with: ./build/promptpipe --api-addr :8080"
         return 1
     fi
 }

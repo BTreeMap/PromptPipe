@@ -1,5 +1,7 @@
 # Deployment Guide for PromptPipe Agent
 
+> ⚠️ **Experimental**: The Go service does not integrate with this Python agent today. Deploy only if you plan to run the agent independently or add the missing Go integration.
+
 This guide explains how to deploy the Python/LangChain agentic layer alongside the Go message delivery service.
 
 ## Architecture Overview
