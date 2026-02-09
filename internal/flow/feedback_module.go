@@ -152,42 +152,12 @@ func (fm *FeedbackModule) ExecuteFeedbackTrackerWithHistoryAndConversation(ctx c
 
 // getUserProfile retrieves the user profile from state storage
 func (fm *FeedbackModule) getUserProfile(ctx context.Context, participantID string) (*UserProfile, error) {
-	profileJSON, err := fm.stateManager.GetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyUserProfile)
-	if err != nil {
-		slog.Debug("flow.getUserProfile: no existing profile found, creating new one", "participantID", participantID)
-		// Return a new profile if none exists
-		return &UserProfile{
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
-		}, nil
-	}
-
-	// Handle empty string (no profile exists yet)
-	if profileJSON == "" {
-		slog.Debug("flow.getUserProfile: empty profile data, creating new one", "participantID", participantID)
-		return &UserProfile{
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
-		}, nil
-	}
-
-	var profile UserProfile
-	if err := json.Unmarshal([]byte(profileJSON), &profile); err != nil {
-		slog.Error("flow.getUserProfile: failed to unmarshal profile", "error", err, "participantID", participantID, "profileJSON", profileJSON)
-		return nil, fmt.Errorf("failed to parse user profile: %w", err)
-	}
-
-	return &profile, nil
+	return loadOrCreateUserProfile(ctx, fm.stateManager, participantID)
 }
 
 // saveUserProfile saves the user profile to state storage
 func (fm *FeedbackModule) saveUserProfile(ctx context.Context, participantID string, profile *UserProfile) error {
-	profileJSON, err := json.Marshal(profile)
-	if err != nil {
-		return fmt.Errorf("failed to marshal user profile: %w", err)
-	}
-
-	return fm.stateManager.SetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyUserProfile, string(profileJSON))
+	return persistUserProfile(ctx, fm.stateManager, participantID, profile)
 }
 
 // LoadSystemPrompt loads the system prompt from the configured file.

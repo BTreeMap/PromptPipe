@@ -14,19 +14,19 @@ import (
 // AllTags is the hard-coded set of safe tone tags.
 var AllTags = map[string]bool{
 	// Style
-	"concise":               true,
-	"detailed":              true,
-	"formal":                true,
-	"casual":                true,
-	"no_emojis":             true,
-	"emojis_ok":             true,
-	"bullet_points":         true,
+	"concise":                true,
+	"detailed":               true,
+	"formal":                 true,
+	"casual":                 true,
+	"no_emojis":              true,
+	"emojis_ok":              true,
+	"bullet_points":          true,
 	"one_question_at_a_time": true,
 	// Stance
-	"warm_supportive":       true,
-	"neutral_professional":  true,
-	"direct_coach":          true,
-	"gentle_coach":          true,
+	"warm_supportive":      true,
+	"neutral_professional": true,
+	"direct_coach":         true,
+	"gentle_coach":         true,
 	// Interaction
 	"confirm_before_acting": true,
 	"default_actionable":    true,
@@ -60,12 +60,12 @@ type Proposal struct {
 
 // ProfileTone stores the persistent tone fields inside a user profile.
 type ProfileTone struct {
-	Tags            []string           `json:"tone_tags,omitempty"`
-	Scores          map[string]float32 `json:"tone_scores,omitempty"`
-	Version         int                `json:"tone_version"`
-	LastUpdatedAt   time.Time          `json:"tone_last_updated_at,omitempty"`
-	UpdateSource    UpdateSource       `json:"tone_update_source,omitempty"`
-	OverrideUntil   *time.Time         `json:"tone_override_until,omitempty"`
+	Tags          []string           `json:"tone_tags,omitempty"`
+	Scores        map[string]float32 `json:"tone_scores,omitempty"`
+	Version       int                `json:"tone_version"`
+	LastUpdatedAt time.Time          `json:"tone_last_updated_at,omitempty"`
+	UpdateSource  UpdateSource       `json:"tone_update_source,omitempty"`
+	OverrideUntil *time.Time         `json:"tone_override_until,omitempty"`
 }
 
 // ---- Constants for EMA / hysteresis ----
