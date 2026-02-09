@@ -1092,36 +1092,10 @@ func extractScheduleIDs(schedules []models.ScheduleInfo) []string {
 
 // getUserProfile retrieves the user profile from state storage
 func (st *SchedulerTool) getUserProfile(ctx context.Context, participantID string) (*UserProfile, error) {
-	profileJSON, err := st.stateManager.GetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyUserProfile)
-	if err != nil {
-		slog.Debug("SchedulerTool.getUserProfile: failed to get state data", "error", err, "participantID", participantID)
-		return nil, fmt.Errorf("user profile not found: %w", err)
-	}
-
-	// Handle empty string (no profile exists yet)
-	if profileJSON == "" {
-		slog.Debug("SchedulerTool.getUserProfile: empty profile JSON", "participantID", participantID)
-		return &UserProfile{
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
-		}, nil
-	}
-
-	var profile UserProfile
-	if err := json.Unmarshal([]byte(profileJSON), &profile); err != nil {
-		slog.Debug("SchedulerTool.getUserProfile: failed to unmarshal profile", "error", err, "participantID", participantID)
-		return nil, fmt.Errorf("failed to parse user profile: %w", err)
-	}
-
-	return &profile, nil
+	return loadOrCreateUserProfile(ctx, st.stateManager, participantID)
 }
 
 // saveUserProfile saves the user profile to state storage
 func (st *SchedulerTool) saveUserProfile(ctx context.Context, participantID string, profile *UserProfile) error {
-	profileJSON, err := json.Marshal(profile)
-	if err != nil {
-		return fmt.Errorf("failed to marshal user profile: %w", err)
-	}
-
-	return st.stateManager.SetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyUserProfile, string(profileJSON))
+	return persistUserProfile(ctx, st.stateManager, participantID, profile)
 }

@@ -208,6 +208,17 @@ To add a new specialized module:
 * Metrics surface for tool usage frequencies & state transition patterns.
 * Multi‑language expansion (system prompts + localization of intake questions).
 
+## Tone Adaptation
+
+The conversation flow supports implicit tone adaptation, where the system infers and adapts to each user's communication style. See [docs/tone-feature.md](tone-feature.md) for the full specification.
+
+### Key Points
+
+- **Fixed whitelist**: Only 15 pre-defined tone tags are stored (e.g., `concise`, `formal`, `warm_supportive`). No free-form user text is ever stored as tone data.
+- **Server-side gating**: Even if the LLM proposes tone tags, the Go server validates against the whitelist, applies mutual exclusion, enforces EMA smoothing with hysteresis, and rate-limits implicit updates.
+- **Bot permissions**: Only intake and feedback bots may propose tone updates via `save_user_profile`. The coordinator bot matches tone in responses but cannot persist changes.
+- **Prompt injection**: The `BuildToneGuide()` function generates a compact `<TONE POLICY>` section injected into system prompts, influencing response style without exposing any user-controlled text as instructions.
+
 ---
 
 This document reflects the current implementation; verify against code if introducing structural changes.
