@@ -65,6 +65,7 @@ The flow keeps two notions:
 | `dailyPromptReminderTimerID` | Timer ID for the mechanical daily prompt reminder |
 | `dailyPromptReminderSentAt` | Timestamp when the reminder was actually sent |
 | `dailyPromptRespondedAt` | Timestamp when the participant replied after a prompt |
+| `lastIntensityPromptDate` | Date (YYYY-MM-DD) when intensity adjustment was last offered |
 
 ## System Prompts
 
@@ -106,8 +107,8 @@ Response (201):
   "status": "ok",
   "message": "Conversation participant enrolled successfully",
   "result": {
-    "id": "conv_xxxxx",
-    "phone_number": "+1234567890",
+    "id": "p_0123456789abcdef0123456789abcdef",
+    "phone_number": "1234567890",
     "name": "Alice Smith",
     "gender": "female",
     "ethnicity": "Hispanic",
@@ -159,6 +160,7 @@ Other endpoints:
 1. If the participant replies before the reminder fires, `ConversationFlow.processConversationMessage` calls `SchedulerTool.handleDailyPromptReply`, which cancels the timer, clears pending state, and records `dailyPromptRespondedAt`.
 1. If the timer fires first, `SchedulerTool.sendDailyPromptReminder` sends a mechanical follow-up message, records `dailyPromptReminderSentAt`, and clears pending state to prevent duplicates.
 1. Reminder delays can be overridden per-instance via `SchedulerTool.SetDailyPromptReminderDelay`; passing a non-positive duration disables the follow-up entirely.
+1. After each scheduled prompt, `SchedulerTool.checkAndSendIntensityAdjustment` may send the intensity adjustment poll once per day and updates `lastIntensityPromptDate`.
 
 ## Profile Status Injection
 

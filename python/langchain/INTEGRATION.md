@@ -1,5 +1,7 @@
 # Integration Guide: Connecting Go Service to Python Agent
 
+> ⚠️ **Not implemented**: The current Go service does **not** call the Python agent. The steps below are aspirational and require additional Go changes that are not present in this repository.
+
 This guide explains how to integrate the Go message delivery service with the Python LangChain agent.
 
 ## Overview

@@ -1,5 +1,7 @@
 # Migration Summary: Python/LangChain Agentic Layer
 
+> ⚠️ **Historical**: This migration was planned but is not wired into the current Go service. The Go implementation still handles conversations internally.
+
 ## Overview
 
 Successfully created a complete Python/LangChain subproject within the PromptPipe monorepo that implements all agentic conversation flow features previously implemented in Go.
