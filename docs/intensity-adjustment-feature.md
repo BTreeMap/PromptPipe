@@ -49,7 +49,7 @@ This prevents users from selecting options that would exceed the boundaries (e.g
 #### 1. Data Model (`internal/models/flow_types.go`)
 
 ```go
-DataKeyLastIntensityPromptDate = "last_intensity_prompt_date"
+DataKeyLastIntensityPromptDate = "lastIntensityPromptDate"
 ```
 
 Tracks the last date the intensity poll was sent to prevent duplicate prompts on the same day.

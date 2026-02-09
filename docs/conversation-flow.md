@@ -107,8 +107,8 @@ Response (201):
   "status": "ok",
   "message": "Conversation participant enrolled successfully",
   "result": {
-    "id": "conv_xxxxx",
-    "phone_number": "+1234567890",
+    "id": "p_0123456789abcdef0123456789abcdef",
+    "phone_number": "1234567890",
     "name": "Alice Smith",
     "gender": "female",
     "ethnicity": "Hispanic",

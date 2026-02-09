@@ -37,4 +37,7 @@ file:/path/to/whatsmeow.db?_foreign_keys=on
 
 ## Invalid timezone
 
-`schedule.timezone` and `conversation` enrollment/update `timezone` values must be valid IANA names (e.g., `America/Toronto`). Invalid timezones cause `400` errors.
+`schedule.timezone` and `conversation` enrollment/update `timezone` values must be valid IANA names (e.g., `America/Toronto`).
+
+- `POST /conversation/participants` and `PUT /conversation/participants/{id}` return `400` for invalid timezones.
+- `POST /schedule` returns `500` (“Failed to schedule job”) when the schedule timezone is invalid.

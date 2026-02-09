@@ -64,7 +64,7 @@ Each debug log file contains a JSON object with the following fields:
       }
     ],
     "temperature": 0.7,
-    "max_tokens": 1000
+    "max_completion_tokens": 1000
   },
   "response": {
     "choices": [
@@ -95,7 +95,7 @@ Each debug log file contains a JSON object with the following fields:
 
 ## Structured Thinking Capture
 
-When debug mode is active, the system surfaces the model's internal reasoning (“thinking”) for modules that use the structured thinking GenAI calls (Intake, Feedback, Prompt Generator; Coordinator if manually wired). This is accomplished via GenAI methods that instruct the model to emit JSON of the form:
+When debug mode is active, the system surfaces the model's internal reasoning (“thinking”) for the Intake and Feedback modules (and the Coordinator module if manually wired). This is accomplished via GenAI methods that instruct the model to emit JSON of the form:
 
 ```json
 {"thinking": "brief reasoning", "content": "final user reply"}
@@ -104,6 +104,7 @@ When debug mode is active, the system surfaces the model's internal reasoning (�
 Key properties:
 
 - Thinking is always requested for those tool-driven modules (no separate toggle), to keep prompt schemas consistent.
+- Prompt generation uses structured thinking internally but does **not** emit separate debug messages on its own.
 - The thinking field is only delivered to developers via separate debug messages (prefixed with 🐛) and never sent to end users directly.
 - Tool-enabled generations embed the same JSON content while still returning native tool call objects.
 - If JSON parsing fails, the raw content is treated as the user reply and thinking is left empty (non-fatal fallback).

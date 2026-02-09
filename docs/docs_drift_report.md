@@ -7,6 +7,10 @@
 - Auto-enrollment docs implied a separate welcome bot message rather than the intake/feedback response path.
 - Python/LangChain docs implied an active Go ↔ Python integration that is not present in the codebase.
 - Legacy onboarding and architecture guides were presented without a clear “historical” disclaimer.
+- Debug-mode documentation examples used the wrong OpenAI parameter name and overstated which modules emit debug thinking.
+- Intensity adjustment docs referenced an outdated `last_intensity_prompt_date` key instead of the current `lastIntensityPromptDate`.
+- Conversation flow examples used a non-existent participant ID format and non-canonical phone numbers.
+- Troubleshooting guidance claimed invalid schedule timezones return `400`, but the API returns `500` for schedule validation errors.
 
 ## What changed
 
@@ -20,10 +24,12 @@
   - `docs/development.md` (build/test/run)
   - `docs/troubleshooting.md` (operational issues)
 - Updated existing docs for accuracy:
-  - `docs/conversation-flow.md` (added intensity state key + reminder notes)
+  - `docs/conversation-flow.md` (added intensity state key, reminder notes, canonical ID example)
   - `docs/debug-mode.md` (clarified structured thinking + debug output)
   - `docs/auto-enrollment-feature.md` and `docs/auto-enrollment-migration-guide.md`
   - `docs/state-persistence-recovery.md` (timer recovery behavior)
+  - `docs/intensity-adjustment-feature.md` (corrected data key)
+  - `docs/troubleshooting.md` (timezone error status codes)
 - Marked legacy or experimental docs explicitly:
   - `docs/beginner-guide.md`, `docs/onboarding.md`, `docs/conversation-flow-architecture.md`, `docs/conversation-flow-comprehensive.md`
   - `python/langchain/*` docs now state the Go service does not integrate with the Python agent
