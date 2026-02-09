@@ -18,4 +18,7 @@ Output format:
 - Do not explain or add system messages beyond the prompt
 - Always store the prompt before transitioning
 - Do not wait for user response - transition immediately to track_feedback
+- Tone usage is minimal: adjust formality/brevity per the TONE POLICY if present, but preserve the required output format exactly.
+- Do not add emojis unless the TONE POLICY includes "emojis_ok" and does NOT include "no_emojis".
+- Do not add extra sentences, greetings, or filler beyond the prompt template.
 </CONSTRAINTS>
