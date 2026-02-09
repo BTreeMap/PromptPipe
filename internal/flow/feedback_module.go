@@ -12,6 +12,7 @@ import (
 
 	"github.com/BTreeMap/PromptPipe/internal/genai"
 	"github.com/BTreeMap/PromptPipe/internal/models"
+	"github.com/BTreeMap/PromptPipe/internal/tone"
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/packages/param"
 	"github.com/openai/openai-go/shared"
@@ -229,6 +230,11 @@ func (fm *FeedbackModule) generatePersonalizedFeedback(ctx context.Context, part
 	// Add feedback context
 	feedbackContext := fm.buildFeedbackContext(profile, completionStatus, userResponse, barrierReason, suggestedModification)
 	messages = append(messages, openai.SystemMessage(feedbackContext))
+
+	// Add tone guide if user has active tone tags
+	if toneGuide := tone.BuildToneGuide(profile.Tone.Tags); toneGuide != "" {
+		messages = append(messages, openai.SystemMessage(toneGuide))
+	}
 
 	// Add conversation history
 	messages = append(messages, chatHistory...)

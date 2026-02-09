@@ -108,18 +108,19 @@ func TestUpdateProfileTone_HysteresisDeactivation(t *testing.T) {
 	}
 	now := time.Now()
 
-	// Propose without concise many times to let score decay.
+	// Propose without concise many times to let score decay below deactivation threshold.
 	for i := 0; i < 30; i++ {
 		now = now.Add(5 * time.Minute)
-		// Propose a different tag so the function does work.
+		// Propose a different tag so the function does work; concise decays via EMA toward 0.
 		UpdateProfileTone(pt, Proposal{Tags: []string{"formal"}, Source: SourceImplicit}, now)
 	}
 
-	// concise score should still be 0.75 since we're not proposing 0 for it.
-	// The EMA only updates observed tags. So concise stays active (hysteresis).
-	if !toSet(pt.Tags)["concise"] {
-		// This is expected: EMA only updates observed tags, so concise retains its score.
-		t.Logf("concise score after decay: %f", pt.Scores["concise"])
+	// After 30 rounds of decay, concise should fall below 0.4 and be deactivated.
+	if toSet(pt.Tags)["concise"] {
+		t.Errorf("concise should be deactivated after decay, score=%f", pt.Scores["concise"])
+	}
+	if pt.Scores["concise"] > deactivateThresh {
+		t.Errorf("concise score should be below deactivation threshold, got %f", pt.Scores["concise"])
 	}
 }
 

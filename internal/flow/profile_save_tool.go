@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/BTreeMap/PromptPipe/internal/models"
+	"github.com/BTreeMap/PromptPipe/internal/tone"
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/shared"
 )
@@ -32,6 +33,9 @@ type UserProfile struct {
 	LastMotivator        string `json:"last_motivator,omitempty"`         // Last motivational reason reported
 	SuccessCount         int    `json:"success_count"`                    // Number of successful completions
 	TotalPrompts         int    `json:"total_prompts"`                    // Total prompts sent
+
+	// Tone adaptation fields (whitelist-only, server-validated)
+	Tone tone.ProfileTone `json:"tone,omitempty"`
 }
 
 // ProfileSaveTool provides functionality for saving and updating user profiles.
@@ -93,6 +97,20 @@ func (pst *ProfileSaveTool) GetToolDefinition() openai.ChatCompletionToolParam {
 					"last_tweak": map[string]interface{}{
 						"type":        "string",
 						"description": "Last requested modification or adjustment (for feedback tracking)",
+					},
+					"tone_tags": map[string]interface{}{
+						"type":        "array",
+						"items":       map[string]interface{}{"type": "string"},
+						"description": "Proposed tone tags from the whitelist: concise, detailed, formal, casual, no_emojis, emojis_ok, bullet_points, one_question_at_a_time, warm_supportive, neutral_professional, direct_coach, gentle_coach, confirm_before_acting, default_actionable, high_autonomy",
+					},
+					"tone_update_source": map[string]interface{}{
+						"type":        "string",
+						"enum":        []string{"explicit", "implicit"},
+						"description": "Whether the tone update is from an explicit user request ('explicit') or inferred from conversation patterns ('implicit')",
+					},
+					"tone_confidence": map[string]interface{}{
+						"type":        "number",
+						"description": "Confidence level for implicit tone inference (0.0-1.0)",
 					},
 				},
 				"required": []string{
@@ -203,6 +221,23 @@ func (pst *ProfileSaveTool) ExecuteProfileSave(ctx context.Context, participantI
 		slog.Debug("ProfileSaveTool.ExecuteProfileSave: updated last tweak", "participantID", participantID)
 	}
 
+	// Tone adaptation fields — server-side validated and gated
+	if toneTagsRaw, hasTone := args["tone_tags"]; hasTone {
+		proposal := pst.parseToneProposal(args)
+		proposal = tone.ValidateProposal(proposal)
+		if len(proposal.Tags) > 0 || len(proposal.Scores) > 0 {
+			if tone.UpdateProfileTone(&profile.Tone, proposal, time.Now()) {
+				updated = true
+				updatedFields = append(updatedFields, "tone")
+				slog.Info("ProfileSaveTool.ExecuteProfileSave: tone updated", "participantID", participantID, "tags", profile.Tone.Tags, "source", proposal.Source)
+			} else {
+				slog.Debug("ProfileSaveTool.ExecuteProfileSave: tone proposal rejected (rate limit or no change)", "participantID", participantID)
+			}
+		} else {
+			slog.Debug("ProfileSaveTool.ExecuteProfileSave: tone proposal empty after validation", "participantID", participantID, "rawTags", toneTagsRaw)
+		}
+	}
+
 	// Save profile if anything was updated
 	if updated {
 		if err := pst.saveUserProfile(ctx, participantID, profile); err != nil {
@@ -282,6 +317,11 @@ func (pst *ProfileSaveTool) GetOrCreateUserProfile(ctx context.Context, particip
 		slog.Debug("ProfileSaveTool.getOrCreateUserProfile: set default intensity for existing profile", "participantID", participantID)
 	}
 
+	// Backwards compatibility: ensure tone version is set
+	if profile.Tone.Version == 0 {
+		profile.Tone.Version = 1
+	}
+
 	slog.Debug("ProfileSaveTool.getOrCreateUserProfile: loaded existing profile",
 		"participantID", participantID,
 		"habitDomain", profile.HabitDomain,
@@ -323,4 +363,43 @@ func (pst *ProfileSaveTool) saveUserProfile(ctx context.Context, participantID s
 
 	slog.Info("ProfileSaveTool.saveUserProfile: profile saved successfully", "participantID", participantID)
 	return nil
+}
+
+// parseToneProposal extracts tone proposal fields from tool call arguments.
+func (pst *ProfileSaveTool) parseToneProposal(args map[string]interface{}) tone.Proposal {
+	p := tone.Proposal{}
+
+	// Parse tone_tags
+	if rawTags, ok := args["tone_tags"]; ok {
+		switch v := rawTags.(type) {
+		case []interface{}:
+			for _, item := range v {
+				if s, ok := item.(string); ok {
+					p.Tags = append(p.Tags, s)
+				}
+			}
+		case []string:
+			p.Tags = v
+		}
+	}
+
+	// Parse tone_update_source
+	if src, ok := args["tone_update_source"].(string); ok {
+		switch src {
+		case "explicit":
+			p.Source = tone.SourceExplicit
+		default:
+			p.Source = tone.SourceImplicit
+		}
+	}
+
+	// Parse tone_confidence
+	switch v := args["tone_confidence"].(type) {
+	case float64:
+		p.Confidence = float32(v)
+	case float32:
+		p.Confidence = v
+	}
+
+	return p
 }

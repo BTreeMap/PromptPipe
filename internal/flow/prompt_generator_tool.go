@@ -11,6 +11,7 @@ import (
 
 	"github.com/BTreeMap/PromptPipe/internal/genai"
 	"github.com/BTreeMap/PromptPipe/internal/models"
+	"github.com/BTreeMap/PromptPipe/internal/tone"
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/shared"
 )
@@ -271,6 +272,11 @@ func (pgt *PromptGeneratorTool) buildPromptGeneratorSystemPrompt(profile *UserPr
 	// Add modification context if available
 	if profile.LastTweak != "" {
 		systemPrompt += fmt.Sprintf("\n\nNote: User previously requested: %s. Incorporate this preference.", profile.LastTweak)
+	}
+
+	// Add tone guide (minimal usage for generator — preserve output format)
+	if toneGuide := tone.BuildToneGuide(profile.Tone.Tags); toneGuide != "" {
+		systemPrompt += "\n" + toneGuide
 	}
 
 	return systemPrompt

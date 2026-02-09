@@ -159,11 +159,25 @@ func UpdateProfileTone(pt *ProfileTone, proposal Proposal, now time.Time) bool {
 			}
 		}
 	} else {
-		// Implicit: EMA smoothing.
+		// Implicit: EMA smoothing for observed tags.
 		for tag, v := range obs {
 			prev := pt.Scores[tag]
 			pt.Scores[tag] = clamp((1-alpha)*prev + alpha*v)
 			if pt.Scores[tag] != prev {
+				changed = true
+			}
+		}
+		// Decay non-observed tags toward 0 so deactivation can occur.
+		for tag, prev := range pt.Scores {
+			if _, observed := obs[tag]; observed {
+				continue
+			}
+			if prev <= 0 {
+				continue
+			}
+			decayed := clamp((1 - alpha) * prev)
+			if decayed != prev {
+				pt.Scores[tag] = decayed
 				changed = true
 			}
 		}

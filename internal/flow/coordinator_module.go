@@ -12,6 +12,7 @@ import (
 
 	"github.com/BTreeMap/PromptPipe/internal/genai"
 	"github.com/BTreeMap/PromptPipe/internal/models"
+	"github.com/BTreeMap/PromptPipe/internal/tone"
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/packages/param"
 )
@@ -198,14 +199,19 @@ func (cm *CoordinatorModule) buildCoordinatorMessages(ctx context.Context, parti
 		slog.Debug("CoordinatorModule: Added profile status to messages", "participantID", participantID, "profileStatus", profileStatus)
 	}
 
-	// 4. Add conversation history
+	// 4. Add tone guide if user has active tone tags
+	if toneGuide := cm.getToneGuide(ctx, participantID); toneGuide != "" {
+		messages = append(messages, openai.SystemMessage(toneGuide))
+	}
+
+	// 5. Add conversation history
 	const maxHistoryMessages = 30
 	if len(chatHistory) > maxHistoryMessages {
 		chatHistory = chatHistory[len(chatHistory)-maxHistoryMessages:]
 	}
 	messages = append(messages, chatHistory...)
 
-	// 5. Add current user message
+	// 6. Add current user message
 	messages = append(messages, openai.UserMessage(userMessage))
 
 	return messages, nil
@@ -263,6 +269,19 @@ func (cm *CoordinatorModule) getProfileStatus(ctx context.Context, participantID
 	}
 
 	return "PROFILE STATUS: User profile is complete. You can generate_habit_prompt for this user."
+}
+
+// getToneGuide retrieves the user's tone tags from profile and builds a tone guide snippet.
+func (cm *CoordinatorModule) getToneGuide(ctx context.Context, participantID string) string {
+	profileJSON, err := cm.stateManager.GetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyUserProfile)
+	if err != nil || profileJSON == "" {
+		return ""
+	}
+	var profile UserProfile
+	if err := json.Unmarshal([]byte(profileJSON), &profile); err != nil {
+		return ""
+	}
+	return tone.BuildToneGuide(profile.Tone.Tags)
 }
 
 // handleCoordinatorToolLoop manages the tool call loop for the coordinator module.
