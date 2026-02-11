@@ -121,26 +121,3 @@ func (s *SQLiteStore) RequeueStaleSendingMessages(staleBefore time.Time) (int, e
 	}
 	return int(n), nil
 }
-
-func scanOutboxMessage(rows *sql.Rows) (OutboxMessage, error) {
-	var m OutboxMessage
-	var payloadJSON, dedupeKey, lastError sql.NullString
-	var nextAttemptAt, lockedAt sql.NullTime
-	err := rows.Scan(
-		&m.ID, &m.ParticipantID, &m.Kind, &payloadJSON, &m.Status, &m.Attempts,
-		&nextAttemptAt, &dedupeKey, &lockedAt, &lastError, &m.CreatedAt, &m.UpdatedAt,
-	)
-	if err != nil {
-		return m, fmt.Errorf("scan outbox message failed: %w", err)
-	}
-	m.PayloadJSON = payloadJSON.String
-	m.DedupeKey = dedupeKey.String
-	m.LastError = lastError.String
-	if nextAttemptAt.Valid {
-		m.NextAttemptAt = &nextAttemptAt.Time
-	}
-	if lockedAt.Valid {
-		m.LockedAt = &lockedAt.Time
-	}
-	return m, nil
-}
