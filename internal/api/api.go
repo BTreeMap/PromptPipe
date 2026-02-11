@@ -6,6 +6,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -444,9 +445,23 @@ func (s *Server) initializePersistenceWorkers() {
 		conversationFlow.GetStateTransitionTool(),
 	)
 
-	// Create OutboxSender with real send callback
+	// Create OutboxSender with real send callback that parses JSON payload
 	outboxSender := store.NewOutboxSender(pp.OutboxRepo(), func(ctx context.Context, msg store.OutboxMessage) error {
-		return s.msgService.SendMessage(ctx, msg.ParticipantID, msg.PayloadJSON)
+		// Parse the payload to extract the message body
+		var payload struct {
+			To   string `json:"to"`
+			Body string `json:"body"`
+		}
+		if err := json.Unmarshal([]byte(msg.PayloadJSON), &payload); err != nil {
+			// If payload is not JSON, treat the whole string as the message body
+			slog.Warn("OutboxSender: payload is not structured JSON, sending as-is", "participantID", msg.ParticipantID)
+			return s.msgService.SendMessage(ctx, msg.ParticipantID, msg.PayloadJSON)
+		}
+		to := payload.To
+		if to == "" {
+			to = msg.ParticipantID
+		}
+		return s.msgService.SendMessage(ctx, to, payload.Body)
 	}, 5*time.Second)
 
 	// Recover stale work from previous crash
