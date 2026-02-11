@@ -50,11 +50,36 @@ Tables used by the current Go service:
 | `flow_states` | Flow state + JSON state data |
 | `conversation_participants` | Enrolled conversation participants |
 | `registered_hooks` | Persisted response hooks |
+| `jobs` | Durable job queue (replaces in-memory timers) |
+| `outbox_messages` | Restart-safe outgoing message queue |
+| `inbound_dedup` | Inbound message deduplication |
 
 **Legacy tables** (present in migrations but unused by current code):
 
 - `intervention_participants`
 - `intervention_responses`
+
+## Durable jobs (`jobs` table)
+
+All time-based behavior (scheduled prompts, feedback timeouts, state transitions) is represented as persisted job records instead of in-memory timers. Each job has:
+
+- `kind` – handler type (e.g., `recurring_prompt`, `state_transition`, `feedback_followup`)
+- `run_at` – when the job should execute
+- `payload_json` – job-specific parameters
+- `status` – lifecycle state (`queued` → `running` → `done`/`failed`/`canceled`)
+- `dedupe_key` – prevents duplicate jobs for the same intent
+
+On startup, stale `running` jobs (locked before a configurable threshold) are requeued.
+
+## Outbox messages (`outbox_messages` table)
+
+Outgoing WhatsApp messages are first persisted to the outbox, then sent by a background worker. This ensures messages are not lost on crash. Each message has a `dedupe_key` to prevent duplicate sends.
+
+## Inbound dedup (`inbound_dedup` table)
+
+Inbound WhatsApp messages are deduplicated by message ID to prevent reprocessing after restart.
+
+See `docs/persistence-audit.md` for a full state ledger.
 
 ## Flow state data
 

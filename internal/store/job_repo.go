@@ -18,18 +18,18 @@ const (
 
 // Job represents a durable job record that replaces in-memory timers.
 type Job struct {
-	ID          string    `json:"id"`
-	Kind        string    `json:"kind"`
-	RunAt       time.Time `json:"run_at"`
-	PayloadJSON string    `json:"payload_json"`
-	Status      JobStatus `json:"status"`
-	Attempt     int       `json:"attempt"`
-	MaxAttempts int       `json:"max_attempts"`
-	LastError   string    `json:"last_error"`
+	ID          string     `json:"id"`
+	Kind        string     `json:"kind"`
+	RunAt       time.Time  `json:"run_at"`
+	PayloadJSON string     `json:"payload_json"`
+	Status      JobStatus  `json:"status"`
+	Attempt     int        `json:"attempt"`
+	MaxAttempts int        `json:"max_attempts"`
+	LastError   string     `json:"last_error"`
 	LockedAt    *time.Time `json:"locked_at"`
-	DedupeKey   string    `json:"dedupe_key"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	DedupeKey   string     `json:"dedupe_key"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
 }
 
 // JobRepo defines the interface for durable job persistence.

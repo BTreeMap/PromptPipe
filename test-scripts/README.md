@@ -156,6 +156,7 @@ All tests passed!
 - `test-receipts.sh` - Test receipt tracking
 - `run-all-tests.sh` - Complete test suite with integration tests
 - `quick-test.sh` - Fast health check
+- `test-restart-persistence.sh` - End-to-end restart persistence test (requires Docker)
 
 ## Notes
 

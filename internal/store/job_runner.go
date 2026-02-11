@@ -15,12 +15,12 @@ type JobHandler func(ctx context.Context, payload string) error
 // JobRunner periodically claims due jobs from the database and dispatches them
 // to registered handlers.
 type JobRunner struct {
-	repo            JobRepo
-	handlers        map[string]JobHandler
-	mu              sync.RWMutex
-	pollInterval    time.Duration
-	staleThreshold  time.Duration
-	claimLimit      int
+	repo           JobRepo
+	handlers       map[string]JobHandler
+	mu             sync.RWMutex
+	pollInterval   time.Duration
+	staleThreshold time.Duration
+	claimLimit     int
 }
 
 // NewJobRunner creates a new JobRunner.

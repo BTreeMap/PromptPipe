@@ -101,6 +101,46 @@ CREATE TABLE conversation_participants (...);
 4. **Maintainable**: Business logic separated from infrastructure concerns
 5. **No Breaking Changes**: Uses existing database schema
 
+## Durable Jobs and Outbox (Persistence Hardening)
+
+In addition to the recovery system above, the persistence layer includes:
+
+### Durable Jobs (`internal/store/job_repo.go`, `job_runner.go`)
+
+All time-based behavior that must survive restarts is represented as **persisted job records** in the `jobs` table, replacing in-memory `time.AfterFunc` calls:
+
+- **`JobRepo`**: Interface for enqueueing, claiming, completing, failing, and canceling jobs. Implementations exist for both SQLite and Postgres.
+- **`JobRunner`**: Background worker that polls for due jobs and dispatches them to registered handlers. Supports exponential backoff on failure and crash recovery via `RequeueStaleRunningJobs()`.
+- **Dedupe keys**: Prevent duplicate jobs for the same intent (e.g., one scheduled prompt per participant per schedule).
+
+### Outbox Messages (`internal/store/outbox_repo.go`, `outbox_sender.go`)
+
+Outgoing WhatsApp messages are persisted to the `outbox_messages` table before being sent:
+
+- **`OutboxRepo`**: Interface for enqueueing and managing outbound messages. Dedupe keys prevent duplicate sends.
+- **`OutboxSender`**: Background worker that claims due messages and sends them via the messaging service. Supports retry with backoff.
+- On startup, stale `sending` messages are requeued.
+
+### Inbound Dedup (`internal/store/dedup_repo.go`)
+
+The `inbound_dedup` table prevents reprocessing of inbound WhatsApp messages after restart:
+
+- **`DedupRepo`**: Interface for recording and checking message IDs.
+- On message arrival, the system checks if the message ID was already processed and skips if so.
+
+### Startup Reconciliation
+
+On startup:
+1. Stale `running` jobs are requeued (`RequeueStaleRunningJobs`)
+2. Stale `sending` outbox messages are requeued (`RequeueStaleSendingMessages`)
+3. Existing recovery (response handlers, scheduler reminders) continues as before
+
+### Docker Compose Persistence
+
+The `docker-compose.yml` uses named volumes for both Postgres data and the PromptPipe state directory. `docker compose down && docker compose up -d` preserves all state. Only `docker compose down -v` destroys volumes.
+
+See `docs/persistence-audit.md` for the complete state ledger.
+
 ## Integration Example
 
 ```go
