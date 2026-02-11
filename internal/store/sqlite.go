@@ -99,6 +99,18 @@ func NewSQLiteStore(opts ...Option) (*SQLiteStore, error) {
 	return &SQLiteStore{db: db}, nil
 }
 
+// Compile-time check that SQLiteStore implements PersistenceProvider.
+var _ PersistenceProvider = (*SQLiteStore)(nil)
+
+// JobRepo returns the SQLiteStore as a JobRepo.
+func (s *SQLiteStore) JobRepo() JobRepo { return s }
+
+// OutboxRepo returns the SQLiteStore as an OutboxRepo.
+func (s *SQLiteStore) OutboxRepo() OutboxRepo { return s }
+
+// DedupRepo returns the SQLiteStore as a DedupRepo.
+func (s *SQLiteStore) DedupRepo() DedupRepo { return s }
+
 func (s *SQLiteStore) AddReceipt(r models.Receipt) error {
 	_, err := s.db.Exec(`INSERT INTO receipts (recipient, status, time) VALUES (?, ?, ?)`, r.To, r.Status, r.Time)
 	if err != nil {

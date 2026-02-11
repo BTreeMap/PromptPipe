@@ -6,6 +6,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -52,16 +53,19 @@ type Server struct {
 	timer                          models.Timer
 	defaultSchedule                *models.Schedule
 	gaClient                       *genai.Client
-	intakeBotPromptFile            string // path to intake bot system prompt file
-	promptGeneratorPromptFile      string // path to prompt generator system prompt file
-	feedbackTrackerPromptFile      string // path to feedback tracker system prompt file
-	chatHistoryLimit               int    // limit for number of history messages sent to bot tools
-	feedbackInitialTimeout         string // timeout for initial feedback response
-	feedbackFollowupDelay          string // delay before follow-up feedback session
-	debugMode                      bool   // enable debug mode for user-facing debug messages
-	schedulerPrepTimeMinutes       int    // preparation time in minutes before scheduled habit reminders
-	autoFeedbackAfterPromptEnabled bool   // enable auto feedback session enforcement after scheduled prompt inactivity
-	autoEnrollNewUsers             bool   // enable automatic enrollment of new users on first message
+	intakeBotPromptFile            string              // path to intake bot system prompt file
+	promptGeneratorPromptFile      string              // path to prompt generator system prompt file
+	feedbackTrackerPromptFile      string              // path to feedback tracker system prompt file
+	chatHistoryLimit               int                 // limit for number of history messages sent to bot tools
+	feedbackInitialTimeout         string              // timeout for initial feedback response
+	feedbackFollowupDelay          string              // delay before follow-up feedback session
+	debugMode                      bool                // enable debug mode for user-facing debug messages
+	schedulerPrepTimeMinutes       int                 // preparation time in minutes before scheduled habit reminders
+	autoFeedbackAfterPromptEnabled bool                // enable auto feedback session enforcement after scheduled prompt inactivity
+	autoEnrollNewUsers             bool                // enable automatic enrollment of new users on first message
+	jobRunner                      *store.JobRunner    // durable job runner (nil when in-memory store)
+	outboxSender                   *store.OutboxSender // outbox message sender (nil when in-memory store)
+	workerCancel                   context.CancelFunc  // cancel function for worker goroutines
 }
 
 // NewServer creates a new API server instance with the provided dependencies.
@@ -288,6 +292,9 @@ func createAndConfigureServer(waOpts []whatsapp.Option, storeOpts []store.Option
 		return nil, "", fmt.Errorf("failed to initialize conversation flow: %w", err)
 	}
 
+	// Initialize persistence workers (JobRunner + OutboxSender) if store supports it
+	server.initializePersistenceWorkers()
+
 	// Initialize application state recovery
 	if err := server.initializeRecovery(); err != nil {
 		return nil, "", fmt.Errorf("failed to initialize recovery: %w", err)
@@ -391,6 +398,90 @@ func (s *Server) initializeGenAI(genaiOpts []genai.Option) error {
 		s.gaClient = nil
 	}
 	return nil
+}
+
+// initializePersistenceWorkers sets up the JobRunner and OutboxSender if the store
+// supports durable persistence (implements PersistenceProvider).
+func (s *Server) initializePersistenceWorkers() {
+	pp, ok := s.st.(store.PersistenceProvider)
+	if !ok {
+		slog.Info("Store does not support persistence workers (in-memory mode), skipping JobRunner/OutboxSender")
+		return
+	}
+
+	// Get the conversation flow to wire up job handlers
+	conversationFlowInterface, exists := flow.Get(models.PromptTypeConversation)
+	if !exists || conversationFlowInterface == nil {
+		slog.Warn("Conversation flow not registered, skipping persistence worker setup")
+		return
+	}
+	conversationFlow, ok := conversationFlowInterface.(*flow.ConversationFlow)
+	if !ok {
+		slog.Warn("Conversation flow has unexpected type, skipping persistence worker setup")
+		return
+	}
+
+	// Set durable job repo on all flow tools
+	jobRepo := pp.JobRepo()
+	conversationFlow.SetJobRepo(jobRepo)
+
+	// Set inbound dedup repo on the messaging service
+	if waService, ok := s.msgService.(*messaging.WhatsAppService); ok {
+		waService.SetDedupRepo(pp.DedupRepo())
+		slog.Debug("Inbound dedup repo wired into WhatsApp service")
+	}
+
+	// Create state manager for job handlers
+	stateManager := flow.NewStoreBasedStateManager(s.st)
+
+	// Create JobRunner and register handlers
+	jobRunner := store.NewJobRunner(jobRepo, 10*time.Second)
+	flow.RegisterJobHandlers(
+		jobRunner,
+		stateManager,
+		s.msgService,
+		conversationFlow.GetSchedulerTool(),
+		conversationFlow.GetFeedbackModule(),
+		conversationFlow.GetStateTransitionTool(),
+	)
+
+	// Create OutboxSender with real send callback that parses JSON payload
+	outboxSender := store.NewOutboxSender(pp.OutboxRepo(), func(ctx context.Context, msg store.OutboxMessage) error {
+		// Parse the payload to extract the message body
+		var payload struct {
+			To   string `json:"to"`
+			Body string `json:"body"`
+		}
+		if err := json.Unmarshal([]byte(msg.PayloadJSON), &payload); err != nil {
+			// If payload is not JSON, treat the whole string as the message body
+			slog.Warn("OutboxSender: payload is not structured JSON, sending as-is", "participantID", msg.ParticipantID)
+			return s.msgService.SendMessage(ctx, msg.ParticipantID, msg.PayloadJSON)
+		}
+		to := payload.To
+		if to == "" {
+			to = msg.ParticipantID
+		}
+		return s.msgService.SendMessage(ctx, to, payload.Body)
+	}, 5*time.Second)
+
+	// Recover stale work from previous crash
+	if err := jobRunner.RecoverStaleJobs(); err != nil {
+		slog.Error("Failed to recover stale jobs on startup", "error", err)
+	}
+	if err := outboxSender.RecoverStaleMessages(); err != nil {
+		slog.Error("Failed to recover stale outbox messages on startup", "error", err)
+	}
+
+	// Start worker loops
+	workerCtx, workerCancel := context.WithCancel(context.Background())
+	go jobRunner.Run(workerCtx)
+	go outboxSender.Run(workerCtx)
+
+	s.jobRunner = jobRunner
+	s.outboxSender = outboxSender
+	s.workerCancel = workerCancel
+
+	slog.Info("Persistence workers started (JobRunner + OutboxSender)")
 }
 
 // initializeConversationFlow sets up the conversation flow with system prompt loading and scheduler tool
@@ -641,6 +732,13 @@ func (s *Server) gracefulShutdown(srv *http.Server) error {
 	slog.Debug("Stopping timer")
 	s.timer.Stop()
 	slog.Debug("Timer stopped")
+
+	// Stop persistence workers
+	if s.workerCancel != nil {
+		slog.Debug("Stopping persistence workers")
+		s.workerCancel()
+		slog.Debug("Persistence workers stopped")
+	}
 
 	// Close store to clean up database connections
 	slog.Debug("Closing store")

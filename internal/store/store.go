@@ -115,6 +115,14 @@ func ExtractDirFromSQLiteDSN(dsn string) (string, error) {
 	return dir, nil
 }
 
+// PersistenceProvider is implemented by database-backed stores that support
+// durable job scheduling, outbox messaging, and inbound deduplication.
+type PersistenceProvider interface {
+	JobRepo() JobRepo
+	OutboxRepo() OutboxRepo
+	DedupRepo() DedupRepo
+}
+
 // InMemoryStore is a simple in-memory implementation of the Store interface.
 // Data is stored in memory and will be lost when the application restarts.
 type InMemoryStore struct {

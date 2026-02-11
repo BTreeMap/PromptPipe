@@ -3,11 +3,13 @@ package flow
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"time"
 
 	"github.com/BTreeMap/PromptPipe/internal/models"
+	"github.com/BTreeMap/PromptPipe/internal/store"
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/shared"
 )
@@ -16,6 +18,7 @@ import (
 type StateTransitionTool struct {
 	stateManager StateManager
 	timer        models.Timer
+	jobRepo      store.JobRepo
 }
 
 // NewStateTransitionTool creates a new state transition tool instance.
@@ -26,6 +29,11 @@ func NewStateTransitionTool(stateManager StateManager, timer models.Timer) *Stat
 		stateManager: stateManager,
 		timer:        timer,
 	}
+}
+
+// SetJobRepo sets the durable job repository for restart-safe delayed transitions.
+func (stt *StateTransitionTool) SetJobRepo(repo store.JobRepo) {
+	stt.jobRepo = repo
 }
 
 // GetToolDefinition returns the OpenAI tool definition for state transitions.
@@ -134,9 +142,13 @@ func (stt *StateTransitionTool) executeImmediateTransition(ctx context.Context, 
 	}
 
 	// If we have transitioned into FEEDBACK state, cancel any pending auto-feedback enforcement timer
-	if targetState == models.StateFeedback && stt.timer != nil {
+	if targetState == models.StateFeedback {
 		if autoTimerID, err := stt.stateManager.GetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyAutoFeedbackTimerID); err == nil && autoTimerID != "" {
-			stt.timer.Cancel(autoTimerID)
+			if stt.jobRepo != nil {
+				stt.jobRepo.CancelJob(autoTimerID)
+			} else if stt.timer != nil {
+				stt.timer.Cancel(autoTimerID)
+			}
 			stt.stateManager.SetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyAutoFeedbackTimerID, "")
 			slog.Debug("StateTransitionTool.executeImmediateTransition: cancelled auto feedback enforcement timer", "participantID", participantID, "timerID", autoTimerID)
 		}
@@ -158,22 +170,57 @@ func (stt *StateTransitionTool) scheduleDelayedTransition(ctx context.Context, p
 	slog.Debug("StateTransitionTool.scheduleDelayedTransition: scheduling delayed transition",
 		"participantID", participantID, "targetState", targetState, "delayMinutes", delayMinutes, "reason", reason)
 
-	// Validate timer dependency for delayed transitions
+	duration := time.Duration(delayMinutes) * time.Minute
+
+	// Cancel any existing state transition timer/job
+	if existingTimerID, err := stt.stateManager.GetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyStateTransitionTimerID); err == nil && existingTimerID != "" {
+		if stt.jobRepo != nil {
+			stt.jobRepo.CancelJob(existingTimerID)
+		} else if stt.timer != nil {
+			stt.timer.Cancel(existingTimerID)
+		}
+		slog.Debug("StateTransitionTool.scheduleDelayedTransition: cancelled existing timer/job",
+			"participantID", participantID, "existingTimerID", existingTimerID)
+	}
+
+	// Prefer durable job if jobRepo is available
+	if stt.jobRepo != nil {
+		payload, err := json.Marshal(StateTransitionPayload{
+			ParticipantID: participantID,
+			TargetState:   string(targetState),
+			Reason:        reason,
+		})
+		if err != nil {
+			return "", fmt.Errorf("failed to marshal state transition payload: %w", err)
+		}
+
+		dedupeKey := fmt.Sprintf("state_transition:%s", participantID)
+		jobID, err := stt.jobRepo.EnqueueJob(JobKindStateTransition, time.Now().Add(duration), string(payload), dedupeKey)
+		if err != nil {
+			return "", fmt.Errorf("failed to enqueue state transition job: %w", err)
+		}
+
+		// Store the job ID for cancellation
+		if err := stt.stateManager.SetStateData(ctx, participantID, models.FlowTypeConversation,
+			models.DataKeyStateTransitionTimerID, jobID); err != nil {
+			stt.jobRepo.CancelJob(jobID)
+			return "", fmt.Errorf("failed to store job ID: %w", err)
+		}
+
+		slog.Info("StateTransitionTool.scheduleDelayedTransition: durable job scheduled",
+			"participantID", participantID, "targetState", targetState,
+			"delayMinutes", delayMinutes, "jobID", jobID, "reason", reason)
+		return fmt.Sprintf("Scheduled transition to %s in %.1f minutes", targetState, delayMinutes), nil
+	}
+
+	// Fallback to in-memory timer
 	if stt.timer == nil {
 		err := fmt.Errorf("timer is required for delayed state transitions")
 		slog.Error("StateTransitionTool.scheduleDelayedTransition: missing timer", "error", err)
 		return "", err
 	}
 
-	// Cancel any existing state transition timer
-	if existingTimerID, err := stt.stateManager.GetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyStateTransitionTimerID); err == nil && existingTimerID != "" {
-		stt.timer.Cancel(existingTimerID)
-		slog.Debug("StateTransitionTool.scheduleDelayedTransition: cancelled existing timer",
-			"participantID", participantID, "existingTimerID", existingTimerID)
-	}
-
 	// Schedule the delayed transition
-	duration := time.Duration(delayMinutes) * time.Minute
 	timerID, err := stt.timer.ScheduleAfter(duration, func() {
 		slog.Info("StateTransitionTool.scheduleDelayedTransition: executing delayed transition",
 			"participantID", participantID, "targetState", targetState, "reason", reason)
@@ -240,18 +287,18 @@ func (stt *StateTransitionTool) CancelPendingTransition(ctx context.Context, par
 	slog.Debug("StateTransitionTool.CancelPendingTransition: cancelling pending transition",
 		"participantID", participantID)
 
-	if stt.timer == nil {
-		return nil // No timer available, nothing to cancel
-	}
-
 	timerID, err := stt.stateManager.GetStateData(ctx, participantID, models.FlowTypeConversation,
 		models.DataKeyStateTransitionTimerID)
 	if err != nil || timerID == "" {
-		return nil // No pending timer
+		return nil // No pending timer/job
 	}
 
-	// Cancel the timer
-	stt.timer.Cancel(timerID)
+	// Cancel the timer or job
+	if stt.jobRepo != nil {
+		stt.jobRepo.CancelJob(timerID)
+	} else if stt.timer != nil {
+		stt.timer.Cancel(timerID)
+	}
 
 	// Clear the timer ID
 	err = stt.stateManager.SetStateData(ctx, participantID, models.FlowTypeConversation,

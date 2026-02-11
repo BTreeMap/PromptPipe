@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/BTreeMap/PromptPipe/internal/models"
+	"github.com/BTreeMap/PromptPipe/internal/store"
 	"github.com/BTreeMap/PromptPipe/internal/whatsapp"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
@@ -44,6 +45,7 @@ type WhatsAppService struct {
 	stopped    bool
 	lidMu      sync.RWMutex
 	lidByPhone map[string]string // canonical phone -> JID string for LID addressing
+	dedupRepo  store.DedupRepo   // inbound message dedup (nil when in-memory store)
 }
 
 // NewWhatsAppService creates a new WhatsAppService wrapping the given WhatsAppSender.
@@ -65,6 +67,11 @@ func NewWhatsAppService(client whatsapp.WhatsAppSender) *WhatsAppService {
 	}
 
 	return service
+}
+
+// SetDedupRepo sets the inbound message deduplication repository.
+func (s *WhatsAppService) SetDedupRepo(repo store.DedupRepo) {
+	s.dedupRepo = repo
 }
 
 func (s *WhatsAppService) storeRecipientLID(canonicalPhone string, lidJID string) {
@@ -445,6 +452,19 @@ func (s *WhatsAppService) handleIncomingMessage(evt *events.Message) {
 		}
 	}
 
+	// Inbound dedup: skip already-processed messages after restart
+	msgID := evt.Info.ID
+	if s.dedupRepo != nil && msgID != "" {
+		isNew, err := s.dedupRepo.RecordInbound(msgID, canonicalPhone)
+		if err != nil {
+			slog.Error("WhatsAppService inbound dedup check failed", "msgID", msgID, "error", err)
+			// Continue processing on error to avoid dropping messages
+		} else if !isNew {
+			slog.Debug("WhatsAppService skipping duplicate inbound message", "msgID", msgID, "from", fromNumber)
+			return
+		}
+	}
+
 	response := models.Response{
 		From: fromNumber,
 		Body: messageText,
@@ -455,6 +475,13 @@ func (s *WhatsAppService) handleIncomingMessage(evt *events.Message) {
 
 	// Send to responses channel (non-blocking)
 	s.safeEmitResponse(response)
+
+	// Mark message as processed in dedup table
+	if s.dedupRepo != nil && msgID != "" {
+		if err := s.dedupRepo.MarkProcessed(msgID); err != nil {
+			slog.Warn("WhatsAppService failed to mark message processed", "msgID", msgID, "error", err)
+		}
+	}
 }
 
 // handlePollResponse decrypts and formats a poll response into text.
