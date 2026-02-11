@@ -52,17 +52,17 @@ type Server struct {
 	timer                          models.Timer
 	defaultSchedule                *models.Schedule
 	gaClient                       *genai.Client
-	intakeBotPromptFile            string // path to intake bot system prompt file
-	promptGeneratorPromptFile      string // path to prompt generator system prompt file
-	feedbackTrackerPromptFile      string // path to feedback tracker system prompt file
-	chatHistoryLimit               int    // limit for number of history messages sent to bot tools
-	feedbackInitialTimeout         string // timeout for initial feedback response
-	feedbackFollowupDelay          string // delay before follow-up feedback session
-	debugMode                      bool   // enable debug mode for user-facing debug messages
-	schedulerPrepTimeMinutes       int    // preparation time in minutes before scheduled habit reminders
-	autoFeedbackAfterPromptEnabled bool   // enable auto feedback session enforcement after scheduled prompt inactivity
-	autoEnrollNewUsers             bool   // enable automatic enrollment of new users on first message
-	jobRunner                      *store.JobRunner   // durable job runner (nil when in-memory store)
+	intakeBotPromptFile            string              // path to intake bot system prompt file
+	promptGeneratorPromptFile      string              // path to prompt generator system prompt file
+	feedbackTrackerPromptFile      string              // path to feedback tracker system prompt file
+	chatHistoryLimit               int                 // limit for number of history messages sent to bot tools
+	feedbackInitialTimeout         string              // timeout for initial feedback response
+	feedbackFollowupDelay          string              // delay before follow-up feedback session
+	debugMode                      bool                // enable debug mode for user-facing debug messages
+	schedulerPrepTimeMinutes       int                 // preparation time in minutes before scheduled habit reminders
+	autoFeedbackAfterPromptEnabled bool                // enable auto feedback session enforcement after scheduled prompt inactivity
+	autoEnrollNewUsers             bool                // enable automatic enrollment of new users on first message
+	jobRunner                      *store.JobRunner    // durable job runner (nil when in-memory store)
 	outboxSender                   *store.OutboxSender // outbox message sender (nil when in-memory store)
 	workerCancel                   context.CancelFunc  // cancel function for worker goroutines
 }
@@ -423,6 +423,12 @@ func (s *Server) initializePersistenceWorkers() {
 	// Set durable job repo on all flow tools
 	jobRepo := pp.JobRepo()
 	conversationFlow.SetJobRepo(jobRepo)
+
+	// Set inbound dedup repo on the messaging service
+	if waService, ok := s.msgService.(*messaging.WhatsAppService); ok {
+		waService.SetDedupRepo(pp.DedupRepo())
+		slog.Debug("Inbound dedup repo wired into WhatsApp service")
+	}
 
 	// Create state manager for job handlers
 	stateManager := flow.NewStoreBasedStateManager(s.st)

@@ -32,7 +32,7 @@ type dailyPromptPendingState struct {
 // This unified implementation uses a preparation time approach for both fixed and random scheduling.
 type SchedulerTool struct {
 	timer           models.Timer
-	jobRepo         store.JobRepo          // Durable job repo for restart-safe scheduling
+	jobRepo         store.JobRepo // Durable job repo for restart-safe scheduling
 	msgService      MessagingService
 	genaiClient     genai.ClientInterface  // For generating scheduled message content
 	stateManager    StateManager           // For storing schedule metadata

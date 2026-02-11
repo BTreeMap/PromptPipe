@@ -166,4 +166,3 @@ func makeAutoFeedbackEnforcementHandler(schedulerTool *SchedulerTool) store.JobH
 		return nil
 	}
 }
-
