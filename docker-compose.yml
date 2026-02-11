@@ -1,0 +1,49 @@
+# docker-compose.yml - PromptPipe development/production stack
+#
+# Data persistence: All durable state is stored in named volumes.
+# "docker compose down && docker compose up -d" preserves all state.
+# Use "docker compose down -v" to explicitly destroy volumes.
+
+services:
+  promptpipe:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    ports:
+      - "${API_PORT:-8080}:8080"
+    environment:
+      - DATABASE_DSN=${DATABASE_DSN:-postgres://promptpipe:promptpipe@postgres:5432/promptpipe?sslmode=disable}
+      - WHATSAPP_DB_DSN=${WHATSAPP_DB_DSN:-file:/data/whatsmeow.db?_foreign_keys=on}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - API_ADDR=:8080
+      - PROMPTPIPE_STATE_DIR=/data
+      - PROMPTPIPE_DEBUG=${PROMPTPIPE_DEBUG:-false}
+      - GENAI_MODEL=${GENAI_MODEL:-}
+      - GENAI_TEMPERATURE=${GENAI_TEMPERATURE:-0.1}
+      - AUTO_ENROLL_NEW_USERS=${AUTO_ENROLL_NEW_USERS:-false}
+      - AUTO_FEEDBACK_AFTER_PROMPT_ENABLED=${AUTO_FEEDBACK_AFTER_PROMPT_ENABLED:-true}
+    volumes:
+      - promptpipe-data:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: promptpipe
+      POSTGRES_PASSWORD: promptpipe
+      POSTGRES_DB: promptpipe
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U promptpipe"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  promptpipe-data:
+  postgres-data:

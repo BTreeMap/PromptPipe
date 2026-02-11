@@ -1,5 +1,7 @@
 # PromptPipe Onboarding & Conversation Flow Guide
 
+> ⚠️ **Legacy note**: This onboarding guide reflects earlier iterations of the system. Use the [README](../README.md) and updated docs for current behavior.
+
 Welcome! This guide gets you productive quickly: environment setup, core architecture, conversation flow (dynamic 3‑bot and new static state-path), coding conventions, and a first contribution checklist.
 
 ---

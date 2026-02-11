@@ -65,6 +65,7 @@ The flow keeps two notions:
 | `dailyPromptReminderTimerID` | Timer ID for the mechanical daily prompt reminder |
 | `dailyPromptReminderSentAt` | Timestamp when the reminder was actually sent |
 | `dailyPromptRespondedAt` | Timestamp when the participant replied after a prompt |
+| `lastIntensityPromptDate` | Date (YYYY-MM-DD) when intensity adjustment was last offered |
 
 ## System Prompts
 
@@ -106,8 +107,8 @@ Response (201):
   "status": "ok",
   "message": "Conversation participant enrolled successfully",
   "result": {
-    "id": "conv_xxxxx",
-    "phone_number": "+1234567890",
+    "id": "p_0123456789abcdef0123456789abcdef",
+    "phone_number": "1234567890",
     "name": "Alice Smith",
     "gender": "female",
     "ethnicity": "Hispanic",
@@ -159,6 +160,7 @@ Other endpoints:
 1. If the participant replies before the reminder fires, `ConversationFlow.processConversationMessage` calls `SchedulerTool.handleDailyPromptReply`, which cancels the timer, clears pending state, and records `dailyPromptRespondedAt`.
 1. If the timer fires first, `SchedulerTool.sendDailyPromptReminder` sends a mechanical follow-up message, records `dailyPromptReminderSentAt`, and clears pending state to prevent duplicates.
 1. Reminder delays can be overridden per-instance via `SchedulerTool.SetDailyPromptReminderDelay`; passing a non-positive duration disables the follow-up entirely.
+1. After each scheduled prompt, `SchedulerTool.checkAndSendIntensityAdjustment` may send the intensity adjustment poll once per day and updates `lastIntensityPromptDate`.
 
 ## Profile Status Injection
 
@@ -205,6 +207,17 @@ To add a new specialized module:
 * Admin action to force state transition (manual override) without LLM tool call.
 * Metrics surface for tool usage frequencies & state transition patterns.
 * Multi‑language expansion (system prompts + localization of intake questions).
+
+## Tone Adaptation
+
+The conversation flow supports implicit tone adaptation, where the system infers and adapts to each user's communication style. See [docs/tone-feature.md](tone-feature.md) for the full specification.
+
+### Key Points
+
+- **Fixed whitelist**: Only 15 pre-defined tone tags are stored (e.g., `concise`, `formal`, `warm_supportive`). No free-form user text is ever stored as tone data.
+- **Server-side gating**: Even if the LLM proposes tone tags, the Go server validates against the whitelist, applies mutual exclusion, enforces EMA smoothing with hysteresis, and rate-limits implicit updates.
+- **Bot permissions**: Only intake and feedback bots may propose tone updates via `save_user_profile`. The coordinator bot matches tone in responses but cannot persist changes.
+- **Prompt injection**: The `BuildToneGuide()` function generates a compact `<TONE POLICY>` section injected into system prompts, influencing response style without exposing any user-controlled text as instructions.
 
 ---
 

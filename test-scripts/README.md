@@ -48,7 +48,7 @@ chmod +x test-scripts/*.sh
 # Test advanced GenAI prompt engineering
 ./test-scripts/test-genai.sh
 
-# Test message scheduling
+# Test message scheduling (schedule objects)
 ./test-scripts/test-schedule.sh
 
 # Test response handling
@@ -86,10 +86,9 @@ Edit `config.sh` to customize:
 
 ### Schedule Tests (`test-schedule.sh`)
 
-- ✅ Cron-based scheduling
+- ✅ Schedule object validation (minute/hour/day/month/weekday)
 - ✅ Different prompt types with scheduling
-- ✅ Cron expression validation
-- ✅ Edge cases (frequent schedules, future dates)
+- ✅ Edge cases (frequent schedules, invalid fields)
 
 ### Response Tests (`test-responses.sh`)
 
@@ -131,11 +130,12 @@ Tests provide:
   Request: POST /send
   Data: {"to": "+15551234567", "type": "static", "body": "Hello from PromptPipe test!"}
   Response Status: 200
-  Response Body: {"status":"ok"}
+  Response Body: {"status":"ok","message":"Message sent successfully"}
 ✓ Send static message - Status: 200
   Formatted Response:
     {
-      "status": "ok"
+      "status": "ok",
+      "message": "Message sent successfully"
     }
 
 ==================================
@@ -156,6 +156,7 @@ All tests passed!
 - `test-receipts.sh` - Test receipt tracking
 - `run-all-tests.sh` - Complete test suite with integration tests
 - `quick-test.sh` - Fast health check
+- `test-restart-persistence.sh` - End-to-end restart persistence test (requires Docker)
 
 ## Notes
 

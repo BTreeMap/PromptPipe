@@ -2,7 +2,7 @@
 
 ## Overview
 
-This feature enables automatic enrollment of new users into the conversation flow when they send their first message to the system. When enabled, users who are not yet enrolled will be automatically registered with an empty profile, and their first message will be handled by the conversation flow welcoming bot.
+This feature enables automatic enrollment of new users into the conversation flow when they send their first message to the system. When enabled, users who are not yet enrolled will be automatically registered with an empty profile, and their first message will be handled by the conversation flow (intake/feedback modules).
 
 ## Configuration
 
@@ -53,6 +53,7 @@ Process message with conversation flow
 ### Implementation Details
 
 1. **Message Reception**: When a user sends a message, the `ResponseHandler.ProcessResponse` method is called.
+   - Auto-enrollment is only triggered via the messaging service response handler (not via the `POST /response` API).
 
 2. **Auto-Enrollment Check**: Before processing the message, if `autoEnrollNewUsers` is enabled, the system checks if the user is already enrolled.
 
@@ -67,7 +68,7 @@ Process message with conversation flow
 
 5. **Hook Registration**: A persistent conversation hook is registered for the participant, enabling the conversation flow to handle all subsequent messages.
 
-6. **First Message**: The user's first message is then processed by the conversation flow, which will respond with a welcoming message.
+6. **First Message**: The user's first message is processed by the conversation flow. The flow determines the reply based on the intake/feedback state; no extra welcome message is sent outside that flow.
 
 ## Code Changes
 
@@ -135,8 +136,8 @@ export AUTO_ENROLL_NEW_USERS=false
    - Creates participant profile with empty fields
    - Enrolls user in conversation flow
    - Initializes conversation state
-3. **Conversation Flow** responds with welcome message
-4. **User** receives personalized welcome and conversation begins
+3. **Conversation Flow** responds based on intake/feedback logic
+4. **User** receives the flow response and conversation begins
 
 ### With Auto-Enrollment Disabled (Default)
 

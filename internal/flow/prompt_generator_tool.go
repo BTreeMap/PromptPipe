@@ -3,7 +3,6 @@ package flow
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -11,6 +10,7 @@ import (
 
 	"github.com/BTreeMap/PromptPipe/internal/genai"
 	"github.com/BTreeMap/PromptPipe/internal/models"
+	"github.com/BTreeMap/PromptPipe/internal/tone"
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/shared"
 )
@@ -273,6 +273,11 @@ func (pgt *PromptGeneratorTool) buildPromptGeneratorSystemPrompt(profile *UserPr
 		systemPrompt += fmt.Sprintf("\n\nNote: User previously requested: %s. Incorporate this preference.", profile.LastTweak)
 	}
 
+	// Add tone guide (minimal usage for generator — preserve output format)
+	if toneGuide := tone.BuildToneGuide(profile.Tone.Tags); toneGuide != "" {
+		systemPrompt += "\n" + toneGuide
+	}
+
 	return systemPrompt
 }
 
@@ -309,34 +314,11 @@ func (pgt *PromptGeneratorTool) validateProfile(profile *UserProfile) error {
 
 // getUserProfile retrieves the user profile from state storage
 func (pgt *PromptGeneratorTool) getUserProfile(ctx context.Context, participantID string) (*UserProfile, error) {
-	profileJSON, err := pgt.stateManager.GetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyUserProfile)
+	profile, err := loadUserProfile(ctx, pgt.stateManager, participantID)
 	if err != nil {
-		slog.Debug("flow.getUserProfile: failed to get state data", "error", err, "participantID", participantID)
 		return nil, fmt.Errorf("user profile not found - please complete intake first")
 	}
-
-	// Handle empty string (no profile exists yet)
-	if profileJSON == "" {
-		slog.Debug("flow.getUserProfile: empty profile JSON", "participantID", participantID)
-		return nil, fmt.Errorf("user profile not found - please complete intake first")
-	}
-
-	slog.Debug("flow.getUserProfile: raw profile JSON", "participantID", participantID, "profileJSON", profileJSON)
-
-	var profile UserProfile
-	if err := json.Unmarshal([]byte(profileJSON), &profile); err != nil {
-		slog.Debug("flow.getUserProfile: failed to unmarshal profile", "error", err, "participantID", participantID, "profileJSON", profileJSON)
-		return nil, fmt.Errorf("failed to parse user profile: %w", err)
-	}
-
-	slog.Debug("flow.getUserProfile: parsed profile",
-		"participantID", participantID,
-		"habitDomain", profile.HabitDomain,
-		"motivationalFrame", profile.MotivationalFrame,
-		"promptAnchor", profile.PromptAnchor,
-		"preferredTime", profile.PreferredTime)
-
-	return &profile, nil
+	return profile, nil
 }
 
 // LoadSystemPrompt loads the system prompt from the configured file.

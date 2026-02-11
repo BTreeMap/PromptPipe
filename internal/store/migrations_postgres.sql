@@ -88,3 +88,53 @@ CREATE TABLE IF NOT EXISTS registered_hooks (
 
 -- Index for hook type lookups
 CREATE INDEX IF NOT EXISTS idx_registered_hooks_type ON registered_hooks(hook_type);
+
+-- Durable jobs table (replaces in-memory timers)
+CREATE TABLE IF NOT EXISTS jobs (
+    id TEXT PRIMARY KEY,
+    kind TEXT NOT NULL,
+    run_at TIMESTAMP NOT NULL,
+    payload_json JSONB,
+    status TEXT NOT NULL DEFAULT 'queued',
+    attempt INTEGER NOT NULL DEFAULT 0,
+    max_attempts INTEGER NOT NULL DEFAULT 3,
+    last_error TEXT,
+    locked_at TIMESTAMP,
+    dedupe_key TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_jobs_status_run_at ON jobs(status, run_at);
+CREATE INDEX IF NOT EXISTS idx_jobs_kind ON jobs(kind);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_dedupe_key ON jobs(dedupe_key) WHERE dedupe_key IS NOT NULL AND status NOT IN ('done', 'canceled');
+
+-- Outbox messages table (restart-safe outgoing sends)
+CREATE TABLE IF NOT EXISTS outbox_messages (
+    id TEXT PRIMARY KEY,
+    participant_id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    payload_json JSONB,
+    status TEXT NOT NULL DEFAULT 'queued',
+    attempts INTEGER NOT NULL DEFAULT 0,
+    next_attempt_at TIMESTAMP,
+    dedupe_key TEXT,
+    locked_at TIMESTAMP,
+    last_error TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_outbox_status_next ON outbox_messages(status, next_attempt_at);
+CREATE INDEX IF NOT EXISTS idx_outbox_participant ON outbox_messages(participant_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_outbox_dedupe_key ON outbox_messages(dedupe_key) WHERE dedupe_key IS NOT NULL AND status NOT IN ('sent', 'canceled');
+
+-- Inbound message dedup table
+CREATE TABLE IF NOT EXISTS inbound_dedup (
+    message_id TEXT PRIMARY KEY,
+    participant_id TEXT NOT NULL,
+    received_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    processed_at TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_inbound_dedup_participant ON inbound_dedup(participant_id);

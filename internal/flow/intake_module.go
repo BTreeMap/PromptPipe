@@ -12,6 +12,7 @@ import (
 
 	"github.com/BTreeMap/PromptPipe/internal/genai"
 	"github.com/BTreeMap/PromptPipe/internal/models"
+	"github.com/BTreeMap/PromptPipe/internal/tone"
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/packages/param"
 )
@@ -186,6 +187,11 @@ func (im *IntakeModule) buildIntakeMessagesWithContext(ctx context.Context, part
 	// Add intelligent intake context based on current profile state
 	contextMessage := im.buildIntakeContext(profile)
 	messages = append(messages, openai.SystemMessage(contextMessage))
+
+	// Add tone guide if user has active tone tags
+	if toneGuide := tone.BuildToneGuide(profile.Tone.Tags); toneGuide != "" {
+		messages = append(messages, openai.SystemMessage(toneGuide))
+	}
 
 	// Add conversation history
 	messages = append(messages, chatHistory...)

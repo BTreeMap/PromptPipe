@@ -75,7 +75,7 @@ Before deploying to production:
 1. Enable auto-enrollment in a staging environment
 2. Send a test message from an unenrolled phone number
 3. Verify the participant is created with empty profile
-4. Verify the conversation flow responds with welcome message
+4. Verify the conversation flow responds via the intake/feedback modules
 5. Check logs for auto-enrollment events
 
 ### Step 4: Monitor After Deployment
