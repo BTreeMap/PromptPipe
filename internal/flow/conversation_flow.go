@@ -12,6 +12,7 @@ import (
 
 	"github.com/BTreeMap/PromptPipe/internal/genai"
 	"github.com/BTreeMap/PromptPipe/internal/models"
+	"github.com/BTreeMap/PromptPipe/internal/store"
 	"github.com/BTreeMap/PromptPipe/internal/whatsapp"
 	"github.com/openai/openai-go"
 )
@@ -639,6 +640,29 @@ func (f *ConversationFlow) SetDebugMode(enabled bool) {
 // GetSchedulerTool returns the scheduler tool for recovery operations.
 func (f *ConversationFlow) GetSchedulerTool() *SchedulerTool {
 	return f.schedulerTool
+}
+
+// GetFeedbackModule returns the feedback module for external handler registration.
+func (f *ConversationFlow) GetFeedbackModule() *FeedbackModule {
+	return f.feedbackModule
+}
+
+// GetStateTransitionTool returns the state transition tool for external handler registration.
+func (f *ConversationFlow) GetStateTransitionTool() *StateTransitionTool {
+	return f.stateTransitionTool
+}
+
+// SetJobRepo sets the durable job repository on all tools that support it.
+func (f *ConversationFlow) SetJobRepo(repo store.JobRepo) {
+	if f.schedulerTool != nil {
+		f.schedulerTool.SetJobRepo(repo)
+	}
+	if f.feedbackModule != nil {
+		f.feedbackModule.SetJobRepo(repo)
+	}
+	if f.stateTransitionTool != nil {
+		f.stateTransitionTool.SetJobRepo(repo)
+	}
 }
 
 // sendDebugMessage sends a debug message to the user if debug mode is enabled.

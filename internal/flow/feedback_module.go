@@ -12,6 +12,7 @@ import (
 
 	"github.com/BTreeMap/PromptPipe/internal/genai"
 	"github.com/BTreeMap/PromptPipe/internal/models"
+	"github.com/BTreeMap/PromptPipe/internal/store"
 	"github.com/BTreeMap/PromptPipe/internal/tone"
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/packages/param"
@@ -26,6 +27,7 @@ type FeedbackModule struct {
 	systemPromptFile       string
 	systemPrompt           string
 	timer                  models.Timer         // Timer for scheduling feedback timeouts
+	jobRepo                store.JobRepo        // Durable job repo for restart-safe scheduling
 	msgService             MessagingService     // Messaging service for sending follow-up prompts
 	feedbackInitialTimeout string               // Timeout for initial feedback response (e.g., "15m")
 	feedbackFollowupDelay  string               // Delay before follow-up feedback session (e.g., "3h")
@@ -56,6 +58,11 @@ func NewFeedbackModule(stateManager StateManager, genaiClient genai.ClientInterf
 		profileSaveTool:        profileSaveTool,
 		schedulerTool:          schedulerTool,
 	}
+}
+
+// SetJobRepo sets the durable job repository for restart-safe feedback scheduling.
+func (fm *FeedbackModule) SetJobRepo(repo store.JobRepo) {
+	fm.jobRepo = repo
 }
 
 // GetToolDefinition returns the OpenAI tool definition for tracking feedback.
@@ -307,11 +314,6 @@ func (fm *FeedbackModule) IsSystemPromptLoaded() bool {
 func (fm *FeedbackModule) ScheduleFeedbackCollection(ctx context.Context, participantID string) error {
 	slog.Debug("flow.FeedbackModule.ScheduleFeedbackCollection: scheduling feedback collection", "participantID", participantID, "initialTimeout", fm.feedbackInitialTimeout)
 
-	if fm.timer == nil {
-		slog.Warn("flow.FeedbackModule.ScheduleFeedbackCollection: timer not configured, skipping feedback scheduling", "participantID", participantID)
-		return nil
-	}
-
 	if fm.msgService == nil {
 		slog.Warn("flow.FeedbackModule.ScheduleFeedbackCollection: messaging service not configured, skipping feedback scheduling", "participantID", participantID)
 		return nil
@@ -328,6 +330,39 @@ func (fm *FeedbackModule) ScheduleFeedbackCollection(ctx context.Context, partic
 	if err := fm.stateManager.SetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyFeedbackState, "waiting_initial"); err != nil {
 		slog.Error("flow.FeedbackModule.ScheduleFeedbackCollection: failed to set feedback state", "participantID", participantID, "error", err)
 		return fmt.Errorf("failed to set feedback state: %w", err)
+	}
+
+	// Get phone number from context for the job payload
+	phoneNumber, _ := GetPhoneNumberFromContext(ctx)
+
+	// Prefer durable job if jobRepo is available
+	if fm.jobRepo != nil {
+		payload, err := json.Marshal(FeedbackTimeoutPayload{
+			ParticipantID: participantID,
+			PhoneNumber:   phoneNumber,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to marshal feedback timeout payload: %w", err)
+		}
+
+		dedupeKey := fmt.Sprintf("feedback_timeout:%s", participantID)
+		jobID, err := fm.jobRepo.EnqueueJob(JobKindFeedbackTimeout, time.Now().Add(initialTimeout), string(payload), dedupeKey)
+		if err != nil {
+			return fmt.Errorf("failed to enqueue feedback timeout job: %w", err)
+		}
+
+		if err := fm.stateManager.SetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyFeedbackTimerID, jobID); err != nil {
+			slog.Error("flow.FeedbackModule.ScheduleFeedbackCollection: failed to store job ID", "participantID", participantID, "jobID", jobID, "error", err)
+		}
+
+		slog.Info("flow.FeedbackModule.ScheduleFeedbackCollection: durable feedback timeout job scheduled", "participantID", participantID, "jobID", jobID, "timeout", initialTimeout)
+		return nil
+	}
+
+	// Fallback to in-memory timer
+	if fm.timer == nil {
+		slog.Warn("flow.FeedbackModule.ScheduleFeedbackCollection: timer not configured, skipping feedback scheduling", "participantID", participantID)
+		return nil
 	}
 
 	// Schedule initial feedback timeout
@@ -397,6 +432,41 @@ func (fm *FeedbackModule) scheduleFollowupFeedback(ctx context.Context, particip
 		return
 	}
 
+	// Get phone number from context for the job payload
+	phoneNumber, _ := GetPhoneNumberFromContext(ctx)
+
+	// Prefer durable job if jobRepo is available
+	if fm.jobRepo != nil {
+		payload, err := json.Marshal(FeedbackFollowupPayload{
+			ParticipantID: participantID,
+			PhoneNumber:   phoneNumber,
+		})
+		if err != nil {
+			slog.Error("flow.FeedbackModule.scheduleFollowupFeedback: failed to marshal followup payload", "participantID", participantID, "error", err)
+			return
+		}
+
+		dedupeKey := fmt.Sprintf("feedback_followup:%s", participantID)
+		jobID, err := fm.jobRepo.EnqueueJob(JobKindFeedbackFollowup, time.Now().Add(followupDelay), string(payload), dedupeKey)
+		if err != nil {
+			slog.Error("flow.FeedbackModule.scheduleFollowupFeedback: failed to enqueue followup job", "participantID", participantID, "error", err)
+			return
+		}
+
+		if err := fm.stateManager.SetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyFeedbackFollowupTimerID, jobID); err != nil {
+			slog.Error("flow.FeedbackModule.scheduleFollowupFeedback: failed to store followup job ID", "participantID", participantID, "jobID", jobID, "error", err)
+		}
+
+		slog.Info("flow.FeedbackModule.scheduleFollowupFeedback: durable follow-up job scheduled", "participantID", participantID, "jobID", jobID, "delay", followupDelay)
+		return
+	}
+
+	// Fallback to in-memory timer
+	if fm.timer == nil {
+		slog.Warn("flow.FeedbackModule.scheduleFollowupFeedback: timer not configured, skipping follow-up", "participantID", participantID)
+		return
+	}
+
 	// Schedule follow-up feedback
 	timerID, err := fm.timer.ScheduleAfter(followupDelay, func() {
 		fm.handleFollowupFeedbackTimeout(ctx, participantID)
@@ -451,26 +521,24 @@ func (fm *FeedbackModule) handleFollowupFeedbackTimeout(ctx context.Context, par
 func (fm *FeedbackModule) CancelPendingFeedback(ctx context.Context, participantID string) {
 	slog.Debug("flow.FeedbackModule.CancelPendingFeedback: cancelling pending feedback timers", "participantID", participantID)
 
-	if fm.timer == nil {
-		return
-	}
-
-	// Cancel initial feedback timer
+	// Cancel initial feedback timer/job
 	if timerID, err := fm.stateManager.GetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyFeedbackTimerID); err == nil && timerID != "" {
-		if err := fm.timer.Cancel(timerID); err != nil {
-			slog.Debug("flow.FeedbackModule.CancelPendingFeedback: failed to cancel initial timer", "participantID", participantID, "timerID", timerID, "error", err)
-		} else {
-			slog.Debug("flow.FeedbackModule.CancelPendingFeedback: cancelled initial timer", "participantID", participantID, "timerID", timerID)
+		if fm.jobRepo != nil {
+			fm.jobRepo.CancelJob(timerID)
+		} else if fm.timer != nil {
+			fm.timer.Cancel(timerID)
 		}
+		slog.Debug("flow.FeedbackModule.CancelPendingFeedback: cancelled initial timer/job", "participantID", participantID, "timerID", timerID)
 	}
 
-	// Cancel follow-up feedback timer
+	// Cancel follow-up feedback timer/job
 	if timerID, err := fm.stateManager.GetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyFeedbackFollowupTimerID); err == nil && timerID != "" {
-		if err := fm.timer.Cancel(timerID); err != nil {
-			slog.Debug("flow.FeedbackModule.CancelPendingFeedback: failed to cancel follow-up timer", "participantID", participantID, "timerID", timerID, "error", err)
-		} else {
-			slog.Debug("flow.FeedbackModule.CancelPendingFeedback: cancelled follow-up timer", "participantID", participantID, "timerID", timerID)
+		if fm.jobRepo != nil {
+			fm.jobRepo.CancelJob(timerID)
+		} else if fm.timer != nil {
+			fm.timer.Cancel(timerID)
 		}
+		slog.Debug("flow.FeedbackModule.CancelPendingFeedback: cancelled follow-up timer/job", "participantID", participantID, "timerID", timerID)
 	}
 
 	// Clear feedback state

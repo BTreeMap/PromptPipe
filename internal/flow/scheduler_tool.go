@@ -11,6 +11,7 @@ import (
 
 	"github.com/BTreeMap/PromptPipe/internal/genai"
 	"github.com/BTreeMap/PromptPipe/internal/models"
+	"github.com/BTreeMap/PromptPipe/internal/store"
 	"github.com/BTreeMap/PromptPipe/internal/util"
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/shared"
@@ -31,6 +32,7 @@ type dailyPromptPendingState struct {
 // This unified implementation uses a preparation time approach for both fixed and random scheduling.
 type SchedulerTool struct {
 	timer           models.Timer
+	jobRepo         store.JobRepo          // Durable job repo for restart-safe scheduling
 	msgService      MessagingService
 	genaiClient     genai.ClientInterface  // For generating scheduled message content
 	stateManager    StateManager           // For storing schedule metadata
@@ -70,6 +72,13 @@ func NewSchedulerTool(timer models.Timer, msgService MessagingService, genaiClie
 		prepTimeMinutes:          prepTimeMinutes,
 		autoFeedbackEnabled:      autoFeedbackEnabled,
 		dailyPromptReminderDelay: defaultDailyPromptReminderDelay,
+	}
+}
+
+// SetJobRepo sets the durable job repository for restart-safe scheduling.
+func (st *SchedulerTool) SetJobRepo(repo store.JobRepo) {
+	if st != nil {
+		st.jobRepo = repo
 	}
 }
 
@@ -435,9 +444,42 @@ func (st *SchedulerTool) executeScheduledPrompt(ctx context.Context, participant
 func (st *SchedulerTool) scheduleAutoFeedbackEnforcement(ctx context.Context, participantID string) {
 	const enforcementDelay = 5 * time.Minute
 
-	// Cancel any existing enforcement timer first
-	if existingID, err := st.stateManager.GetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyAutoFeedbackTimerID); err == nil && existingID != "" && st.timer != nil {
-		st.timer.Cancel(existingID)
+	// Cancel any existing enforcement timer/job first
+	if existingID, err := st.stateManager.GetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyAutoFeedbackTimerID); err == nil && existingID != "" {
+		if st.jobRepo != nil {
+			st.jobRepo.CancelJob(existingID)
+		} else if st.timer != nil {
+			st.timer.Cancel(existingID)
+		}
+	}
+
+	// Prefer durable job if jobRepo is available
+	if st.jobRepo != nil {
+		jobPayload, err := json.Marshal(AutoFeedbackEnforcementPayload{
+			ParticipantID: participantID,
+		})
+		if err != nil {
+			slog.Error("SchedulerTool.scheduleAutoFeedbackEnforcement: failed to marshal payload", "participantID", participantID, "error", err)
+			return
+		}
+
+		dedupeKey := fmt.Sprintf("auto_feedback:%s", participantID)
+		jobID, err := st.jobRepo.EnqueueJob(JobKindAutoFeedbackEnforcement, time.Now().Add(enforcementDelay), string(jobPayload), dedupeKey)
+		if err != nil {
+			slog.Error("SchedulerTool.scheduleAutoFeedbackEnforcement: failed to enqueue enforcement job", "participantID", participantID, "error", err)
+			return
+		}
+
+		if err := st.stateManager.SetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyAutoFeedbackTimerID, jobID); err != nil {
+			slog.Warn("SchedulerTool.scheduleAutoFeedbackEnforcement: failed to store enforcement job ID", "participantID", participantID, "jobID", jobID, "error", err)
+		}
+		slog.Info("SchedulerTool.scheduleAutoFeedbackEnforcement: durable enforcement job scheduled", "participantID", participantID, "jobID", jobID, "delayMinutes", enforcementDelay.Minutes())
+		return
+	}
+
+	// Fallback to in-memory timer
+	if st.timer == nil {
+		return
 	}
 
 	timerID, err := st.timer.ScheduleAfter(enforcementDelay, func() {
@@ -519,7 +561,7 @@ func (st *SchedulerTool) checkAndSendIntensityAdjustment(ctx context.Context, pa
 }
 
 func (st *SchedulerTool) scheduleDailyPromptReminder(ctx context.Context, participantID, to string) {
-	if st == nil || st.timer == nil || st.stateManager == nil || st.msgService == nil {
+	if st == nil || st.stateManager == nil || st.msgService == nil {
 		return
 	}
 
@@ -534,8 +576,12 @@ func (st *SchedulerTool) scheduleDailyPromptReminder(ctx context.Context, partic
 
 	// Cancel any previously scheduled reminder to avoid duplicates.
 	if existingID, err := st.stateManager.GetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyDailyPromptReminderTimerID); err == nil && existingID != "" {
-		if cancelErr := st.timer.Cancel(existingID); cancelErr != nil {
-			slog.Warn("SchedulerTool.scheduleDailyPromptReminder: failed to cancel existing reminder timer", "participantID", participantID, "timerID", existingID, "error", cancelErr)
+		if st.jobRepo != nil {
+			st.jobRepo.CancelJob(existingID)
+		} else if st.timer != nil {
+			if cancelErr := st.timer.Cancel(existingID); cancelErr != nil {
+				slog.Warn("SchedulerTool.scheduleDailyPromptReminder: failed to cancel existing reminder timer", "participantID", participantID, "timerID", existingID, "error", cancelErr)
+			}
 		}
 	}
 
@@ -554,6 +600,38 @@ func (st *SchedulerTool) scheduleDailyPromptReminder(ctx context.Context, partic
 
 	if err := st.stateManager.SetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyDailyPromptPending, string(payload)); err != nil {
 		slog.Error("SchedulerTool.scheduleDailyPromptReminder: failed to persist pending reminder state", "participantID", participantID, "error", err)
+		return
+	}
+
+	// Prefer durable job if jobRepo is available
+	if st.jobRepo != nil {
+		jobPayload, err := json.Marshal(DailyPromptReminderPayload{
+			ParticipantID:  participantID,
+			To:             to,
+			ExpectedSentAt: pending.SentAt,
+		})
+		if err != nil {
+			slog.Error("SchedulerTool.scheduleDailyPromptReminder: failed to marshal job payload", "participantID", participantID, "error", err)
+			return
+		}
+
+		dedupeKey := fmt.Sprintf("daily_prompt_reminder:%s", participantID)
+		jobID, err := st.jobRepo.EnqueueJob(JobKindDailyPromptReminder, time.Now().Add(st.dailyPromptReminderDelay), string(jobPayload), dedupeKey)
+		if err != nil {
+			slog.Error("SchedulerTool.scheduleDailyPromptReminder: failed to enqueue reminder job", "participantID", participantID, "error", err)
+			return
+		}
+
+		if err := st.stateManager.SetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyDailyPromptReminderTimerID, jobID); err != nil {
+			slog.Warn("SchedulerTool.scheduleDailyPromptReminder: failed to store reminder job ID", "participantID", participantID, "jobID", jobID, "error", err)
+		}
+
+		slog.Info("SchedulerTool.scheduleDailyPromptReminder: durable reminder job scheduled", "participantID", participantID, "jobID", jobID, "delayHours", st.dailyPromptReminderDelay.Hours())
+		return
+	}
+
+	// Fallback to in-memory timer
+	if st.timer == nil {
 		return
 	}
 
@@ -612,9 +690,13 @@ func (st *SchedulerTool) handleDailyPromptReply(ctx context.Context, participant
 	timerID, err := st.stateManager.GetStateData(ctx, participantID, models.FlowTypeConversation, models.DataKeyDailyPromptReminderTimerID)
 	if err != nil {
 		slog.Warn("SchedulerTool.handleDailyPromptReply: failed to read reminder timer ID", "participantID", participantID, "error", err)
-	} else if timerID != "" && st.timer != nil {
-		if cancelErr := st.timer.Cancel(timerID); cancelErr != nil {
-			slog.Warn("SchedulerTool.handleDailyPromptReply: failed to cancel reminder timer", "participantID", participantID, "timerID", timerID, "error", cancelErr)
+	} else if timerID != "" {
+		if st.jobRepo != nil {
+			st.jobRepo.CancelJob(timerID)
+		} else if st.timer != nil {
+			if cancelErr := st.timer.Cancel(timerID); cancelErr != nil {
+				slog.Warn("SchedulerTool.handleDailyPromptReply: failed to cancel reminder timer", "participantID", participantID, "timerID", timerID, "error", cancelErr)
+			}
 		}
 	}
 

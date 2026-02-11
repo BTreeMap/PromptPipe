@@ -76,6 +76,18 @@ func NewPostgresStore(opts ...Option) (*PostgresStore, error) {
 	return &PostgresStore{db: db}, nil
 }
 
+// Compile-time check that PostgresStore implements PersistenceProvider.
+var _ PersistenceProvider = (*PostgresStore)(nil)
+
+// JobRepo returns the PostgresStore as a JobRepo.
+func (s *PostgresStore) JobRepo() JobRepo { return s }
+
+// OutboxRepo returns the PostgresStore as an OutboxRepo.
+func (s *PostgresStore) OutboxRepo() OutboxRepo { return s }
+
+// DedupRepo returns the PostgresStore as a DedupRepo.
+func (s *PostgresStore) DedupRepo() DedupRepo { return s }
+
 func (s *PostgresStore) AddReceipt(r models.Receipt) error {
 	_, err := s.db.Exec(`INSERT INTO receipts (recipient, status, time) VALUES ($1, $2, $3)`, r.To, r.Status, r.Time)
 	if err != nil {
