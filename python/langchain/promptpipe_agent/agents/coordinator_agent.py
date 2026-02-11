@@ -4,7 +4,6 @@ import os
 from typing import Optional
 
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
 
 from promptpipe_agent.config import settings

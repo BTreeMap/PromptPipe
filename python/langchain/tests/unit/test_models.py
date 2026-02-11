@@ -2,7 +2,6 @@
 
 from datetime import datetime
 
-import pytest
 
 from promptpipe_agent.models.schemas import (
     ConversationHistory,

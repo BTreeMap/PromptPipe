@@ -90,7 +90,7 @@ class PromptGeneratorTool(BaseTool):
 
             return generated_prompt
 
-        except Exception as e:
+        except Exception:
             # Fallback to default prompt on error
             return (
                 "If your phone buzzes, take 50 steps, either walking around or walking in place. "

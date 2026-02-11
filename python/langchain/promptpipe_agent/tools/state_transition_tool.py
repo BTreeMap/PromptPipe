@@ -1,6 +1,5 @@
 """State transition tool for conversation flow."""
 
-from typing import Any
 
 from langchain.tools import BaseTool
 from pydantic import BaseModel, Field
