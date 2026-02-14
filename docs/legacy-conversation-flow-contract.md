@@ -199,6 +199,7 @@ All keys defined in `internal/models/flow_types.go:L33-L52`:
 - **System prompt:** `prompts/conversation_system_3bot.txt` loaded via `LoadSystemPrompt()` (`L150`). Used as fallback; primary routing uses module-specific prompts.
 - **Tools:** None directly exposed to LLM. Acts as router only.
 - **Behavior:** Gets history → appends user message → checks polls → handles reminder reply → routes to module by sub-state → appends assistant response → saves history.
+- **Critical invariant:** The top-level `CurrentState` is always `"CONVERSATION_ACTIVE"`. Sub-state routing (`INTAKE`/`FEEDBACK`) uses `DataKeyConversationState` from `StateData`, not `CurrentState` (see §3.1).
 
 ### 4.2 IntakeModule
 
@@ -387,7 +388,7 @@ Defined in `tone.go:L37-L41`:
 - `formal` ↔ `casual`
 - `direct_coach` ↔ `gentle_coach`
 
-If both tags in a pair have score ≥ 0.7, the higher score is kept and the lower is set to 0.39.
+If both tags in a pair have score ≥ 0.7, the higher score is kept and the lower is set to 0.39 (i.e., `deactivateThresh - 0.01`), ensuring it falls below the 0.4 deactivation threshold and will be deactivated.
 
 ### 6.3 Tag Storage
 
