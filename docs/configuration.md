@@ -6,6 +6,8 @@ PromptPipe loads configuration from environment variables and command-line flags
 2. `../.env`
 3. `../../.env`
 
+A ready-to-use template is available at [`.env.example`](../.env.example). Copy it to `.env` and uncomment the variables you need.
+
 ## Precedence
 
 1. **CLI flags**
